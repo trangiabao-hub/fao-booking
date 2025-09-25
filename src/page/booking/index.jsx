@@ -497,7 +497,15 @@ export default function BookingPage() {
 
   const updateState = (key, value) => setState((prev) => ({ ...prev, [key]: value }));
   const next = () => updateState("step", Math.min(STEPS.length, step + 1));
-  const back = () => updateState("step", Math.max(1, step - 1));
+  const back = () => {
+  if (step === 1) {
+    // về trang chủ
+    window.location.href = "/";
+    return;
+  }
+  updateState("step", Math.max(1, step - 1));
+};
+
 
   const submitPayment = async () => {
     if (!selectedDevice || !t1 || !t2 || total <= 0 || !validInfo) {
@@ -648,7 +656,7 @@ export default function BookingPage() {
           <div className="bg-white/80 backdrop-blur-lg border-t border-pink-200 rounded-t-3xl p-4 shadow-2xl shadow-pink-300/20">
             <div className="flex items-center gap-3">
               <button
-                onClick={back} disabled={step === 1}
+                onClick={back} 
                 className="px-4 py-3.5 rounded-xl border-2 flex-1 border-pink-300 text-pink-800 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-transform active:scale-95"
               > <ArrowLeftIcon className="h-5 w-5" /> Quay lại </button>
 
