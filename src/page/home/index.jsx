@@ -18,10 +18,10 @@ import 'swiper/css/pagination';
 
 // --- Dữ liệu tĩnh ---
 const categories = [
-    { name: 'Fujifilm', description: 'Chất ảnh film, hoài cổ và đầy nghệ thuật.', image: 'https://images.unsplash.com/photo-1590059535317-aab6a84f3f21?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80', link: '/booking?category=fuji' },
-    { name: 'Canon', description: 'Màu sắc chân thực, lựa chọn an toàn.', image: 'https://images.unsplash.com/photo-1512756290469-ec264b7fbf87?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80', link: '/booking?category=canon' },
-    { name: 'Sony', description: 'Công nghệ đỉnh cao cho quay video và vlog.', image: 'https://images.unsplash.com/photo-1597952443533-f5c78b7b2053?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80', link: '/booking?category=sony' },
-    { name: 'Action Cam & Pocket', description: 'Nhỏ gọn, đa năng, bắt trọn khoảnh khắc.', image: 'https://images.unsplash.com/photo-1617013329245-56f45a6c3f87?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80', link: '/booking?category=pocket' },
+    { name: 'Fujifilm', description: 'Chất ảnh film, hoài cổ và đầy nghệ thuật.', image: '/fuji.jpg', link: '/booking?category=fuji' },
+    { name: 'Canon', description: 'Màu sắc chân thực, lựa chọn an toàn.', image: '/canon.jpg', link: '/booking?category=canon' },
+    { name: 'Sony', description: 'Công nghệ đỉnh cao cho quay video và vlog.', image: '/sony.jpg', link: '/booking?category=sony' },
+    { name: 'Action Cam & Pocket', description: 'Nhỏ gọn, đa năng, bắt trọn khoảnh khắc.', image: '/pocket.jpg', link: '/booking?category=pocket' },
 ];
 const features = [
     { icon: StarIcon, title: 'Máy xịn, giá xinh', description: 'Luôn cập nhật các dòng máy hot nhất với chi phí thuê hợp lý.' },
@@ -93,7 +93,7 @@ const Header = () => {
         <div className="flex items-center justify-between h-20">
           <Link to="/" className="flex items-center gap-2">
             <CameraIcon className="h-8 w-8 text-pink-500" />
-            <span className="text-xl font-bold text-pink-800 tracking-tight">XinhRentals</span>
+            <span className="text-xl font-bold text-pink-800 tracking-tight">Fao Sài Gòn</span>
           </Link>
           <nav className="hidden md:flex items-center gap-8">
             {navLinks.map(link => (
@@ -133,7 +133,6 @@ const Header = () => {
   );
 };
 
-// ==== HERO SECTION HOÀN CHỈNH - HIỂN THỊ ICON TRÊN CẢ MOBILE & DESKTOP ====
 const HeroSection = () => {
   const title = "Lưu giữ khoảnh khắc,";
   const title2 = "trọn vẹn cảm xúc";
@@ -188,7 +187,6 @@ const HeroSection = () => {
     <div className="relative bg-gradient-to-b from-rose-50 to-pink-100 pt-28 pb-36 text-center overflow-hidden">
       <BackgroundPattern />
 
-      {/* --- CÁC ICON CHUYỂN ĐỘNG (RESPONSIVE) --- */}
       <FloatingIcon icon={CameraIcon} className="top-[15%] left-[5%] w-12 h-12 md:w-20 md:h-20" delay={0.1} />
       <FloatingIcon icon={FilmIcon} className="bottom-[10%] left-[15%] w-10 h-10 md:w-16 md:h-16 rotate-12" delay={0.3} />
       <FloatingIcon icon={VideoCameraIcon} className="top-[20%] right-[5%] w-14 h-14 md:w-24 md:h-24 -rotate-12" delay={0.2} />
@@ -249,7 +247,6 @@ const HeroSection = () => {
   );
 };
 
-
 const FeaturesSection = () => (
   <AnimatedSection id="features" className="bg-rose-50">
     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
@@ -275,6 +272,7 @@ const FeaturesSection = () => (
     </div>
   </AnimatedSection>
 );
+
 const TestimonialsSection = () => {
     const [testimonials, setTestimonials] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -282,6 +280,7 @@ const TestimonialsSection = () => {
     const fallbackTestimonials = [
         { name: "An Nhiên", location: "TP. Hồ Chí Minh", avatar: "https://i.pravatar.cc/80?u=an-nhien", feedback: "Thủ tục siêu nhanh, 5 phút là xong! Máy ảnh đẹp mê ly. Chắc chắn sẽ là khách quen." },
         { name: "Phương Linh", location: "Hà Nội", avatar: "https://i.pravatar.cc/80?u=phuong-linh", feedback: "Shop tư vấn siêu có tâm. Hướng dẫn mình từ A-Z. 10 điểm không có nhưng!" },
+        { name: "Bảo Trân", location: "Đà Nẵng", avatar: "https://i.pravatar.cc/80?u=bao-tran", feedback: "Giá thuê quá hợp lý cho một em máy xịn thế này. Ảnh chụp ra màu vintage xinh xỉu." },
     ];
 
     useEffect(() => {
@@ -331,7 +330,8 @@ const TestimonialsSection = () => {
                   transition={{ type: "spring", stiffness: 100, damping: 20 }}
                   className="bg-rose-50 border border-pink-100 rounded-2xl p-8 h-full flex flex-col text-center"
                 >
-                  <img src={testimonial.avatar} alt={testimonial.name} className="w-20 h-20 rounded-full mx-auto mb-4 ring-4 ring-white shadow-md"/>
+                  {/* FIX: Thêm object-cover để ảnh không bị méo */}
+                  <img src={testimonial.avatar} alt={testimonial.name} className="w-20 h-20 rounded-full mx-auto mb-4 object-cover ring-4 ring-white shadow-md"/>
                   <p className="text-slate-600 italic flex-grow">"{testimonial.feedback}"</p>
                   <div className="mt-4">
                     <p className="font-bold text-pink-800">{testimonial.name}</p>
@@ -344,6 +344,7 @@ const TestimonialsSection = () => {
         </AnimatedSection>
       );
 };
+
 const CategoriesSection = () => (
   <AnimatedSection id="categories">
     <div className="text-center mb-16">
@@ -357,6 +358,7 @@ const CategoriesSection = () => (
             className="relative rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 h-96"
             whileHover={{ y: -8 }} transition={{ type: "spring", stiffness: 150 }}
           >
+            {/* LƯU Ý: Code ở đây đã đúng, có sẵn object-cover */}
             <img src={cat.image} alt={cat.name} className="absolute h-full w-full object-cover group-hover:scale-110 transition-transform duration-500"/>
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent"></div>
             <div className="absolute bottom-0 left-0 right-0 p-6 text-white transform transition-transform duration-500 group-hover:translate-y-[-8px]">
@@ -369,6 +371,7 @@ const CategoriesSection = () => (
     </div>
   </AnimatedSection>
 );
+
 const CallToActionSection = () => (
   <AnimatedSection className="bg-pink-50">
      <div className="bg-gradient-to-tr from-pink-500 to-rose-400 flex flex-col md:flex-row items-center gap-8 md:gap-12 rounded-3xl overflow-hidden p-8 md:p-12 text-white">
@@ -376,7 +379,8 @@ const CallToActionSection = () => (
            <motion.img 
               src="https://images.unsplash.com/photo-1520342890533-405a0d15b17a?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80"
               alt="Girl taking photo"
-              className="w-full h-auto object-cover rounded-2xl shadow-2xl"
+              // FIX: Dùng h-full và object-cover để ảnh luôn cân đối với cột text
+              className="w-full h-full object-cover rounded-2xl shadow-2xl"
               initial={{ scale: 1.2, opacity: 0 }}
               whileInView={{ scale: 1, opacity: 1 }}
               viewport={{ once: true, amount: 0.5 }}
@@ -386,7 +390,7 @@ const CallToActionSection = () => (
         <div className="w-full md:w-3/5 text-center md:text-left md:order-1">
           <h2 className="text-3xl sm:text-4xl font-extrabold">Mới tập chụp? Đừng lo!</h2>
           <p className="mt-4 text-pink-100 text-lg">
-            Tụi mình sẽ hướng dẫn bạn cách sử dụng máy cơ bản nhất để có những tấm ảnh thật lung linh. Bạn chỉ việc sáng tạo, mọi thứ cứ để Xinh lo.
+            Tụi mình sẽ hướng dẫn bạn cách sử dụng máy cơ bản nhất để có những tấm ảnh thật lung linh. Bạn chỉ việc sáng tạo, mọi thứ cứ để Fao lo.
           </p>
           <Link to="/booking" className="mt-8 inline-block bg-white text-pink-600 font-bold px-8 py-3 rounded-full text-lg hover:bg-rose-50 transition-all duration-300 shadow-xl transform hover:scale-105">
             Chọn máy ngay
@@ -395,20 +399,22 @@ const CallToActionSection = () => (
      </div>
   </AnimatedSection>
 );
+
 const Footer = () => (
   <footer className="bg-slate-800 text-slate-400">
      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 text-center">
         <Link to="/" className="inline-flex items-center justify-center gap-2 mb-4">
           <CameraIcon className="h-8 w-8 text-pink-400" />
-          <span className="text-xl font-bold text-white tracking-tight">XinhRentals</span>
+          <span className="text-xl font-bold text-white tracking-tight">Fao Sài Gòn</span>
         </Link>
         <p className="text-sm">Mang đến những trải nghiệm chụp ảnh tuyệt vời nhất.</p>
         <div className="flex justify-center gap-6 mt-6">
-            <a href="#" aria-label="Instagram" className="hover:text-pink-400 transition-colors"><i className="fab fa-instagram text-2xl"></i></a>
-            <a href="#" aria-label="Facebook" className="hover:text-pink-400 transition-colors"><i className="fab fa-facebook text-2xl"></i></a>
-            <a href="#" aria-label="TikTok" className="hover:text-pink-400 transition-colors"><i className="fab fa-tiktok text-2xl"></i></a>
+            {/* Nên thêm link thực tế vào đây */}
+            <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="hover:text-pink-400 transition-colors"><i className="fab fa-instagram text-2xl"></i></a>
+            <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="hover:text-pink-400 transition-colors"><i className="fab fa-facebook text-2xl"></i></a>
+            <a href="https://tiktok.com" target="_blank" rel="noopener noreferrer" aria-label="TikTok" className="hover:text-pink-400 transition-colors"><i className="fab fa-tiktok text-2xl"></i></a>
         </div>
-        <p className="mt-8 text-xs text-slate-500">© {new Date().getFullYear()} XinhRentals. All Rights Reserved.</p>
+        <p className="mt-8 text-xs text-slate-500">© {new Date().getFullYear()} Fao Sài Gòn. All Rights Reserved.</p>
      </div>
   </footer>
 );
