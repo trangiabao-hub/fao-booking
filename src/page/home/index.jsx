@@ -134,8 +134,8 @@ const Header = () => {
 };
 
 const HeroSection = () => {
-  const title = "Lưu giữ khoảnh khắc,";
-  const title2 = "trọn vẹn cảm xúc";
+  const title = "Lưu khoảnh khắc cùng";
+  const title2 = "Fao Sài Gòn";
 
   const sentenceVariant = {
     hidden: { opacity: 1 },
@@ -184,7 +184,7 @@ const HeroSection = () => {
   );
 
   return (
-    <div className="relative bg-gradient-to-b from-rose-50 to-pink-100 pt-28 pb-36 text-center overflow-hidden">
+    <div className="relative bg-gradient-to-b from-rose-50 to-pink-100 text-center overflow-hidden flex flex-col items-center justify-center min-h-[calc(100vh-5rem)] md:pt-28 md:pb-36">
       <BackgroundPattern />
 
       <FloatingIcon icon={CameraIcon} className="top-[15%] left-[5%] w-12 h-12 md:w-20 md:h-20" delay={0.1} />
@@ -201,7 +201,7 @@ const HeroSection = () => {
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <motion.h1
-          className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-pink-900 tracking-tight"
+          className="text-4xl sm:text-4xl lg:text-6xl font-extrabold text-pink-900 tracking-tight"
           variants={sentenceVariant}
           initial="hidden"
           animate="visible"
@@ -212,13 +212,13 @@ const HeroSection = () => {
             </motion.span>
           ))}
           <br />
-          <span className="text-pink-500">
+          <p className="text-pink-500 mt-4">
             {title2.split(" ").map((word, index) => (
               <motion.span key={index} variants={wordVariant} className="inline-block mr-3">
                 {word}
               </motion.span>
             ))}
-          </span>
+          </p>
         </motion.h1>
         
         <motion.p
@@ -377,7 +377,7 @@ const CallToActionSection = () => (
      <div className="bg-gradient-to-tr from-pink-500 to-rose-400 flex flex-col md:flex-row items-center gap-8 md:gap-12 rounded-3xl overflow-hidden p-8 md:p-12 text-white">
         <div className="w-full md:w-2/5 md:order-2">
            <motion.img 
-              src="https://images.unsplash.com/photo-1520342890533-405a0d15b17a?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80"
+              src="/take-photo.avif"
               alt="Girl taking photo"
               // FIX: Dùng h-full và object-cover để ảnh luôn cân đối với cột text
               className="w-full h-full object-cover rounded-2xl shadow-2xl"
