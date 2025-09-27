@@ -1,12 +1,18 @@
-import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useMemo,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
 import { format, isWeekend, addDays, parseISO } from "date-fns";
-import vi from 'date-fns/locale/vi';
+import vi from "date-fns/locale/vi";
 
-// === CÁC IMPORT MỚI CHO REACT-DATE-RANGE ===
-import 'react-date-range/dist/styles.css'; // main style file
-import 'react-date-range/dist/theme/default.css'; // theme css file
-import { DateRange } from 'react-date-range';
-// import './datepicker-theme.css'; // File CSS tùy chỉnh bạn vừa tạo
+// === CÁC IMPORT CHO REACT-DATE-RANGE ===
+import "react-date-range/dist/styles.css"; // main style file
+import "react-date-range/dist/theme/default.css"; // theme css file
+import { DateRange } from "react-date-range";
+// import "../datepicker-theme.css"; // File CSS tùy chỉnh bạn vừa tạo
 // ===========================================
 
 import {
@@ -19,8 +25,7 @@ import {
   TagIcon,
   UserIcon,
 } from "@heroicons/react/24/solid";
-import api from "../../config/axios";
-
+import api from "../../config/axios"; // Đảm bảo bạn đã có file này
 
 /* ========= Dữ liệu và hằng số ===== */
 const CATEGORIES = [
@@ -41,10 +46,10 @@ const CANON_SUB_CATEGORIES = [
 ];
 
 const FUJI_SUB_CATEGORIES = [
-    { id: "ALL", label: "Tất cả Fuji" },
-    { id: "XS", label: "Dòng XS" },
-    { id: "XT", label: "Dòng XT" },
-    { id: "XA", label: "Dòng XA" },
+  { id: "ALL", label: "Tất cả Fuji" },
+  { id: "XS", label: "Dòng XS" },
+  { id: "XT", label: "Dòng XT" },
+  { id: "XA", label: "Dòng XA" },
 ];
 
 const SLOTS = [
@@ -74,21 +79,27 @@ function inferBrand(name = "") {
 }
 
 function inferCanonSubCategory(name = "") {
-    const n = name.toUpperCase();
-    if (n.startsWith("LENS CANON")) return "LENS";
-    if (n.includes(" R50") || n.includes(" RP")) return "R";
-    if (n.includes(" M10") || n.includes(" M100") || n.includes(" M200") || n.includes(" M50")) return "M";
-    if (n.includes("G7X")) return "COMPACT";
-    if (n.includes("IXY")) return "DIGITAL";
-    return null;
+  const n = name.toUpperCase();
+  if (n.startsWith("LENS CANON")) return "LENS";
+  if (n.includes(" R50") || n.includes(" RP")) return "R";
+  if (
+    n.includes(" M10") ||
+    n.includes(" M100") ||
+    n.includes(" M200") ||
+    n.includes(" M50")
+  )
+    return "M";
+  if (n.includes("G7X")) return "COMPACT";
+  if (n.includes("IXY")) return "DIGITAL";
+  return null;
 }
 
 function inferFujiSubCategory(name = "") {
-    const n = name.toUpperCase();
-    if (n.includes(" XS")) return "XS";
-    if (n.includes(" XT")) return "XT";
-    if (n.includes(" XA")) return "XA";
-    return null;
+  const n = name.toUpperCase();
+  if (n.includes(" XS")) return "XS";
+  if (n.includes(" XT")) return "XT";
+  if (n.includes(" XA")) return "XA";
+  return null;
 }
 
 function parseDeposit(desc) {
@@ -115,11 +126,18 @@ function combineDateWithSlot(dateOnly, slotId) {
 }
 const diffHours = (d1, d2) => (d2.getTime() - d1.getTime()) / (1000 * 60 * 60);
 function countWeekdaysBetweenAligned(t1, t2) {
-  let days = 0, weekdays = 0;
-  let cur = new Date(t1.getTime()); cur.setHours(0,0,0,0);
-  const end = new Date(t2.getTime()); end.setHours(0,0,0,0);
-  while(cur < end) { days+=1; if(!isWeekend(cur)) weekdays+=1; cur = addDays(cur, 1) }
-  return {days, weekdays};
+  let days = 0,
+    weekdays = 0;
+  let cur = new Date(t1.getTime());
+  cur.setHours(0, 0, 0, 0);
+  const end = new Date(t2.getTime());
+  end.setHours(0, 0, 0, 0);
+  while (cur < end) {
+    days += 1;
+    if (!isWeekend(cur)) weekdays += 1;
+    cur = addDays(cur, 1);
+  }
+  return { days, weekdays };
 }
 function safeDesc(s) {
   if (!s) return "Thanh toan don hang";
@@ -137,7 +155,14 @@ function normalizePhone(p) {
 function useBookingPricing(device, startDate, slotId, endDate, voucherId) {
   return useMemo(() => {
     if (!device || !startDate || !endDate)
-      return { days: 0, subTotal: 0, discount: 0, total: 0, t1: null, t2: null };
+      return {
+        days: 0,
+        subTotal: 0,
+        discount: 0,
+        total: 0,
+        t1: null,
+        t2: null,
+      };
 
     const t1 = combineDateWithSlot(startDate, slotId);
     const t2 = combineDateWithSlot(endDate, slotId);
@@ -148,11 +173,15 @@ function useBookingPricing(device, startDate, slotId, endDate, voucherId) {
     let days = Math.ceil(hours / 24);
     let subTotal = 0;
 
-    if (hours <= 6) { subTotal = device.priceSixHours || 0; days = 0.5; }
-    else if (days === 1) subTotal = device.priceOneDay || 0;
+    if (hours <= 6) {
+      subTotal = device.priceSixHours || 0;
+      days = 0.5;
+    } else if (days === 1) subTotal = device.priceOneDay || 0;
     else if (days === 2) subTotal = device.priceTwoDay || 0;
     else if (days === 3) subTotal = device.priceThreeDay || 0;
-    else subTotal = (device.priceThreeDay || 0) + (days - 3) * (device.priceNextDay || 0);
+    else
+      subTotal =
+        (device.priceThreeDay || 0) + (days - 3) * (device.priceNextDay || 0);
 
     const voucher = VOUCHERS.find((v) => v.id === voucherId);
     let discount = 0;
@@ -256,10 +285,13 @@ function SubCategoryChips({ value, onChange, items }) {
   );
 }
 
-
 function CameraList({ items, selectedId, onSelect }) {
   if (!items.length)
-    return <p className="text-slate-500 text-sm py-4 text-center">Không có máy nào trong danh mục này.</p>;
+    return (
+      <p className="text-slate-500 text-sm py-4 text-center">
+        Không có máy nào trong danh mục này.
+      </p>
+    );
   return (
     <div className="space-y-3">
       {items.map((it) => {
@@ -274,10 +306,10 @@ function CameraList({ items, selectedId, onSelect }) {
                 : "border-pink-200 bg-white hover:border-pink-300 hover:bg-pink-50/50"
             }`}
           >
-            <div className="absolute top-3 -right-10 z-10 w-32 rotate-45 bg-red-500 text-center text-white text-[8px] font-bold py-1 shadow-md">
-              SALE 20%
+            <div className="absolute top-3 -right-10 z-10 w-32 rotate-45 bg-red-500 text-center text-white text-xs font-bold py-1 shadow-md">
+              SALE
             </div>
-            
+
             <div className="w-24 h-16 shrink-0">
               <img
                 src={it.img}
@@ -285,7 +317,7 @@ function CameraList({ items, selectedId, onSelect }) {
                 className="w-full h-full object-cover rounded-lg"
               />
             </div>
-            
+
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-pink-900 truncate">
                 {it.displayName}
@@ -293,12 +325,16 @@ function CameraList({ items, selectedId, onSelect }) {
               <div className="text-xs text-slate-600 mt-1">
                 {Number(it.pricePerDay).toLocaleString("vi-VN")} đ/ngày
               </div>
-               <div className="text-xs text-slate-500">
+              <div className="text-xs text-slate-500">
                 Cọc {Number(it.deposit).toLocaleString("vi-VN")} đ
               </div>
             </div>
-            <div className={`transition-all duration-300 ${active ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
-              <CheckCircleIcon className="h-6 w-6 text-pink-500"/>
+            <div
+              className={`transition-all duration-300 ${
+                active ? "opacity-100 scale-100" : "opacity-0 scale-50"
+              }`}
+            >
+              <CheckCircleIcon className="h-6 w-6 text-pink-500" />
             </div>
           </button>
         );
@@ -307,7 +343,6 @@ function CameraList({ items, selectedId, onSelect }) {
   );
 }
 
-// MỚI: Component DateRangePicker miễn phí
 function FreeDateRangePicker({ selection, onChange, minDate }) {
   const [showPicker, setShowPicker] = useState(false);
   const pickerRef = useRef(null);
@@ -328,31 +363,39 @@ function FreeDateRangePicker({ selection, onChange, minDate }) {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showPicker, handleClickOutside]);
-  
-  const displayValue = `${format(selection.startDate, 'dd/MM/yyyy')} - ${format(selection.endDate, 'dd/MM/yyyy')}`;
+
+  const displayValue = `${format(selection.startDate, "dd/MM/yyyy")} - ${format(
+    selection.endDate,
+    "dd/MM/yyyy"
+  )}`;
 
   return (
     <div>
-      <div className="text-sm font-medium text-pink-900 mb-2">Ngày nhận & trả</div>
+      <div className="text-sm font-medium text-pink-900 mb-2">
+        Ngày nhận & trả
+      </div>
       <div className="relative">
         <button
           onClick={() => setShowPicker(!showPicker)}
           className="w-full text-left rounded-xl border-2 border-pink-200 focus:border-pink-500 focus:ring-pink-500 pl-10 pr-3 py-2.5 text-pink-900"
         >
-          <CalendarDaysIcon className="h-5 w-5 text-pink-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"/>
+          <CalendarDaysIcon className="h-5 w-5 text-pink-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <span>{displayValue}</span>
         </button>
 
         {showPicker && (
-          <div ref={pickerRef} className="absolute top-full left-0 mt-2 z-20 shadow-lg rounded-2xl overflow-hidden border border-pink-200">
+          <div
+            ref={pickerRef}
+            className="absolute top-full left-0 mt-2 z-20 shadow-lg rounded-2xl overflow-hidden border border-pink-200"
+          >
             <DateRange
               editableDateInputs={true}
-              onChange={item => onChange(item.selection)}
+              onChange={(item) => onChange(item.selection)}
               moveRangeOnFirstSelection={false}
               ranges={[selection]}
               minDate={minDate}
               locale={vi}
-              rangeColors={['#ec4899']} // pink-500
+              rangeColors={["#ec4899"]}
               showDateDisplay={false}
             />
           </div>
@@ -361,7 +404,6 @@ function FreeDateRangePicker({ selection, onChange, minDate }) {
     </div>
   );
 }
-
 
 function SlotPicker({ value, onChange }) {
   return (
@@ -402,13 +444,21 @@ function VoucherPicker({ value, onChange }) {
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className={`font-semibold ${active ? "text-pink-900" : "text-slate-800"}`}>
+              <span
+                className={`font-semibold ${
+                  active ? "text-pink-900" : "text-slate-800"
+                }`}
+              >
                 {v.label}
               </span>
-              <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${
+              <div
+                className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${
                   active ? "border-pink-500 bg-pink-500" : "border-pink-300"
-              }`}>
-                {active && <div className="h-2 w-2 bg-white rounded-full"></div>}
+                }`}
+              >
+                {active && (
+                  <div className="h-2 w-2 bg-white rounded-full"></div>
+                )}
               </div>
             </div>
             {v.id === "WEEKDAY20" && (
@@ -423,29 +473,49 @@ function VoucherPicker({ value, onChange }) {
   );
 }
 
-const InputField = ({ icon, value, onChange, placeholder, inputMode, error, helpText }) => {
-    return (
-        <div>
-            <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-pink-400">
-                    {icon}
-                </div>
-                <input
-                    value={value}
-                    onChange={onChange}
-                    className={`w-full rounded-xl border-2 ${error ? 'border-red-400' : 'border-pink-200'} focus:border-pink-500 focus:ring-pink-500 pl-11 pr-4 py-3 text-pink-900 placeholder:text-slate-400`}
-                    placeholder={placeholder}
-                    inputMode={inputMode}
-                />
-            </div>
-            {error && helpText && (
-                <div className="text-xs text-red-500 mt-1.5 ml-1">{helpText}</div>
-            )}
+const InputField = ({
+  icon,
+  value,
+  onChange,
+  placeholder,
+  inputMode,
+  error,
+  helpText,
+}) => {
+  return (
+    <div>
+      <div className="relative">
+        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-pink-400">
+          {icon}
         </div>
-    );
-}
+        <input
+          value={value}
+          onChange={onChange}
+          className={`w-full rounded-xl border-2 ${
+            error ? "border-red-400" : "border-pink-200"
+          } focus:border-pink-500 focus:ring-pink-500 pl-11 pr-4 py-3 text-pink-900 placeholder:text-slate-400`}
+          placeholder={placeholder}
+          inputMode={inputMode}
+        />
+      </div>
+      {error && helpText && (
+        <div className="text-xs text-red-500 mt-1.5 ml-1">{helpText}</div>
+      )}
+    </div>
+  );
+};
 
-function Summary({ device, t1, t2, slotId, days, subTotal, discount, total, customer }) {
+function Summary({
+  device,
+  t1,
+  t2,
+  slotId,
+  days,
+  subTotal,
+  discount,
+  total,
+  customer,
+}) {
   const slotLabel = SLOTS.find((s) => s.id === slotId)?.label || "";
 
   const renderInfoRow = (label, value) => (
@@ -453,45 +523,77 @@ function Summary({ device, t1, t2, slotId, days, subTotal, discount, total, cust
       <span className="text-slate-500">{label}</span>
       <span className="font-medium text-slate-800">{value}</span>
     </div>
-  )
-  
+  );
+
   return (
     <div className="space-y-4">
-       <div className="flex gap-4 items-center">
-          <img src={device?.img} alt={device?.displayName} className="w-20 h-20 rounded-xl object-cover shadow-md shadow-pink-200/50"/>
-          <div className="flex-1 min-w-0">
-             <div className="font-semibold text-pink-900 truncate">{device?.displayName || "—"}</div>
-             <div className="text-xs text-slate-500 mt-1">Cọc {Number(device?.deposit || 0).toLocaleString("vi-VN")} đ</div>
+      <div className="flex gap-4 items-center">
+        <img
+          src={device?.img}
+          alt={device?.displayName}
+          className="w-20 h-20 rounded-xl object-cover shadow-md shadow-pink-200/50"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-pink-900 truncate">
+            {device?.displayName || "—"}
           </div>
-       </div>
-
-        <div className="p-4 bg-pink-50/70 rounded-xl space-y-2">
-            {renderInfoRow("Ngày nhận", t1 ? `${format(t1, "dd/MM, EEEE", { locale: vi })}` : "—")}
-            {renderInfoRow("Ngày trả", t2 ? `${format(t2, "dd/MM, EEEE", { locale: vi })}` : "—")}
-            {renderInfoRow("Giờ", `${slotLabel}`)}
+          <div className="text-xs text-slate-500 mt-1">
+            Cọc {Number(device?.deposit || 0).toLocaleString("vi-VN")} đ
+          </div>
         </div>
-       
-       <div className="border-t border-dashed border-pink-200 my-4"></div>
+      </div>
 
-        <div className="space-y-2">
-           {renderInfoRow("Thời gian thuê", `${days === 0.5 ? "Dưới 6 tiếng" : `${days} ngày`}`)}
-           {renderInfoRow("Tạm tính", `${Number(subTotal).toLocaleString("vi-VN")} đ`)}
-           {renderInfoRow("Giảm giá", `- ${Number(discount).toLocaleString("vi-VN")} đ`)}
-        </div>
+      <div className="p-4 bg-pink-50/70 rounded-xl space-y-2">
+        {renderInfoRow(
+          "Ngày nhận",
+          t1 ? `${format(t1, "dd/MM, EEEE", { locale: vi })}` : "—"
+        )}
+        {renderInfoRow(
+          "Ngày trả",
+          t2 ? `${format(t2, "dd/MM, EEEE", { locale: vi })}` : "—"
+        )}
+        {renderInfoRow("Giờ", `${slotLabel}`)}
+      </div>
 
-        <div className="!mt-4 p-4 bg-pink-100 rounded-xl flex justify-between items-center">
-          <span className="text-base font-semibold text-pink-800">Thành tiền</span>
-          <span className="text-xl font-bold text-pink-700">
-            {Number(total).toLocaleString("vi-VN")} đ
-          </span>
-        </div>
-        
-         <div className="!mt-4 pt-4 border-t border-pink-200 text-sm text-slate-600 space-y-1">
-              <p><b>Khách hàng:</b> {customer.fullName || "—"}</p>
-              <p><b>Số điện thoại:</b> {normalizePhone(customer.phone) || "—"}</p>
-              {customer.ig && <p><b>Instagram:</b> {customer.ig}</p>}
-        </div>
+      <div className="border-t border-dashed border-pink-200 my-4"></div>
 
+      <div className="space-y-2">
+        {renderInfoRow(
+          "Thời gian thuê",
+          `${days === 0.5 ? "Dưới 6 tiếng" : `${days} ngày`}`
+        )}
+        {renderInfoRow(
+          "Tạm tính",
+          `${Number(subTotal).toLocaleString("vi-VN")} đ`
+        )}
+        {renderInfoRow(
+          "Giảm giá",
+          `- ${Number(discount).toLocaleString("vi-VN")} đ`
+        )}
+      </div>
+
+      <div className="!mt-4 p-4 bg-pink-100 rounded-xl flex justify-between items-center">
+        <span className="text-base font-semibold text-pink-800">
+          Thành tiền
+        </span>
+        <span className="text-xl font-bold text-pink-700">
+          {Number(total).toLocaleString("vi-VN")} đ
+        </span>
+      </div>
+
+      <div className="!mt-4 pt-4 border-t border-pink-200 text-sm text-slate-600 space-y-1">
+        <p>
+          <b>Khách hàng:</b> {customer.fullName || "—"}
+        </p>
+        <p>
+          <b>Số điện thoại:</b> {normalizePhone(customer.phone) || "—"}
+        </p>
+        {customer.ig && (
+          <p>
+            <b>Instagram:</b> {customer.ig}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -501,8 +603,13 @@ export default function BookingPage() {
   const [allDevices, setAllDevices] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [customer, setCustomer] = useState({ fullName: "", phone: "", ig: "", fb: "" });
-  
+  const [customer, setCustomer] = useState({
+    fullName: "",
+    phone: "",
+    ig: "",
+    fb: "",
+  });
+
   const [canonSubCategory, setCanonSubCategory] = useState("ALL");
   const [fujiSubCategory, setFujiSubCategory] = useState("ALL");
 
@@ -547,22 +654,29 @@ export default function BookingPage() {
     return result;
   }, [allDevices]);
 
-  const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
 
-  // Cập nhật URL State
   const getInitialStateFromUrl = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
-    const start = params.get("start") ? parseISO(params.get("start")) : new Date();
+    const start = params.get("start")
+      ? parseISO(params.get("start"))
+      : new Date();
     const end = params.get("end") ? parseISO(params.get("end")) : new Date();
 
     return {
       step: parseInt(params.get("step") || "1", 10),
       category: params.get("category"),
-      deviceId: params.get("device") ? parseInt(params.get("device"), 10) : null,
+      deviceId: params.get("device")
+        ? parseInt(params.get("device"), 10)
+        : null,
       dateRange: {
         startDate: start,
         endDate: end,
-        key: 'selection',
+        key: "selection",
       },
       slotId: params.get("slot") || "MORNING",
       voucherId: params.get("voucher") || "NONE",
@@ -570,7 +684,6 @@ export default function BookingPage() {
   }, []);
 
   const [state, setState] = useState(getInitialStateFromUrl);
-  // Thay đổi cách lấy state ngày
   const { step, category, deviceId, dateRange, slotId, voucherId } = state;
   const { startDate, endDate } = dateRange;
 
@@ -593,27 +706,39 @@ export default function BookingPage() {
   }, [category, DERIVED]);
 
   const devicesToList = useMemo(() => {
-    if (category === 'canon' && canonSubCategory !== 'ALL') {
-        return filteredByCategory.filter(device => inferCanonSubCategory(device.name) === canonSubCategory);
+    if (category === "canon" && canonSubCategory !== "ALL") {
+      return filteredByCategory.filter(
+        (device) => inferCanonSubCategory(device.name) === canonSubCategory
+      );
     }
-    if (category === 'fuji' && fujiSubCategory !== 'ALL') {
-        return filteredByCategory.filter(device => inferFujiSubCategory(device.name) === fujiSubCategory);
+    if (category === "fuji" && fujiSubCategory !== "ALL") {
+      return filteredByCategory.filter(
+        (device) => inferFujiSubCategory(device.name) === fujiSubCategory
+      );
     }
     return filteredByCategory;
   }, [category, canonSubCategory, fujiSubCategory, filteredByCategory]);
 
   useEffect(() => {
-    if (category !== 'canon') {
-        setCanonSubCategory('ALL');
+    if (category !== "canon") {
+      setCanonSubCategory("ALL");
     }
-    if (category !== 'fuji') {
-        setFujiSubCategory('ALL');
+    if (category !== "fuji") {
+      setFujiSubCategory("ALL");
     }
   }, [category]);
 
-
-  const selectedDevice = useMemo(() => DERIVED.find((i) => i.id === deviceId) || null, [deviceId, DERIVED]);
-  const { days, subTotal, discount, total, t1, t2 } = useBookingPricing(selectedDevice, startDate, slotId, endDate, voucherId);
+  const selectedDevice = useMemo(
+    () => DERIVED.find((i) => i.id === deviceId) || null,
+    [deviceId, DERIVED]
+  );
+  const { days, subTotal, discount, total, t1, t2 } = useBookingPricing(
+    selectedDevice,
+    startDate,
+    slotId,
+    endDate,
+    voucherId
+  );
 
   const { validInfo, errors } = useMemo(() => {
     const err = {};
@@ -623,28 +748,39 @@ export default function BookingPage() {
     const phone = normalizePhone(customer.phone);
     const phoneOk = /^0\d{9}$/.test(phone);
     if (!phoneOk && customer.phone) err.phone = true;
-    
-    return { validInfo: customer.fullName?.trim().length >= 2 && /^0\d{9}$/.test(normalizePhone(customer.phone)), errors: err };
+
+    return {
+      validInfo:
+        customer.fullName?.trim().length >= 2 &&
+        /^0\d{9}$/.test(normalizePhone(customer.phone)),
+      errors: err,
+    };
   }, [customer]);
 
   const canNext = useMemo(() => {
     if (step === 1) return !!category;
     if (step === 2) return !!deviceId;
-    // Cập nhật điều kiện cho ngày
-    if (step === 3) return !!startDate && !!endDate && combineDateWithSlot(endDate, slotId) > combineDateWithSlot(startDate, slotId);
+    if (step === 3)
+      return (
+        !!startDate &&
+        !!endDate &&
+        combineDateWithSlot(endDate, slotId) >
+          combineDateWithSlot(startDate, slotId)
+      );
     if (step === 4) return validInfo;
     return true;
   }, [step, category, deviceId, startDate, endDate, slotId, validInfo]);
 
-  const updateState = (key, value) => setState((prev) => ({ ...prev, [key]: value }));
+  const updateState = (key, value) =>
+    setState((prev) => ({ ...prev, [key]: value }));
   const next = () => updateState("step", Math.min(STEPS.length, step + 1));
   const back = () => {
-  if (step === 1) {
-    window.location.href = "/";
-    return;
-  }
-  updateState("step", Math.max(1, step - 1));
-};
+    if (step === 1) {
+      window.location.href = "/";
+      return;
+    }
+    updateState("step", Math.max(1, step - 1));
+  };
 
   const handleDateChange = (newRange) => {
     setState((prev) => ({ ...prev, dateRange: newRange }));
@@ -652,7 +788,9 @@ export default function BookingPage() {
 
   const submitPayment = async () => {
     if (!selectedDevice || !t1 || !t2 || total <= 0 || !validInfo) {
-      alert("Thông tin đặt lịch hoặc thông tin khách hàng chưa hợp lệ. Vui lòng kiểm tra lại.");
+      alert(
+        "Thông tin đặt lịch hoặc thông tin khách hàng chưa hợp lệ. Vui lòng kiểm tra lại."
+      );
       return;
     }
     setIsSubmitting(true);
@@ -674,14 +812,19 @@ export default function BookingPage() {
         bookingFrom: t1.toISOString(),
         bookingTo: t2.toISOString(),
         total: total,
-        note: `Khách: ${customer.fullName} - ${phone}${customer.ig ? " - IG:" + customer.ig : ""}${customer.fb ? " - FB:" + customer.fb : ""}`,
+        note: `Khách: ${customer.fullName} - ${phone}${
+          customer.ig ? " - IG:" + customer.ig : ""
+        }${customer.fb ? " - FB:" + customer.fb : ""}`,
       };
 
       const rawDesc = `Thue ${selectedDevice.displayName}`;
+      const returnUrl = `${window.location.origin}/payment-status`;
       const payload = {
         amount: total,
         description: safeDesc(rawDesc),
         bookingRequest,
+        returnSuccessUrl: returnUrl,
+        returnFailUrl: returnUrl,
       };
 
       const response = await api.post("/create-payment-link", payload);
@@ -692,7 +835,11 @@ export default function BookingPage() {
       }
     } catch (error) {
       console.error("Failed to create payment link:", error);
-      const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || "Không thể tạo yêu cầu thanh toán.";
+      const errorMessage =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.message ||
+        "Không thể tạo yêu cầu thanh toán.";
       alert(`Đã xảy ra lỗi: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
@@ -727,27 +874,29 @@ export default function BookingPage() {
           {step === 2 && (
             <Card title="2. Lựa chọn một 'em' máy xinh">
               {isLoading ? (
-                <div className="w-full text-center py-10 text-sm text-slate-500">Đang tải danh sách...</div>
+                <div className="w-full text-center py-10 text-sm text-slate-500">
+                  Đang tải danh sách...
+                </div>
               ) : (
                 <>
-                  {category === 'canon' && (
-                    <SubCategoryChips 
-                        items={CANON_SUB_CATEGORIES}
-                        value={canonSubCategory} 
-                        onChange={setCanonSubCategory} 
-                    />
-                  )}
-                  {category === 'fuji' && (
+                  {category === "canon" && (
                     <SubCategoryChips
-                        items={FUJI_SUB_CATEGORIES}
-                        value={fujiSubCategory}
-                        onChange={setFujiSubCategory}
+                      items={CANON_SUB_CATEGORIES}
+                      value={canonSubCategory}
+                      onChange={setCanonSubCategory}
                     />
                   )}
-                  <CameraList 
-                    items={devicesToList} 
-                    selectedId={deviceId} 
-                    onSelect={(val) => updateState("deviceId", val)} 
+                  {category === "fuji" && (
+                    <SubCategoryChips
+                      items={FUJI_SUB_CATEGORIES}
+                      value={fujiSubCategory}
+                      onChange={setFujiSubCategory}
+                    />
+                  )}
+                  <CameraList
+                    items={devicesToList}
+                    selectedId={deviceId}
+                    onSelect={(val) => updateState("deviceId", val)}
                   />
                 </>
               )}
@@ -756,51 +905,77 @@ export default function BookingPage() {
 
           {step === 3 && (
             <>
-              <Card title="3. Chọn ngày thuê & mã giảm" note="Giờ nhận/trả được cố định theo ca bạn chọn.">
+              <Card
+                title="3. Chọn ngày thuê & mã giảm"
+                note="Giờ nhận/trả được cố định theo ca bạn chọn."
+              >
                 <div className="grid grid-cols-1 gap-5">
-                  <FreeDateRangePicker 
+                  <FreeDateRangePicker
                     selection={dateRange}
                     onChange={handleDateChange}
                     minDate={today}
                   />
                   <div>
-                    <div className="text-sm font-medium text-pink-900 mb-2">Ca nhận & trả</div>
-                    <SlotPicker value={slotId} onChange={(val) => updateState("slotId", val)}/>
+                    <div className="text-sm font-medium text-pink-900 mb-2">
+                      Ca nhận & trả
+                    </div>
+                    <SlotPicker
+                      value={slotId}
+                      onChange={(val) => updateState("slotId", val)}
+                    />
                   </div>
                 </div>
               </Card>
 
-              <Card title={<><TagIcon className="h-5 w-5 inline mr-2" /> Mã giảm giá</>}>
-                <VoucherPicker value={voucherId} onChange={(val) => updateState("voucherId", val)}/>
+              <Card
+                title={
+                  <>
+                    <TagIcon className="h-5 w-5 inline mr-2" /> Mã giảm giá
+                  </>
+                }
+              >
+                <VoucherPicker
+                  value={voucherId}
+                  onChange={(val) => updateState("voucherId", val)}
+                />
               </Card>
             </>
           )}
 
           {step === 4 && (
-            <Card title="4. Thông tin liên lạc" note="Vui lòng nhập chính xác để tụi mình liên hệ nhé.">
+            <Card
+              title="4. Thông tin liên lạc"
+              note="Vui lòng nhập chính xác để tụi mình liên hệ nhé."
+            >
               <div className="space-y-4">
-                 <InputField
-                    icon={<UserIcon className="h-5 w-5"/>}
-                    value={customer.fullName}
-                    onChange={(e) => setCustomer((c) => ({ ...c, fullName: e.target.value }))}
-                    placeholder="Nguyễn Thị Bông"
-                    error={errors.fullName}
-                    helpText="Họ tên cần có ít nhất 2 ký tự."
-                />
-                 <InputField
-                    icon={<DevicePhoneMobileIcon className="h-5 w-5"/>}
-                    value={customer.phone}
-                    onChange={(e) => setCustomer((c) => ({ ...c, phone: e.target.value }))}
-                    placeholder="0901234567"
-                    inputMode="tel"
-                    error={errors.phone}
-                    helpText="SĐT hợp lệ của Việt Nam có 10 số, bắt đầu bằng 0."
+                <InputField
+                  icon={<UserIcon className="h-5 w-5" />}
+                  value={customer.fullName}
+                  onChange={(e) =>
+                    setCustomer((c) => ({ ...c, fullName: e.target.value }))
+                  }
+                  placeholder="Nguyễn Thị Bông"
+                  error={errors.fullName}
+                  helpText="Họ tên cần có ít nhất 2 ký tự."
                 />
                 <InputField
-                    icon={<span className="font-bold text-sm">IG</span>}
-                    value={customer.ig}
-                    onChange={(e) => setCustomer((c) => ({ ...c, ig: e.target.value }))}
-                    placeholder="username_ig (không bắt buộc)"
+                  icon={<DevicePhoneMobileIcon className="h-5 w-5" />}
+                  value={customer.phone}
+                  onChange={(e) =>
+                    setCustomer((c) => ({ ...c, phone: e.target.value }))
+                  }
+                  placeholder="0901234567"
+                  inputMode="tel"
+                  error={errors.phone}
+                  helpText="SĐT hợp lệ của Việt Nam có 10 số, bắt đầu bằng 0."
+                />
+                <InputField
+                  icon={<span className="font-bold text-sm">IG</span>}
+                  value={customer.ig}
+                  onChange={(e) =>
+                    setCustomer((c) => ({ ...c, ig: e.target.value }))
+                  }
+                  placeholder="username_ig (không bắt buộc)"
                 />
               </div>
             </Card>
@@ -809,8 +984,15 @@ export default function BookingPage() {
           {step === 5 && (
             <Card title="5. Xác nhận và thanh toán">
               <Summary
-                device={selectedDevice} t1={t1} t2={t2} slotId={slotId} days={days}
-                subTotal={subTotal} discount={discount} total={total} customer={customer}
+                device={selectedDevice}
+                t1={t1}
+                t2={t2}
+                slotId={slotId}
+                days={days}
+                subTotal={subTotal}
+                discount={discount}
+                total={total}
+                customer={customer}
               />
             </Card>
           )}
@@ -822,21 +1004,44 @@ export default function BookingPage() {
           <div className="bg-white/80 backdrop-blur-lg border-t border-pink-200 rounded-t-3xl p-4 shadow-2xl shadow-pink-300/20">
             <div className="flex items-center gap-3">
               <button
-                onClick={back} 
+                onClick={back}
                 className="px-4 py-3.5 rounded-xl border-2 flex-1 border-pink-300 text-pink-800 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-transform active:scale-95"
-              > <ArrowLeftIcon className="h-5 w-5" /> Quay lại </button>
+              >
+                {" "}
+                <ArrowLeftIcon className="h-5 w-5" /> Quay lại{" "}
+              </button>
 
               {step < 5 ? (
                 <button
-                  onClick={next} disabled={!canNext}
-                  className="px-4 py-3.5 rounded-xl bg-pink-600 text-white flex-1 font-semibold disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
-                > Tiếp tục <ArrowRightIcon className="h-5 w-5" /> </button>
-              ) : (
-                <button
-                  onClick={submitPayment} disabled={!selectedDevice || !t1 || !t2 || total <= 0 || isSubmitting || !validInfo }
+                  onClick={next}
+                  disabled={!canNext}
                   className="px-4 py-3.5 rounded-xl bg-pink-600 text-white flex-1 font-semibold disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
                 >
-                   {isSubmitting ? "Đang xử lý..." : (<> <CreditCardIcon className="h-5 w-5"/> Thanh toán ({total.toLocaleString("vi-VN")} đ) </>)}
+                  {" "}
+                  Tiếp tục <ArrowRightIcon className="h-5 w-5" />{" "}
+                </button>
+              ) : (
+                <button
+                  onClick={submitPayment}
+                  disabled={
+                    !selectedDevice ||
+                    !t1 ||
+                    !t2 ||
+                    total <= 0 ||
+                    isSubmitting ||
+                    !validInfo
+                  }
+                  className="px-4 py-3.5 rounded-xl bg-pink-600 text-white flex-1 font-semibold disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
+                >
+                  {isSubmitting ? (
+                    "Đang xử lý..."
+                  ) : (
+                    <>
+                      {" "}
+                      <CreditCardIcon className="h-5 w-5" /> Thanh toán (
+                      {total.toLocaleString("vi-VN")} đ){" "}
+                    </>
+                  )}
                 </button>
               )}
             </div>
