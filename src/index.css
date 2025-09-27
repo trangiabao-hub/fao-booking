@@ -5,3 +5,44 @@
   margin: 0;
   box-sizing: border-box;
 } */
+
+/* src/datepicker-theme.css */
+
+.rdrCalendarWrapper {
+  font-family: inherit; /* Kế thừa font của trang */
+  color: #334155; /* slate-700 */
+}
+
+.rdrDateDisplayWrapper {
+  background-color: #fdf2f8; /* pink-50 */
+}
+.rdrDateDisplayItem {
+  border-radius: 12px;
+}
+.rdrDateDisplayItem input {
+  color: #be185d; /* pink-700 */
+}
+
+/* Màu chính của dải ngày đã chọn */
+.rdrInRange, .rdrStartEdge, .rdrEndEdge {
+  background: #fce7f3 !important; /* pink-100 */
+  color: #be185d !important; /* pink-700 */
+}
+
+/* Hai đầu của dải ngày */
+.rdrDay:not(.rdrDayPassive) .rdrStartEdge,
+.rdrDay:not(.rdrDayPassive) .rdrEndEdge {
+  background: #ec4899 !important; /* pink-500 */
+  color: white !important;
+}
+
+/* Ngày đang được hover để chọn */
+.rdrDayHovered, .rdrDay:not(.rdrDayPassive) .rdrInRange ~ .rdrDayHovered, .rdrDay:not(.rdrDayPassive) .rdrStartEdge ~ .rdrDayHovered {
+  background-color: #fbcfe8 !important; /* pink-200 */
+  border-color: transparent !important;
+}
+
+/* Nút Today */
+.rdrDefinedRangesWrapper {
+  display: none; /* Ẩn phần chọn nhanh không cần thiết */
+}

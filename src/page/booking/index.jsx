@@ -1,8 +1,14 @@
-import React, { useMemo, useState, useEffect, useCallback } from "react";
-import DatePicker, { registerLocale } from "react-datepicker";
-import vi from "date-fns/locale/vi";
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { format, isWeekend, addDays, parseISO } from "date-fns";
-import "react-datepicker/dist/react-datepicker.css";
+import vi from 'date-fns/locale/vi';
+
+// === CÁC IMPORT MỚI CHO REACT-DATE-RANGE ===
+import 'react-date-range/dist/styles.css'; // main style file
+import 'react-date-range/dist/theme/default.css'; // theme css file
+import { DateRange } from 'react-date-range';
+// import './datepicker-theme.css'; // File CSS tùy chỉnh bạn vừa tạo
+// ===========================================
+
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -15,7 +21,6 @@ import {
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
 
-registerLocale("vi", vi);
 
 /* ========= Dữ liệu và hằng số ===== */
 const CATEGORIES = [
@@ -24,6 +29,22 @@ const CATEGORIES = [
   { id: "sony", label: "Sony" },
   { id: "pocket", label: "Pocket" },
   { id: "phone", label: "Phone" },
+];
+
+const CANON_SUB_CATEGORIES = [
+  { id: "ALL", label: "Tất cả Canon" },
+  { id: "R", label: "Canon R" },
+  { id: "M", label: "Canon M" },
+  { id: "COMPACT", label: "Compact" },
+  { id: "DIGITAL", label: "Digital" },
+  { id: "LENS", label: "Lens Canon" },
+];
+
+const FUJI_SUB_CATEGORIES = [
+    { id: "ALL", label: "Tất cả Fuji" },
+    { id: "XS", label: "Dòng XS" },
+    { id: "XT", label: "Dòng XT" },
+    { id: "XA", label: "Dòng XA" },
 ];
 
 const SLOTS = [
@@ -44,13 +65,32 @@ const FALLBACK_IMG = "https://placehold.co/640x360/png?text=No+Image";
 function inferBrand(name = "") {
   const n = name.toUpperCase();
   if (n.includes("FUJIFILM")) return "fuji";
-  if (n.includes("CANON")) return "canon";
+  if (n.includes("CANON") || n.startsWith("LENS CANON")) return "canon";
   if (n.includes("SONY")) return "sony";
   if (n.includes("POCKET") || n.includes("GOPRO") || n.includes("DJI"))
     return "pocket";
   if (n.includes("IPHONE") || n.includes("SAMSUNG")) return "phone";
   return null;
 }
+
+function inferCanonSubCategory(name = "") {
+    const n = name.toUpperCase();
+    if (n.startsWith("LENS CANON")) return "LENS";
+    if (n.includes(" R50") || n.includes(" RP")) return "R";
+    if (n.includes(" M10") || n.includes(" M100") || n.includes(" M200") || n.includes(" M50")) return "M";
+    if (n.includes("G7X")) return "COMPACT";
+    if (n.includes("IXY")) return "DIGITAL";
+    return null;
+}
+
+function inferFujiSubCategory(name = "") {
+    const n = name.toUpperCase();
+    if (n.includes(" XS")) return "XS";
+    if (n.includes(" XT")) return "XT";
+    if (n.includes(" XA")) return "XA";
+    return null;
+}
+
 function parseDeposit(desc) {
   if (!desc) return 2000000;
   const mTrieu = desc.match(/Cọc\s*([\d.,]+)\s*triệu/i);
@@ -191,6 +231,32 @@ function CategoryChips({ value, onChange }) {
   );
 }
 
+function SubCategoryChips({ value, onChange, items }) {
+  return (
+    <div className="mb-5">
+      <div className="flex flex-wrap gap-3">
+        {items.map((c) => {
+          const active = value === c.id;
+          return (
+            <button
+              key={c.id}
+              onClick={() => onChange(c.id)}
+              className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium border-2 transition-transform active:scale-95 ${
+                active
+                  ? "bg-pink-600 text-white border-pink-600 shadow-lg shadow-pink-500/30"
+                  : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50 hover:border-pink-300"
+              }`}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
 function CameraList({ items, selectedId, onSelect }) {
   if (!items.length)
     return <p className="text-slate-500 text-sm py-4 text-center">Không có máy nào trong danh mục này.</p>;
@@ -202,17 +268,24 @@ function CameraList({ items, selectedId, onSelect }) {
           <button
             key={it.id}
             onClick={() => onSelect(it.id)}
-            className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all duration-200 ${
+            className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all duration-200 relative overflow-hidden ${
               active
                 ? "border-pink-500 bg-pink-50 ring-2 ring-pink-200"
                 : "border-pink-200 bg-white hover:border-pink-300 hover:bg-pink-50/50"
             }`}
           >
-            <img
-              src={it.img}
-              alt={it.displayName}
-              className="w-24 h-16 rounded-lg object-cover"
-            />
+            <div className="absolute top-3 -right-10 z-10 w-32 rotate-45 bg-red-500 text-center text-white text-[8px] font-bold py-1 shadow-md">
+              SALE 20%
+            </div>
+            
+            <div className="w-24 h-16 shrink-0">
+              <img
+                src={it.img}
+                alt={it.displayName}
+                className="w-full h-full object-cover rounded-lg"
+              />
+            </div>
+            
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-pink-900 truncate">
                 {it.displayName}
@@ -234,26 +307,61 @@ function CameraList({ items, selectedId, onSelect }) {
   );
 }
 
-function DateOnly({ value, onChange, label, minDate }) {
+// MỚI: Component DateRangePicker miễn phí
+function FreeDateRangePicker({ selection, onChange, minDate }) {
+  const [showPicker, setShowPicker] = useState(false);
+  const pickerRef = useRef(null);
+
+  const handleClickOutside = useCallback((event) => {
+    if (pickerRef.current && !pickerRef.current.contains(event.target)) {
+      setShowPicker(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showPicker) {
+      document.addEventListener("mousedown", handleClickOutside);
+    } else {
+      document.removeEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showPicker, handleClickOutside]);
+  
+  const displayValue = `${format(selection.startDate, 'dd/MM/yyyy')} - ${format(selection.endDate, 'dd/MM/yyyy')}`;
+
   return (
     <div>
-      <div className="text-sm font-medium text-pink-900 mb-2">{label}</div>
+      <div className="text-sm font-medium text-pink-900 mb-2">Ngày nhận & trả</div>
       <div className="relative">
-         <CalendarDaysIcon className="h-5 w-5 text-pink-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"/>
-        <DatePicker
-          selected={value}
-          onChange={(d) => onChange(d)}
-          locale="vi"
-          dateFormat="dd/MM/yyyy"
-          minDate={minDate}
-          placeholderText="Chọn ngày"
-          className="w-full rounded-xl border-2 border-pink-200 focus:border-pink-500 focus:ring-pink-500 pl-10 pr-3 py-2.5 text-pink-900"
-          showPopperArrow={false}
-        />
+        <button
+          onClick={() => setShowPicker(!showPicker)}
+          className="w-full text-left rounded-xl border-2 border-pink-200 focus:border-pink-500 focus:ring-pink-500 pl-10 pr-3 py-2.5 text-pink-900"
+        >
+          <CalendarDaysIcon className="h-5 w-5 text-pink-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"/>
+          <span>{displayValue}</span>
+        </button>
+
+        {showPicker && (
+          <div ref={pickerRef} className="absolute top-full left-0 mt-2 z-20 shadow-lg rounded-2xl overflow-hidden border border-pink-200">
+            <DateRange
+              editableDateInputs={true}
+              onChange={item => onChange(item.selection)}
+              moveRangeOnFirstSelection={false}
+              ranges={[selection]}
+              minDate={minDate}
+              locale={vi}
+              rangeColors={['#ec4899']} // pink-500
+              showDateDisplay={false}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
 
 function SlotPicker({ value, onChange }) {
   return (
@@ -394,6 +502,9 @@ export default function BookingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customer, setCustomer] = useState({ fullName: "", phone: "", ig: "", fb: "" });
+  
+  const [canonSubCategory, setCanonSubCategory] = useState("ALL");
+  const [fujiSubCategory, setFujiSubCategory] = useState("ALL");
 
   const fetchAllDevices = useCallback(async () => {
     setIsLoading(true);
@@ -438,21 +549,30 @@ export default function BookingPage() {
 
   const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
 
+  // Cập nhật URL State
   const getInitialStateFromUrl = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
+    const start = params.get("start") ? parseISO(params.get("start")) : new Date();
+    const end = params.get("end") ? parseISO(params.get("end")) : new Date();
+
     return {
       step: parseInt(params.get("step") || "1", 10),
       category: params.get("category"),
       deviceId: params.get("device") ? parseInt(params.get("device"), 10) : null,
-      startDate: params.get("start") ? parseISO(params.get("start")) : null,
-      endDate: params.get("end") ? parseISO(params.get("end")) : null,
+      dateRange: {
+        startDate: start,
+        endDate: end,
+        key: 'selection',
+      },
       slotId: params.get("slot") || "MORNING",
       voucherId: params.get("voucher") || "NONE",
     };
   }, []);
 
   const [state, setState] = useState(getInitialStateFromUrl);
-  const { step, category, deviceId, startDate, endDate, slotId, voucherId } = state;
+  // Thay đổi cách lấy state ngày
+  const { step, category, deviceId, dateRange, slotId, voucherId } = state;
+  const { startDate, endDate } = dateRange;
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -467,10 +587,30 @@ export default function BookingPage() {
     window.history.pushState(state, "", newUrl);
   }, [state, category, deviceId, startDate, endDate, slotId, voucherId]);
 
-  const filtered = useMemo(() => {
+  const filteredByCategory = useMemo(() => {
     if (!category) return DERIVED;
     return DERIVED.filter((i) => i.brand === category);
   }, [category, DERIVED]);
+
+  const devicesToList = useMemo(() => {
+    if (category === 'canon' && canonSubCategory !== 'ALL') {
+        return filteredByCategory.filter(device => inferCanonSubCategory(device.name) === canonSubCategory);
+    }
+    if (category === 'fuji' && fujiSubCategory !== 'ALL') {
+        return filteredByCategory.filter(device => inferFujiSubCategory(device.name) === fujiSubCategory);
+    }
+    return filteredByCategory;
+  }, [category, canonSubCategory, fujiSubCategory, filteredByCategory]);
+
+  useEffect(() => {
+    if (category !== 'canon') {
+        setCanonSubCategory('ALL');
+    }
+    if (category !== 'fuji') {
+        setFujiSubCategory('ALL');
+    }
+  }, [category]);
+
 
   const selectedDevice = useMemo(() => DERIVED.find((i) => i.id === deviceId) || null, [deviceId, DERIVED]);
   const { days, subTotal, discount, total, t1, t2 } = useBookingPricing(selectedDevice, startDate, slotId, endDate, voucherId);
@@ -490,6 +630,7 @@ export default function BookingPage() {
   const canNext = useMemo(() => {
     if (step === 1) return !!category;
     if (step === 2) return !!deviceId;
+    // Cập nhật điều kiện cho ngày
     if (step === 3) return !!startDate && !!endDate && combineDateWithSlot(endDate, slotId) > combineDateWithSlot(startDate, slotId);
     if (step === 4) return validInfo;
     return true;
@@ -499,13 +640,15 @@ export default function BookingPage() {
   const next = () => updateState("step", Math.min(STEPS.length, step + 1));
   const back = () => {
   if (step === 1) {
-    // về trang chủ
     window.location.href = "/";
     return;
   }
   updateState("step", Math.max(1, step - 1));
 };
 
+  const handleDateChange = (newRange) => {
+    setState((prev) => ({ ...prev, dateRange: newRange }));
+  };
 
   const submitPayment = async () => {
     if (!selectedDevice || !t1 || !t2 || total <= 0 || !validInfo) {
@@ -586,7 +729,27 @@ export default function BookingPage() {
               {isLoading ? (
                 <div className="w-full text-center py-10 text-sm text-slate-500">Đang tải danh sách...</div>
               ) : (
-                <CameraList items={filtered} selectedId={deviceId} onSelect={(val) => updateState("deviceId", val)} />
+                <>
+                  {category === 'canon' && (
+                    <SubCategoryChips 
+                        items={CANON_SUB_CATEGORIES}
+                        value={canonSubCategory} 
+                        onChange={setCanonSubCategory} 
+                    />
+                  )}
+                  {category === 'fuji' && (
+                    <SubCategoryChips
+                        items={FUJI_SUB_CATEGORIES}
+                        value={fujiSubCategory}
+                        onChange={setFujiSubCategory}
+                    />
+                  )}
+                  <CameraList 
+                    items={devicesToList} 
+                    selectedId={deviceId} 
+                    onSelect={(val) => updateState("deviceId", val)} 
+                  />
+                </>
               )}
             </Card>
           )}
@@ -595,8 +758,11 @@ export default function BookingPage() {
             <>
               <Card title="3. Chọn ngày thuê & mã giảm" note="Giờ nhận/trả được cố định theo ca bạn chọn.">
                 <div className="grid grid-cols-1 gap-5">
-                  <DateOnly value={startDate} onChange={(d) => { updateState("startDate", d); if (endDate && d && endDate < d) updateState("endDate", d); }} label="Ngày nhận" minDate={today}/>
-                  <DateOnly value={endDate} onChange={(d) => updateState("endDate", d)} label="Ngày trả" minDate={startDate || today}/>
+                  <FreeDateRangePicker 
+                    selection={dateRange}
+                    onChange={handleDateChange}
+                    minDate={today}
+                  />
                   <div>
                     <div className="text-sm font-medium text-pink-900 mb-2">Ca nhận & trả</div>
                     <SlotPicker value={slotId} onChange={(val) => updateState("slotId", val)}/>
