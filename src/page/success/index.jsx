@@ -28,8 +28,9 @@ function SuccessCard({ details }) {
       details.orderCode
     }\nTổng tiền: ${details.total.toLocaleString(
       "vi-VN"
-    )} đ\n\nVui lòng có mặt đúng giờ để nhận máy.\nLiên hệ: 09xx.xxx.xxx`;
-    const location = "Tiệm Xinh, 123 Đường ABC, Quận 1, TP. HCM";
+    )} đ\n\nVui lòng có mặt đúng giờ để nhận máy.\nLiên hệ: 0901355198`;
+    const location =
+      "330/22 Đ. Phan Đình Phùng, Phường 1, Phú Nhuận, Hồ Chí Minh, Việt Nam";
 
     const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
       title
