@@ -1,0 +1,1537 @@
+import React, {
+  useMemo,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
+import { format, isWeekend, addDays, parseISO } from "date-fns";
+import vi from "date-fns/locale/vi";
+
+// === REACT-DATE-RANGE ===
+import "react-date-range/dist/styles.css";
+import "react-date-range/dist/theme/default.css";
+import { DateRange } from "react-date-range";
+// =========================
+
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  CalendarDaysIcon,
+  CheckCircleIcon,
+  CreditCardIcon,
+  DevicePhoneMobileIcon,
+  UserIcon,
+} from "@heroicons/react/24/solid";
+import api from "../../config/axios";
+
+/* ========= HẰNG SỐ & DỮ LIỆU ===== */
+
+// Chi nhánh
+const BRANCHES = [
+  { id: "PHU_NHUAN", label: "FAO Phú Nhuận" },
+  { id: "Q9", label: "FAO Q9 (Vinhomes)" },
+];
+
+// Hình thức nhận máy
+const RECEIVE_METHODS = [
+  { id: "AT_SHOP", label: "Nhận tại cửa hàng" },
+  { id: "DELIVERY", label: "Giao tận nơi" },
+];
+
+// Hệ máy
+const CATEGORIES = [
+  { id: "fuji", label: "Fujifilm" },
+  { id: "canon", label: "Canon" },
+  { id: "sony", label: "Sony" },
+  { id: "pocket", label: "Pocket / Action" },
+  { id: "phone", label: "Phone" },
+];
+
+const CANON_SUB_CATEGORIES = [
+  { id: "ALL", label: "Tất cả Canon" },
+  { id: "R", label: "Canon R" },
+  { id: "M", label: "Canon M" },
+  { id: "COMPACT", label: "Compact" },
+  { id: "DIGITAL", label: "Digital" },
+  { id: "LENS", label: "Lens Canon" },
+];
+
+const FUJI_SUB_CATEGORIES = [
+  { id: "ALL", label: "Tất cả Fuji" },
+  { id: "XS", label: "Dòng XS" },
+  { id: "XT", label: "Dòng XT" },
+  { id: "XA", label: "Dòng XA" },
+];
+
+const VOUCHERS = [
+  { id: "NONE", label: "Không áp dụng", rate: 0 },
+  { id: "WEEKDAY20", label: "Weekday -20%", rate: 0.2 },
+];
+
+const STEPS = ["Cửa hàng", "Thời gian & máy", "Thông tin", "Tổng kết"];
+
+const FALLBACK_IMG = "https://placehold.co/640x360/png?text=No+Image";
+
+/* ========= HELPERS ========= */
+
+function inferBrand(name = "") {
+  const n = name.toUpperCase();
+  if (n.includes("FUJIFILM")) return "fuji";
+  if (n.includes("CANON") || n.startsWith("LENS CANON")) return "canon";
+  if (n.includes("SONY")) return "sony";
+  if (n.includes("POCKET") || n.includes("GOPRO") || n.includes("DJI"))
+    return "pocket";
+  if (n.includes("IPHONE") || n.includes("SAMSUNG")) return "phone";
+  return null;
+}
+
+function inferCanonSubCategory(name = "") {
+  const n = name.toUpperCase();
+  if (n.startsWith("LENS CANON")) return "LENS";
+  if (n.includes(" R50") || n.includes(" RP")) return "R";
+  if (
+    n.includes(" M10") ||
+    n.includes(" M100") ||
+    n.includes(" M200") ||
+    n.includes(" M50")
+  )
+    return "M";
+  if (n.includes("G7X")) return "COMPACT";
+  if (n.includes("IXY")) return "DIGITAL";
+  return null;
+}
+
+function inferFujiSubCategory(name = "") {
+  const n = name.toUpperCase();
+  if (n.includes(" XS")) return "XS";
+  if (n.includes(" XT")) return "XT";
+  if (n.includes(" XA")) return "XA";
+  return null;
+}
+
+function parseDeposit(desc) {
+  if (!desc) return 2000000;
+  const mTrieu = desc.match(/Cọc\s*([\d.,]+)\s*triệu/i);
+  if (mTrieu) {
+    const n = parseFloat(mTrieu[1].replace(",", "."));
+    if (!isNaN(n)) return Math.round(n * 1_000_000);
+  }
+  const mVnd = desc.match(/Cọc\s*([\d.\s,]+)/i);
+  if (mVnd) {
+    const digits = mVnd[1].replace(/[^\d]/g, "");
+    const n = parseInt(digits, 10);
+    if (!isNaN(n) && n > 0) return n;
+  }
+  return 2000000;
+}
+
+function combineDateWithTimeString(dateOnly, timeStr) {
+  if (!dateOnly || !timeStr) return null;
+  const [hStr, mStr] = timeStr.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10) || 0;
+  if (isNaN(h) || isNaN(m)) return null;
+  const d = new Date(dateOnly);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+const diffHours = (d1, d2) => (d2.getTime() - d1.getTime()) / (1000 * 60 * 60);
+
+function countWeekdaysBetweenAligned(t1, t2) {
+  let days = 0,
+    weekdays = 0;
+  let cur = new Date(t1.getTime());
+  cur.setHours(0, 0, 0, 0);
+  const end = new Date(t2.getTime());
+  end.setHours(0, 0, 0, 0);
+  while (cur < end) {
+    days += 1;
+    if (!isWeekend(cur)) weekdays += 1;
+    cur = addDays(cur, 1);
+  }
+  return { days, weekdays };
+}
+
+function safeDesc(s) {
+  if (!s) return "Thanh toan don hang";
+  const t = s.trim().replace(/\s+/g, " ");
+  return t.length <= 25 ? t : t.slice(0, 24) + "…";
+}
+
+function normalizePhone(p) {
+  if (!p) return "";
+  let s = p.replace(/[^\d]/g, "");
+  if (s.startsWith("84")) s = "0" + s.slice(2);
+  return s;
+}
+
+function formatDateForAPI(date) {
+  if (!date) return null;
+  return format(date, "yyyy-MM-dd");
+}
+
+// NEW: giữ lại giờ local trong request (không kèm timezone)
+function formatDateTimeLocalForAPI(date) {
+  if (!date) return null;
+  // Example: 2025-11-12T15:00:00
+  return format(date, "yyyy-MM-dd");
+}
+
+/* ===== Hook tính giá: auto detect 6 tiếng vs theo ngày ===== */
+/**
+ * - Nếu cùng 1 ngày và tổng giờ ≤ 6h => dùng priceSixHours (0.5 ngày)
+ * - Ngược lại tính theo ngày (1,2,3,+nextDay)
+ */
+function useBookingPricing(
+  device,
+  startDate,
+  timeFrom,
+  endDate,
+  timeTo,
+  voucherId
+) {
+  return useMemo(() => {
+    if (!device || !startDate || !endDate || !timeFrom || !timeTo)
+      return {
+        days: 0,
+        subTotal: 0,
+        discount: 0,
+        total: 0,
+        t1: null,
+        t2: null,
+        isSixHours: false,
+      };
+
+    const t1 = combineDateWithTimeString(startDate, timeFrom);
+    const t2 = combineDateWithTimeString(endDate, timeTo);
+
+    if (!t1 || !t2 || t2 <= t1) {
+      return {
+        days: 0,
+        subTotal: 0,
+        discount: 0,
+        total: 0,
+        t1,
+        t2,
+        isSixHours: false,
+      };
+    }
+
+    const hours = diffHours(t1, t2);
+    const sameDay = startDate.toDateString() === endDate.toDateString();
+
+    let days = 0;
+    let subTotal = 0;
+    let isSixHours = false;
+
+    if (sameDay && hours <= 6.05) {
+      // Gói 6 tiếng
+      isSixHours = true;
+      days = 0.5;
+      subTotal = device.priceSixHours || device.priceOneDay || 0;
+    } else {
+      const rawDays = Math.ceil(hours / 24);
+      days = rawDays <= 0 ? 1 : rawDays;
+
+      if (days === 1) subTotal = device.priceOneDay || 0;
+      else if (days === 2) subTotal = device.priceTwoDay || 0;
+      else if (days === 3) subTotal = device.priceThreeDay || 0;
+      else {
+        subTotal =
+          (device.priceThreeDay || 0) + (days - 3) * (device.priceNextDay || 0);
+      }
+    }
+
+    const voucher = VOUCHERS.find((v) => v.id === voucherId);
+    let discount = 0;
+
+    if (voucher?.id === "WEEKDAY20") {
+      if (isSixHours && sameDay) {
+        if (!isWeekend(t1)) {
+          discount = Math.round(subTotal * voucher.rate);
+        }
+      } else {
+        const { days: dCount, weekdays } = countWeekdaysBetweenAligned(t1, t2);
+        const ratio = dCount > 0 ? weekdays / dCount : 0;
+        discount = Math.round(subTotal * voucher.rate * ratio);
+      }
+    }
+
+    const total = Math.max(0, subTotal - discount);
+
+    return { days, subTotal, discount, total, t1, t2, isSixHours };
+  }, [device, startDate, timeFrom, endDate, timeTo, voucherId]);
+}
+
+/* ===================== UI Components ===================== */
+
+function Progress({ step }) {
+  const pct = (step / STEPS.length) * 100;
+  return (
+    <div className="my-6">
+      <div className="flex items-center justify-between text-xs text-pink-700 font-medium mb-2">
+        <span>
+          Bước {step} / {STEPS.length}
+        </span>
+        <span>{STEPS[step - 1]}</span>
+      </div>
+      <div className="h-2 w-full bg-pink-100 rounded-full">
+        <div
+          className="h-full bg-gradient-to-r from-pink-400 to-pink-600 rounded-full transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Card({ title, children, note }) {
+  return (
+    <div className="rounded-2xl border border-pink-100 bg-white shadow-md shadow-pink-500/5">
+      {title && (
+        <div className="px-5 py-4 border-b border-pink-100 text-base font-semibold text-pink-800 flex items-center">
+          {title}
+        </div>
+      )}
+      <div className="p-5">{children}</div>
+      {note && (
+        <div className="px-5 pb-4 text-xs text-pink-600 -mt-2">{note}</div>
+      )}
+    </div>
+  );
+}
+
+function BranchChips({ value, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-3">
+      {BRANCHES.map((b) => {
+        const active = value === b.id;
+        return (
+          <button
+            key={b.id}
+            onClick={() => onChange(b.id)}
+            className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium border-2 transition-transform active:scale-95 ${
+              active
+                ? "bg-pink-600 text-white border-pink-600 shadow-lg shadow-pink-500/30"
+                : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50 hover:border-pink-300"
+            }`}
+          >
+            {b.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReceiveMethodPicker({ value, onChange }) {
+  return (
+    <div className="space-y-3">
+      {RECEIVE_METHODS.map((m) => {
+        const active = value === m.id;
+        return (
+          <button
+            key={m.id}
+            onClick={() => onChange(m.id)}
+            className={`w-full p-4 rounded-xl border-2 text-left transition ${
+              active
+                ? "bg-pink-50 border-pink-500"
+                : "bg-white border-pink-200 hover:bg-pink-50/50"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span
+                className={`font-semibold ${
+                  active ? "text-pink-900" : "text-slate-800"
+                }`}
+              >
+                {m.label}
+              </span>
+              <div
+                className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                  active ? "border-pink-500 bg-pink-500" : "border-pink-300"
+                }`}
+              >
+                {active && (
+                  <div className="h-2 w-2 bg-white rounded-full"></div>
+                )}
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CategoryChips({ value, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-3">
+      {CATEGORIES.map((c) => {
+        const active = value === c.id;
+        return (
+          <button
+            key={c.id}
+            onClick={() => onChange(c.id)}
+            className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium border-2 transition-transform active:scale-95 ${
+              active
+                ? "bg-pink-600 text-white border-pink-600 shadow-lg shadow-pink-500/30"
+                : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50 hover:border-pink-300"
+            }`}
+          >
+            {c.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SubCategoryChips({ value, onChange, items }) {
+  return (
+    <div className="mb-5">
+      <div className="flex flex-wrap gap-3">
+        {items.map((c) => {
+          const active = value === c.id;
+          return (
+            <button
+              key={c.id}
+              onClick={() => onChange(c.id)}
+              className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium border-2 transition-transform active:scale-95 ${
+                active
+                  ? "bg-pink-600 text-white border-pink-600 shadow-lg shadow-pink-500/30"
+                  : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50 hover:border-pink-300"
+              }`}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CameraList({
+  items,
+  selectedId,
+  onSelect,
+  busyDeviceIds,
+  availabilityLoading,
+}) {
+  if (!items.length)
+    return (
+      <p className="text-slate-500 text-sm py-4 text-center">
+        Không có máy nào trong danh mục này.
+      </p>
+    );
+  return (
+    <div className="space-y-3">
+      {availabilityLoading && (
+        <div className="text-[11px] text-slate-500 mb-1">
+          Đang kiểm tra các máy trống trong khoảng thời gian bạn chọn...
+        </div>
+      )}
+      {items.map((it) => {
+        const busy = busyDeviceIds?.has?.(it.id);
+        const active = selectedId === it.id && !busy;
+
+        const baseClasses =
+          "w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all duration-200 relative overflow-hidden";
+
+        const stateClasses = busy
+          ? "border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed"
+          : active
+          ? "border-pink-500 bg-pink-50 ring-2 ring-pink-200"
+          : "border-pink-200 bg-white hover:border-pink-300 hover:bg-pink-50/50";
+
+        return (
+          <button
+            key={it.id}
+            onClick={() => {
+              if (!busy) onSelect(it.id);
+            }}
+            disabled={busy}
+            className={`${baseClasses} ${stateClasses}`}
+          >
+            <div className="w-24 h-16 shrink-0">
+              <img
+                src={it.img}
+                alt={it.displayName}
+                className="w-full h-full object-cover rounded-lg"
+              />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-pink-900 truncate">
+                {it.displayName}
+              </div>
+              <div className="text-xs text-slate-600 mt-1">
+                {Number(it.pricePerDay).toLocaleString("vi-VN")} đ/ngày
+              </div>
+              <div className="text-xs text-slate-500">
+                Cọc {Number(it.deposit).toLocaleString("vi-VN")} đ
+              </div>
+              {busy && (
+                <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full bg-red-50 text-[11px] text-red-600 border border-red-100">
+                  Đã được đặt trong khung thời gian này
+                </div>
+              )}
+            </div>
+
+            {!busy && (
+              <div
+                className={`transition-all duration-300 ${
+                  active ? "opacity-100 scale-100" : "opacity-0 scale-50"
+                }`}
+              >
+                <CheckCircleIcon className="h-6 w-6 text-pink-500" />
+              </div>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function FreeDateRangePicker({ selection, onChange, minDate }) {
+  const [showPicker, setShowPicker] = useState(false);
+  const pickerRef = useRef(null);
+
+  const handleClickOutside = useCallback((event) => {
+    if (pickerRef.current && !pickerRef.current.contains(event.target)) {
+      setShowPicker(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showPicker) {
+      document.addEventListener("mousedown", handleClickOutside);
+    } else {
+      document.removeEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showPicker, handleClickOutside]);
+
+  const displayValue = `${format(selection.startDate, "dd/MM/yyyy")} - ${format(
+    selection.endDate,
+    "dd/MM/yyyy"
+  )}`;
+
+  return (
+    <div>
+      <div className="text-sm font-medium text-pink-900 mb-2">
+        Ngày nhận & trả
+      </div>
+      <div className="relative">
+        <button
+          onClick={() => setShowPicker(!showPicker)}
+          className="w-full text-left rounded-xl border-2 border-pink-200 focus:border-pink-500 focus:ring-pink-500 pl-10 pr-3 py-2.5 text-pink-900"
+        >
+          <CalendarDaysIcon className="h-5 w-5 text-pink-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <span>{displayValue}</span>
+        </button>
+
+        {showPicker && (
+          <div
+            ref={pickerRef}
+            className="absolute top-full left-0 mt-2 z-20 shadow-lg rounded-2xl overflow-hidden border border-pink-200 bg-white"
+          >
+            <DateRange
+              editableDateInputs={true}
+              onChange={(item) => onChange(item.selection)}
+              moveRangeOnFirstSelection={false}
+              ranges={[selection]}
+              minDate={minDate}
+              locale={vi}
+              rangeColors={["#ec4899"]}
+              showDateDisplay={false}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VoucherPicker({ value, onChange }) {
+  return (
+    <div className="space-y-3">
+      {VOUCHERS.map((v) => {
+        const active = value === v.id;
+        return (
+          <button
+            key={v.id}
+            onClick={() => onChange(v.id)}
+            className={`w-full p-4 rounded-xl border-2 text-left transition ${
+              active
+                ? "bg-pink-50 border-pink-500"
+                : "bg-white border-pink-200 hover:bg-pink-50/50"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span
+                className={`font-semibold ${
+                  active ? "text-pink-900" : "text-slate-800"
+                }`}
+              >
+                {v.label}
+              </span>
+              <div
+                className={`h-5 w-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                  active ? "border-pink-500 bg-pink-500" : "border-pink-300"
+                }`}
+              >
+                {active && (
+                  <div className="h-2 w-2 bg-white rounded-full"></div>
+                )}
+              </div>
+            </div>
+            {v.id === "WEEKDAY20" && (
+              <div className="text-xs text-pink-600 mt-1.5">
+                Chỉ áp dụng giảm giá cho các ngày trong tuần (T2 - T6).
+              </div>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const InputField = ({
+  icon,
+  value,
+  onChange,
+  placeholder,
+  inputMode,
+  error,
+  helpText,
+}) => {
+  return (
+    <div>
+      <div className="relative">
+        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-pink-400">
+          {icon}
+        </div>
+        <input
+          value={value}
+          onChange={onChange}
+          className={`w-full rounded-xl border-2 ${
+            error ? "border-red-400" : "border-pink-200"
+          } focus:border-pink-500 focus:ring-pink-500 pl-11 pr-4 py-3 text-pink-900 placeholder:text-slate-400`}
+          placeholder={placeholder}
+          inputMode={inputMode}
+        />
+      </div>
+      {error && helpText && (
+        <div className="text-xs text-red-500 mt-1.5 ml-1">{helpText}</div>
+      )}
+    </div>
+  );
+};
+
+function TimeSummaryInline({
+  device,
+  branchId,
+  receiveMethod,
+  deliveryAddress,
+  t1,
+  t2,
+  total,
+  isSixHours,
+}) {
+  if (!t1 || !t2) return null;
+
+  const branchLabel = BRANCHES.find((b) => b.id === branchId)?.label || "—";
+  const receiveText =
+    receiveMethod === "DELIVERY"
+      ? deliveryAddress?.trim()
+        ? `Giao tận nơi (${deliveryAddress.trim()})`
+        : "Giao tận nơi"
+      : "Nhận tại cửa hàng";
+
+  return (
+    <div className="mt-4 p-4 rounded-xl bg-pink-50 border border-pink-100 text-sm space-y-1">
+      <div className="flex justify-between mb-1.5">
+        <span className="font-semibold text-pink-900">Tóm tắt nhanh</span>
+        <span className="font-bold text-pink-700">
+          {total > 0 ? `${total.toLocaleString("vi-VN")} đ` : "—"}
+        </span>
+      </div>
+      <div className="text-slate-700 space-y-0.5">
+        <div className="truncate">
+          <b>Máy:</b> {device ? device.displayName : "Chưa chọn"}
+        </div>
+        <div>
+          <b>Cửa hàng:</b> {branchLabel}
+        </div>
+        <div>
+          <b>Nhận máy:</b> {receiveText}
+        </div>
+        <div>
+          <b>Thời gian:</b>{" "}
+          {`${format(t1, "dd/MM, HH:mm", {
+            locale: vi,
+          })} - ${format(t2, "dd/MM, HH:mm", { locale: vi })}`}
+          {isSixHours && " (Gói tối đa 6 tiếng)"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Summary({
+  device,
+  t1,
+  t2,
+  days,
+  subTotal,
+  discount,
+  total,
+  customer,
+  branchId,
+  receiveMethod,
+  deliveryAddress,
+  isSixHours,
+}) {
+  const branchLabel = BRANCHES.find((b) => b.id === branchId)?.label || "—";
+
+  const receiveText =
+    receiveMethod === "DELIVERY"
+      ? deliveryAddress?.trim()
+        ? `Giao tận nơi (${deliveryAddress.trim()})`
+        : "Giao tận nơi"
+      : "Nhận tại cửa hàng";
+
+  const renderInfoRow = (label, value) => (
+    <div className="flex justify-between items-center text-sm">
+      <span className="text-slate-500">{label}</span>
+      <span className="font-medium text-slate-800 text-right ml-4">
+        {value}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-4 items-center">
+        <img
+          src={device?.img}
+          alt={device?.displayName}
+          className="w-20 h-20 rounded-xl object-cover shadow-md shadow-pink-200/50"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-pink-900 truncate">
+            {device?.displayName || "—"}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            Cọc {Number(device?.deposit || 0).toLocaleString("vi-VN")} đ
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4 bg-pink-50/70 rounded-xl space-y-2">
+        {renderInfoRow("Cửa hàng", branchLabel)}
+        {renderInfoRow("Nhận máy", receiveText)}
+        {renderInfoRow(
+          "Ngày nhận",
+          t1 ? `${format(t1, "dd/MM, EEEE", { locale: vi })}` : "—"
+        )}
+        {renderInfoRow(
+          "Ngày trả",
+          t2 ? `${format(t2, "dd/MM, EEEE", { locale: vi })}` : "—"
+        )}
+        {renderInfoRow(
+          "Giờ",
+          t1 && t2
+            ? `${format(t1, "HH:mm", {
+                locale: vi,
+              })} - ${format(t2, "HH:mm", { locale: vi })}`
+            : "—"
+        )}
+      </div>
+
+      <div className="border-t border-dashed border-pink-200 my-4"></div>
+
+      <div className="space-y-2">
+        {renderInfoRow(
+          "Thời gian thuê",
+          isSixHours
+            ? "Theo khung giờ (≤ 6 tiếng)"
+            : days === 1
+            ? "1 ngày"
+            : `${days} ngày`
+        )}
+        {renderInfoRow(
+          "Tạm tính",
+          `${Number(subTotal).toLocaleString("vi-VN")} đ`
+        )}
+        {renderInfoRow(
+          "Giảm giá",
+          `- ${Number(discount).toLocaleString("vi-VN")} đ`
+        )}
+      </div>
+
+      <div className="!mt-4 p-4 bg-pink-100 rounded-xl flex justify-between items-center">
+        <span className="text-base font-semibold text-pink-800">
+          Thành tiền
+        </span>
+        <span className="text-xl font-bold text-pink-700">
+          {Number(total).toLocaleString("vi-VN")} đ
+        </span>
+      </div>
+
+      <div className="!mt-4 pt-4 border-t border-pink-200 text-sm text-slate-600 space-y-1">
+        <p>
+          <b>Khách hàng:</b> {customer.fullName || "—"}
+        </p>
+        <p>
+          <b>Số điện thoại:</b> {normalizePhone(customer.phone) || "—"}
+        </p>
+        {customer.ig && (
+          <p>
+            <b>Instagram:</b> {customer.ig}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ===================== BOOKING PAGE ===================== */
+
+export default function BookingPage() {
+  const [allDevices, setAllDevices] = useState([]);
+  const [isLoadingDevices, setIsLoadingDevices] = useState(true);
+  const [devicesError, setDevicesError] = useState("");
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
+
+  const [customer, setCustomer] = useState({
+    fullName: "",
+    phone: "",
+    ig: "",
+    fb: "",
+  });
+
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+
+  const [canonSubCategory, setCanonSubCategory] = useState("ALL");
+  const [fujiSubCategory, setFujiSubCategory] = useState("ALL");
+
+  // Availability (dùng API v1/devices/booking)
+  const [busyDeviceIds, setBusyDeviceIds] = useState(() => new Set());
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState("");
+
+  const fetchAllDevices = useCallback(async () => {
+    setIsLoadingDevices(true);
+    setDevicesError("");
+    try {
+      const response = await api.get("/v1/devices");
+      setAllDevices(response.data || []);
+    } catch (error) {
+      console.error("Failed to fetch devices:", error);
+      setDevicesError(
+        "Không thể tải danh sách thiết bị. Vui lòng kiểm tra kết nối và thử lại."
+      );
+      setAllDevices([]);
+    } finally {
+      setIsLoadingDevices(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAllDevices();
+  }, [fetchAllDevices]);
+
+  const DERIVED = useMemo(() => {
+    if (!allDevices) return [];
+    function normalizeName(name = "") {
+      return name.replace(/\s*\(\d+\)\s*$/, "").trim();
+    }
+    const seen = new Set();
+    const result = [];
+    for (const it of allDevices) {
+      const normalized = normalizeName(it.name);
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      result.push({
+        ...it,
+        brand: inferBrand(it.name),
+        img: it.images?.[0] || FALLBACK_IMG,
+        pricePerDay: it.priceOneDay || 0,
+        deposit: parseDeposit(it.description),
+        displayName: normalized,
+      });
+    }
+    return result;
+  }, [allDevices]);
+
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const getInitialStateFromUrl = useCallback(() => {
+    const params = new URLSearchParams(window.location.search);
+    const start = params.get("start")
+      ? parseISO(params.get("start"))
+      : new Date();
+    const end = params.get("end") ? parseISO(params.get("end")) : new Date();
+
+    const rawStep = parseInt(params.get("step") || "1", 10);
+    const safeStep = isNaN(rawStep) ? 1 : Math.min(Math.max(rawStep, 1), 4);
+
+    return {
+      step: safeStep,
+      branch: params.get("branch") || "PHU_NHUAN",
+      receiveMethod: params.get("receive") || "AT_SHOP",
+      category: params.get("category") || null,
+      deviceId: params.get("device")
+        ? parseInt(params.get("device"), 10)
+        : null,
+      dateRange: {
+        startDate: start,
+        endDate: end,
+        key: "selection",
+      },
+      timeFrom: params.get("from") || "09:00",
+      timeTo: params.get("to") || "20:30",
+      voucherId: params.get("voucher") || "NONE",
+    };
+  }, []);
+
+  const [state, setState] = useState(getInitialStateFromUrl);
+  const {
+    step,
+    branch,
+    receiveMethod,
+    category,
+    deviceId,
+    dateRange,
+    timeFrom,
+    timeTo,
+    voucherId,
+  } = state;
+  const { startDate, endDate } = dateRange;
+
+  // Sync state -> URL
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set("step", step.toString());
+    if (branch) params.set("branch", branch);
+    if (receiveMethod && receiveMethod !== "AT_SHOP")
+      params.set("receive", receiveMethod);
+    if (category) params.set("category", category);
+    if (deviceId) params.set("device", deviceId.toString());
+    if (startDate) params.set("start", format(startDate, "yyyy-MM-dd"));
+    if (endDate) params.set("end", format(endDate, "yyyy-MM-dd"));
+    if (timeFrom) params.set("from", timeFrom);
+    if (timeTo) params.set("to", timeTo);
+    if (voucherId && voucherId !== "NONE") params.set("voucher", voucherId);
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.pushState(state, "", newUrl);
+  }, [
+    state,
+    step,
+    branch,
+    receiveMethod,
+    category,
+    deviceId,
+    startDate,
+    endDate,
+    timeFrom,
+    timeTo,
+    voucherId,
+  ]);
+
+  const filteredByCategory = useMemo(() => {
+    if (!category) return DERIVED;
+    return DERIVED.filter((i) => i.brand === category);
+  }, [category, DERIVED]);
+
+  const devicesToList = useMemo(() => {
+    if (category === "canon" && canonSubCategory !== "ALL") {
+      return filteredByCategory.filter(
+        (device) => inferCanonSubCategory(device.name) === canonSubCategory
+      );
+    }
+    if (category === "fuji" && fujiSubCategory !== "ALL") {
+      return filteredByCategory.filter(
+        (device) => inferFujiSubCategory(device.name) === fujiSubCategory
+      );
+    }
+    return filteredByCategory;
+  }, [category, canonSubCategory, fujiSubCategory, filteredByCategory]);
+
+  useEffect(() => {
+    if (category !== "canon") {
+      setCanonSubCategory("ALL");
+    }
+    if (category !== "fuji") {
+      setFujiSubCategory("ALL");
+    }
+  }, [category]);
+
+  const selectedDevice = useMemo(
+    () => DERIVED.find((i) => i.id === deviceId) || null,
+    [deviceId, DERIVED]
+  );
+
+  const { days, subTotal, discount, total, t1, t2, isSixHours } =
+    useBookingPricing(
+      selectedDevice,
+      startDate,
+      timeFrom,
+      endDate,
+      timeTo,
+      voucherId
+    );
+
+  const { validInfo, errors } = useMemo(() => {
+    const err = {};
+    const nameOk = customer.fullName?.trim().length >= 2;
+    if (!nameOk && customer.fullName) err.fullName = true;
+
+    const phone = normalizePhone(customer.phone);
+    const phoneOk = /^0\d{9}$/.test(phone);
+    if (!phoneOk && customer.phone) err.phone = true;
+
+    return {
+      validInfo:
+        customer.fullName?.trim().length >= 2 &&
+        /^0\d{9}$/.test(normalizePhone(customer.phone)),
+      errors: err,
+    };
+  }, [customer]);
+
+  // Gọi API v1/devices/booking để lấy danh sách máy đã được đặt trong khoảng ngày + giờ
+  useEffect(() => {
+    if (!startDate || !endDate || !branch) {
+      setBusyDeviceIds(new Set());
+      setAvailabilityError("");
+      setAvailabilityLoading(false);
+      return;
+    }
+
+    const fromDateTime = combineDateWithTimeString(startDate, timeFrom);
+    const toDateTime = combineDateWithTimeString(endDate, timeTo);
+
+    if (!fromDateTime || !toDateTime || toDateTime <= fromDateTime) {
+      setBusyDeviceIds(new Set());
+      setAvailabilityError("");
+      setAvailabilityLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchDeviceBookings = async () => {
+      setAvailabilityLoading(true);
+      setAvailabilityError("");
+      try {
+        const params = {
+          startDate: formatDateTimeLocalForAPI(fromDateTime),
+          endDate: formatDateTimeLocalForAPI(toDateTime),
+          branchId: branch, // nếu BE chưa hỗ trợ thì backend sẽ bỏ qua
+        };
+
+        const resp = await api.get("v1/devices/booking", { params });
+        if (cancelled) return;
+
+        const data = resp.data || [];
+
+        // Giả định response là list device, mỗi device có bookingDtos trong khoảng thời gian đó
+        const ids = new Set();
+        data.forEach((device) => {
+          if (
+            Array.isArray(device.bookingDtos) &&
+            device.bookingDtos.length > 0
+          ) {
+            ids.add(device.id);
+          }
+        });
+
+        setBusyDeviceIds(ids);
+      } catch (err) {
+        console.error("Failed to fetch bookings:", err);
+        if (cancelled) return;
+        setBusyDeviceIds(new Set());
+        const errorMessage =
+          err?.response?.data?.message ||
+          "Không thể tải dữ liệu đặt máy. Vui lòng thử lại.";
+        setAvailabilityError(errorMessage);
+      } finally {
+        if (!cancelled) setAvailabilityLoading(false);
+      }
+    };
+
+    fetchDeviceBookings();
+    return () => {
+      cancelled = true;
+    };
+  }, [startDate, endDate, timeFrom, timeTo, branch]);
+
+  const updateState = (key, value) =>
+    setState((prev) => ({ ...prev, [key]: value }));
+
+  const back = () => {
+    if (step === 1) return;
+    updateState("step", Math.max(1, step - 1));
+  };
+
+  const next = () => updateState("step", Math.min(STEPS.length, step + 1));
+
+  const handleDateChange = (newRange) => {
+    setState((prev) => ({ ...prev, dateRange: newRange }));
+  };
+
+  const canNext = useMemo(() => {
+    if (step === 1) {
+      if (!branch) return false;
+      if (receiveMethod === "DELIVERY") {
+        return deliveryAddress.trim().length >= 5;
+      }
+      return true;
+    }
+
+    if (step === 2) {
+      if (!startDate || !endDate || endDate < startDate) return false;
+      if (!timeFrom || !timeTo) return false;
+      const s = combineDateWithTimeString(startDate, timeFrom);
+      const e = combineDateWithTimeString(endDate, timeTo);
+      if (!s || !e || e <= s) return false;
+      if (!deviceId) return false;
+      if (busyDeviceIds.has(deviceId)) return false;
+      if (availabilityLoading) return false;
+      return true;
+    }
+
+    if (step === 3) return validInfo;
+
+    return true;
+  }, [
+    step,
+    branch,
+    receiveMethod,
+    deliveryAddress,
+    startDate,
+    endDate,
+    timeFrom,
+    timeTo,
+    deviceId,
+    busyDeviceIds,
+    availabilityLoading,
+    validInfo,
+  ]);
+
+  const submitPayment = async () => {
+    if (!selectedDevice || !t1 || !t2 || total <= 0 || !validInfo) {
+      return;
+    }
+    setIsSubmitting(true);
+    setPaymentError("");
+    try {
+      const phone = normalizePhone(customer.phone);
+      const registerRes = await api.post("/accounts", {
+        fullName: customer.fullName?.trim(),
+        phone,
+        ig: customer.ig?.trim() || null,
+        fb: customer.fb?.trim() || null,
+      });
+      const account = registerRes.data;
+      const customerId = account?.id;
+      if (!customerId) throw new Error("Không lấy được customerId.");
+
+      const branchLabel =
+        BRANCHES.find((b) => b.id === branch)?.label || branch;
+      const receiveText =
+        receiveMethod === "DELIVERY"
+          ? deliveryAddress?.trim()
+            ? `Giao tận nơi (${deliveryAddress.trim()})`
+            : "Giao tận nơi"
+          : "Nhận tại cửa hàng";
+
+      const bookingRequest = {
+        customerId,
+        deviceId: selectedDevice.id,
+        bookingFrom: t1.toISOString(),
+        bookingTo: t2.toISOString(),
+        total: total,
+        note: `Khách: ${customer.fullName} - ${phone}${
+          customer.ig ? " - IG:" + customer.ig : ""
+        }${
+          customer.fb ? " - FB:" + customer.fb : ""
+        } - Cửa hàng: ${branchLabel} - Hình thức: ${receiveText}`,
+      };
+
+      const rawDesc = `Thue ${selectedDevice.displayName}`;
+      const returnUrl = `${window.location.origin}/payment-status`;
+      const payload = {
+        amount: total,
+        description: safeDesc(rawDesc),
+        bookingRequest,
+        returnSuccessUrl: returnUrl,
+        returnFailUrl: returnUrl,
+      };
+
+      const response = await api.post("/create-payment-link", payload);
+      if (response.data && response.data.checkoutUrl) {
+        window.location.href = response.data.checkoutUrl;
+      } else {
+        throw new Error("Không nhận được link thanh toán từ server.");
+      }
+    } catch (error) {
+      console.error("Failed to create payment link:", error);
+      const errorMessage =
+        error.response?.data?.error ||
+        error.response?.data?.message ||
+        error.message ||
+        "Không thể tạo yêu cầu thanh toán. Vui lòng thử lại.";
+      setPaymentError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const showMiniSummary = step >= 2 && selectedDevice && t1 && t2 && total > 0;
+
+  return (
+    <div className="min-h-dvh bg-gradient-to-b from-white to-pink-100 text-slate-800">
+      <div className="max-w-md mx-auto px-4 pb-32 pt-8">
+        <header className="mb-4 text-center">
+          <h1 className="text-3xl font-bold text-pink-800 tracking-tight">
+            Đặt Lịch Thuê Máy Ảnh
+          </h1>
+          <p className="text-pink-600 mt-1">
+            Chọn giờ, xem máy trống & thanh toán trong vài bước ✨
+          </p>
+        </header>
+
+        <Progress step={step} />
+
+        <main className="mt-6 space-y-5">
+          {/* STEP 1: CỬA HÀNG & NHẬN MÁY */}
+          {step === 1 && (
+            <Card
+              title="1. Chọn cửa hàng & cách nhận máy"
+              note="Tụi mình sẽ chuẩn bị/giao máy đúng theo lựa chọn của bạn."
+            >
+              <div className="space-y-5">
+                <div>
+                  <div className="text-sm font-medium text-pink-900 mb-2">
+                    Cửa hàng
+                  </div>
+                  <BranchChips
+                    value={branch}
+                    onChange={(val) => updateState("branch", val)}
+                  />
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium text-pink-900 mb-2">
+                    Cách nhận máy
+                  </div>
+                  <ReceiveMethodPicker
+                    value={receiveMethod}
+                    onChange={(val) => updateState("receiveMethod", val)}
+                  />
+                </div>
+
+                {receiveMethod === "DELIVERY" && (
+                  <InputField
+                    icon={<span className="font-bold text-xs">ĐC</span>}
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    placeholder="Địa chỉ nhận máy (chung cư, số nhà...)"
+                  />
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* STEP 2: THỜI GIAN & MÁY */}
+          {step === 2 && (
+            <>
+              <Card
+                title="2. Chọn ngày & giờ nhận/trả"
+                note="Hệ thống sẽ tự kiểm tra máy trống theo khoảng thời gian bạn chọn."
+              >
+                <div className="space-y-5">
+                  <FreeDateRangePicker
+                    selection={dateRange}
+                    onChange={handleDateChange}
+                    minDate={today}
+                  />
+
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">
+                        Giờ nhận máy
+                      </div>
+                      <input
+                        type="time"
+                        value={timeFrom}
+                        onChange={(e) =>
+                          updateState("timeFrom", e.target.value)
+                        }
+                        className="w-full rounded-xl border-2 border-pink-200 px-3 py-2 focus:border-pink-500 focus:ring-pink-500 text-pink-900 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">
+                        Giờ trả máy
+                      </div>
+                      <input
+                        type="time"
+                        value={timeTo}
+                        onChange={(e) => updateState("timeTo", e.target.value)}
+                        className="w-full rounded-xl border-2 border-pink-200 px-3 py-2 focus:border-pink-500 focus:ring-pink-500 text-pink-900 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-slate-500">
+                    Nếu nhận/trả cùng 1 ngày và tổng thời gian ≤ 6 tiếng, hệ
+                    thống sẽ tự áp dụng gói 6 tiếng (nếu máy có cấu hình).
+                  </div>
+                </div>
+              </Card>
+
+              <Card
+                title="Máy trống trong thời gian này"
+                note="Máy nào đã được đặt sẽ được làm mờ và không thể chọn."
+              >
+                {isLoadingDevices ? (
+                  <div className="w-full text-center py-10 text-sm text-slate-500">
+                    Đang tải danh sách máy...
+                  </div>
+                ) : devicesError ? (
+                  <div className="w-full text-center py-6">
+                    <p className="text-sm text-red-500 mb-3">{devicesError}</p>
+                    <button
+                      onClick={fetchAllDevices}
+                      className="px-4 py-2 rounded-xl border-2 border-pink-500 text-pink-700 text-sm font-semibold hover:bg-pink-50 active:scale-95 transition"
+                    >
+                      Thử tải lại
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4">
+                      <div className="text-sm font-medium text-pink-900 mb-2">
+                        Hệ máy
+                      </div>
+                      <CategoryChips
+                        value={category}
+                        onChange={(val) => {
+                          updateState("category", val);
+                          updateState("deviceId", null);
+                        }}
+                      />
+                    </div>
+
+                    {category === "canon" && (
+                      <SubCategoryChips
+                        items={CANON_SUB_CATEGORIES}
+                        value={canonSubCategory}
+                        onChange={setCanonSubCategory}
+                      />
+                    )}
+                    {category === "fuji" && (
+                      <SubCategoryChips
+                        items={FUJI_SUB_CATEGORIES}
+                        value={fujiSubCategory}
+                        onChange={setFujiSubCategory}
+                      />
+                    )}
+
+                    {availabilityError && (
+                      <div className="mb-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                        {availabilityError} Tụi mình vẫn cho phép đặt và sẽ gọi
+                        xác nhận lại.
+                      </div>
+                    )}
+
+                    <CameraList
+                      items={devicesToList}
+                      selectedId={deviceId}
+                      onSelect={(val) => updateState("deviceId", val)}
+                      busyDeviceIds={busyDeviceIds}
+                      availabilityLoading={availabilityLoading}
+                    />
+                  </>
+                )}
+              </Card>
+
+              <Card title="Mã giảm giá (nếu có)">
+                <VoucherPicker
+                  value={voucherId}
+                  onChange={(val) => updateState("voucherId", val)}
+                />
+              </Card>
+
+              {startDate && endDate && timeFrom && timeTo && t1 && t2 && (
+                <TimeSummaryInline
+                  device={selectedDevice}
+                  branchId={branch}
+                  receiveMethod={receiveMethod}
+                  deliveryAddress={deliveryAddress}
+                  t1={t1}
+                  t2={t2}
+                  total={total}
+                  isSixHours={isSixHours}
+                />
+              )}
+            </>
+          )}
+
+          {/* STEP 3: THÔNG TIN KHÁCH */}
+          {step === 3 && (
+            <Card
+              title="3. Thông tin liên lạc"
+              note="Vui lòng nhập chính xác để tụi mình liên hệ xác nhận booking."
+            >
+              <div className="space-y-4">
+                <InputField
+                  icon={<UserIcon className="h-5 w-5" />}
+                  value={customer.fullName}
+                  onChange={(e) =>
+                    setCustomer((c) => ({
+                      ...c,
+                      fullName: e.target.value,
+                    }))
+                  }
+                  placeholder="Nguyễn Thị Bông"
+                  error={errors.fullName}
+                  helpText="Họ tên cần có ít nhất 2 ký tự."
+                />
+                <InputField
+                  icon={<DevicePhoneMobileIcon className="h-5 w-5" />}
+                  value={customer.phone}
+                  onChange={(e) =>
+                    setCustomer((c) => ({
+                      ...c,
+                      phone: e.target.value,
+                    }))
+                  }
+                  placeholder="0901234567"
+                  inputMode="tel"
+                  error={errors.phone}
+                  helpText="SĐT hợp lệ của Việt Nam có 10 số, bắt đầu bằng 0."
+                />
+                <InputField
+                  icon={<span className="font-bold text-sm">IG</span>}
+                  value={customer.ig}
+                  onChange={(e) =>
+                    setCustomer((c) => ({ ...c, ig: e.target.value }))
+                  }
+                  placeholder="username_ig (không bắt buộc)"
+                />
+              </div>
+            </Card>
+          )}
+
+          {/* STEP 4: TỔNG KẾT & THANH TOÁN */}
+          {step === 4 && (
+            <Card title="4. Xác nhận & thanh toán">
+              <Summary
+                device={selectedDevice}
+                t1={t1}
+                t2={t2}
+                days={days}
+                subTotal={subTotal}
+                discount={discount}
+                total={total}
+                customer={customer}
+                branchId={branch}
+                receiveMethod={receiveMethod}
+                deliveryAddress={deliveryAddress}
+                isSixHours={isSixHours}
+              />
+              {paymentError && (
+                <div className="mt-4 p-3 rounded-xl bg-red-50 text-sm text-red-600">
+                  {paymentError}
+                </div>
+              )}
+            </Card>
+          )}
+        </main>
+      </div>
+
+      {/* BOTTOM BAR */}
+      <div className="fixed bottom-0 left-0 right-0 z-10">
+        <div className="mx-auto max-w-md">
+          <div className="bg-white/80 backdrop-blur-lg border-t border-pink-200 rounded-t-3xl p-4 shadow-2xl shadow-pink-300/20">
+            {showMiniSummary && (
+              <div className="flex items-baseline justify-between mb-3 text-xs">
+                <span className="text-slate-600 truncate max-w-[65%]">
+                  {selectedDevice.displayName} •{" "}
+                  {isSixHours
+                    ? "Gói ≤ 6 tiếng"
+                    : days === 1
+                    ? "1 ngày"
+                    : `${days} ngày`}
+                </span>
+                <span className="font-semibold text-pink-700">
+                  {total.toLocaleString("vi-VN")} đ
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={back}
+                disabled={step === 1}
+                className="px-4 py-3.5 rounded-xl border-2 flex-1 border-pink-300 text-pink-800 font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-transform active:scale-95"
+              >
+                <ArrowLeftIcon className="h-5 w-5" /> Quay lại
+              </button>
+
+              {step < 4 ? (
+                <button
+                  onClick={next}
+                  disabled={!canNext}
+                  className="px-4 py-3.5 rounded-xl bg-pink-600 text-white flex-1 font-semibold disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
+                >
+                  Tiếp tục <ArrowRightIcon className="h-5 w-5" />
+                </button>
+              ) : (
+                <button
+                  onClick={submitPayment}
+                  disabled={
+                    !selectedDevice ||
+                    !t1 ||
+                    !t2 ||
+                    total <= 0 ||
+                    isSubmitting ||
+                    !validInfo
+                  }
+                  className="px-4 py-3.5 rounded-xl bg-pink-600 text-white flex-1 font-semibold disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
+                >
+                  {isSubmitting ? (
+                    "Đang xử lý..."
+                  ) : (
+                    <>
+                      <CreditCardIcon className="h-5 w-5" /> Thanh toán (
+                      {total.toLocaleString("vi-VN")} đ)
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
