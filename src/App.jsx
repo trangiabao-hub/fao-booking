@@ -2,6 +2,7 @@ import React from "react";
 import PropTypes from "prop-types";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import HomePage from "./page/home";
+import DeviceCatalogPage from "./page/catalog";
 import BookingPage from "./page/booking";
 import PaymentStatusPage from "./page/success";
 import Menu from "./page/menu";
@@ -11,6 +12,10 @@ const App = () => {
     {
       path: "/",
       element: <HomePage />,
+    },
+    {
+      path: "/catalog",
+      element: <DeviceCatalogPage />,
     },
     {
       path: "/booking",

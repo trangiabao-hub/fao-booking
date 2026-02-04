@@ -1,40 +1,60 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { format, isWeekend, addDays } from "date-fns";
+import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import vi from "date-fns/locale/vi";
 
 import {
   ArrowLeftIcon,
-  Bars3Icon,
   CheckCircleIcon,
   CreditCardIcon,
   DevicePhoneMobileIcon,
   UserIcon,
+  ExclamationTriangleIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
+import FloatingContactButton from "../../components/FloatingContactButton";
+import BookingProgress from "../../components/BookingProgress";
+import {
+  saveCustomerInfo,
+  loadCustomerInfo,
+  saveBookingPrefs,
+  loadBookingPrefs,
+} from "../../utils/storage";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
 
-// Chi nhánh (có thêm distanceText cho giống CGV – bạn chỉnh lại số km nếu muốn)
+// Chi nhánh
 const BRANCHES = [
-  { id: "PHU_NHUAN", label: "FAO Phú Nhuận", distanceText: "3.2km" },
-  { id: "Q9", label: "FAO Q9 (Vinhomes)", distanceText: "18.4km" },
+  {
+    id: "PHU_NHUAN",
+    label: "FAO Phú Nhuận",
+    distanceText: "3.2km",
+    address: "330/22 Phan Đình Phùng, P.1",
+  },
+  {
+    id: "Q9",
+    label: "FAO Q9 (Vinhomes)",
+    distanceText: "18.4km",
+    address: "Vinhomes Grand Park, Q9",
+  },
 ];
 
-// Gói thời gian (hiển thị như giờ chiếu)
+// Gói thời gian
 const DURATION_OPTIONS = [
-  { id: "SIX_HOURS", label: "6 tiếng" },
-  { id: "ONE_DAY", label: "1 ngày" },
-  { id: "TWO_DAYS", label: "2 ngày" },
-  { id: "THREE_DAYS", label: "3 ngày" },
+  { id: "SIX_HOURS", label: "6 tiếng", days: 0.5 },
+  { id: "ONE_DAY", label: "1 ngày", days: 1 },
+  { id: "TWO_DAYS", label: "2 ngày", days: 2 },
+  { id: "THREE_DAYS", label: "3 ngày", days: 3 },
 ];
 
-// Vouchers (logic cũ, vẫn dùng để tính giá; UI voucher bạn có thể thêm sau nếu cần)
+// Vouchers
 const VOUCHERS = [
   { id: "NONE", label: "Không áp dụng", rate: 0 },
   { id: "WEEKDAY20", label: "Weekday -20%", rate: 0.2 },
 ];
 
-const FALLBACK_IMG = "https://placehold.co/640x360/png?text=No+Image";
+const FALLBACK_IMG = "https://placehold.co/640x360/fdf2f8/ec4899?text=No+Image";
 
 /* ========= HELPERS ========= */
 
@@ -47,13 +67,12 @@ function normalizeDate(date) {
 
 function inferBrand(name = "") {
   const n = name.toUpperCase();
-  if (n.includes("FUJIFILM")) return "fuji";
-  if (n.includes("CANON") || n.startsWith("LENS CANON")) return "canon";
+  if (n.includes("FUJIFILM") || n.includes("FUJI")) return "fuji";
+  if (n.includes("CANON")) return "canon";
   if (n.includes("SONY")) return "sony";
   if (n.includes("POCKET") || n.includes("GOPRO") || n.includes("DJI"))
     return "pocket";
-  if (n.includes("IPHONE") || n.includes("SAMSUNG")) return "phone";
-  return null;
+  return "other";
 }
 
 function parseDeposit(desc) {
@@ -113,7 +132,6 @@ function normalizePhone(p) {
   return s;
 }
 
-// keep local datetime string without timezone
 function formatDateTimeLocalForAPI(date) {
   if (!date) return null;
   return format(date, "yyyy-MM-dd'T'HH:mm:ss");
@@ -140,12 +158,7 @@ function getPriceForDuration(device, durationId) {
 
 function getTimeRangeForDuration(selectedDate, durationId) {
   if (!selectedDate) {
-    return {
-      startDate: null,
-      endDate: null,
-      timeFrom: null,
-      timeTo: null,
-    };
+    return { startDate: null, endDate: null, timeFrom: null, timeTo: null };
   }
   const startDate = normalizeDate(selectedDate);
   let endDate = normalizeDate(selectedDate);
@@ -155,7 +168,7 @@ function getTimeRangeForDuration(selectedDate, durationId) {
   switch (durationId) {
     case "SIX_HOURS":
       timeFrom = "09:00";
-      timeTo = "15:00"; // 6 tiếng
+      timeTo = "15:00";
       endDate = startDate;
       break;
     case "ONE_DAY":
@@ -174,7 +187,11 @@ function getTimeRangeForDuration(selectedDate, durationId) {
   return { startDate, endDate, timeFrom, timeTo };
 }
 
-/* ===== Hook tính giá (giữ y chang logic cũ) ===== */
+function normalizeDeviceName(name = "") {
+  return name.replace(/\s*\(\d+\)\s*$/, "").trim();
+}
+
+/* ===== Hook tính giá ===== */
 function useBookingPricing(
   device,
   startDate,
@@ -218,7 +235,6 @@ function useBookingPricing(
     let isSixHours = false;
 
     if (sameDay && hours <= 6.05) {
-      // Gói 6 tiếng
       isSixHours = true;
       days = 0.5;
       subTotal = device.priceSixHours || device.priceOneDay || 0;
@@ -270,21 +286,23 @@ const InputField = ({
   return (
     <div>
       <div className="relative">
-        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-pink-400">
+        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#E85C9C]">
           {icon}
         </div>
         <input
           value={value}
           onChange={onChange}
           className={`w-full rounded-xl border-2 ${
-            error ? "border-red-400" : "border-pink-200"
-          } focus:border-pink-500 focus:ring-pink-500 pl-11 pr-4 py-3 text-pink-900 placeholder:text-slate-400`}
+            error ? "border-red-400" : "border-[#eee]"
+          } focus:border-[#FF9FCA] focus:outline-none focus:ring-2 focus:ring-[#FF9FCA]/20 pl-11 pr-4 py-3 text-[#222] font-medium placeholder:text-[#aaa] bg-white`}
           placeholder={placeholder}
           inputMode={inputMode}
         />
       </div>
       {error && helpText && (
-        <div className="text-xs text-red-500 mt-1.5 ml-1">{helpText}</div>
+        <div className="text-xs text-red-500 mt-1.5 ml-1 font-medium">
+          {helpText}
+        </div>
       )}
     </div>
   );
@@ -304,87 +322,124 @@ function Summary({
 }) {
   if (!device || !t1 || !t2) return null;
 
-  const branchLabel =
-    BRANCHES.find((b) => b.id === branchId)?.label || "Chưa chọn chi nhánh";
-
-  const renderInfoRow = (label, value) => (
-    <div className="flex justify-between items-center text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className="font-medium text-slate-800 text-right ml-4">
-        {value}
-      </span>
-    </div>
-  );
+  const branchData = BRANCHES.find((b) => b.id === branchId);
+  const branchLabel = branchData?.label || "Chưa chọn chi nhánh";
+  const branchAddress = branchData?.address || "";
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-4 items-center">
-        <img
-          src={device?.img}
-          alt={device?.displayName}
-          className="w-20 h-20 rounded-xl object-cover shadow-md shadow-pink-200/50"
-        />
+    <div className="space-y-3">
+      {/* Device Section */}
+      <div className="flex gap-4 items-center p-3 bg-gradient-to-r from-[#FFE4F0] to-[#FFF5F8] rounded-xl border border-[#FF9FCA]">
+        <div className="text-2xl">🎯</div>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-pink-900 truncate">
+          <div className="text-[10px] text-[#E85C9C] font-black uppercase tracking-wider mb-0.5">
+            Thiết bị
+          </div>
+          <div className="font-black text-[#222] truncate text-sm uppercase">
             {device?.displayName || "—"}
           </div>
-          <div className="text-xs text-slate-500 mt-1">
-            Cọc {Number(device?.deposit || 0).toLocaleString("vi-VN")} đ
+          <div className="text-xs text-[#888] font-medium">
+            {isSixHours
+              ? "Gói 6 tiếng"
+              : days === 1
+              ? "1 ngày"
+              : `${days} ngày`}{" "}
+            • Cọc {Math.round(device?.deposit / 1000000)}tr
+          </div>
+        </div>
+        <div className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden bg-white shrink-0">
+          <img
+            src={device?.img}
+            alt={device?.displayName}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      </div>
+
+      {/* Branch Section */}
+      <div className="flex gap-4 items-center p-3 bg-white rounded-xl border border-[#eee]">
+        <div className="text-2xl">📍</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] text-[#999] font-bold uppercase tracking-wider mb-0.5">
+            Chi nhánh
+          </div>
+          <div className="font-black text-[#222] text-sm">{branchLabel}</div>
+          <div className="text-xs text-[#888] font-medium">{branchAddress}</div>
+        </div>
+      </div>
+
+      {/* Time Section */}
+      <div className="flex gap-4 items-center p-3 bg-[#222] rounded-xl">
+        <div className="text-2xl">📅</div>
+        <div className="flex-1">
+          <div className="text-[10px] text-[#FF9FCA] font-bold uppercase tracking-wider mb-1">
+            Thời gian
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <span className="text-[#888]">Nhận:</span>
+              <span className="font-black text-white ml-1">
+                {format(t1, "dd/MM HH:mm", { locale: vi })}
+              </span>
+            </div>
+            <div>
+              <span className="text-[#888]">Trả:</span>
+              <span className="font-black text-white ml-1">
+                {format(t2, "dd/MM HH:mm", { locale: vi })}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="p-4 bg-pink-50/70 rounded-xl space-y-2">
-        {renderInfoRow("Chi nhánh", branchLabel)}
-        {renderInfoRow("Ngày nhận", format(t1, "dd/MM, EEEE", { locale: vi }))}
-        {renderInfoRow("Ngày trả", format(t2, "dd/MM, EEEE", { locale: vi }))}
-        {renderInfoRow(
-          "Gói thuê",
-          isSixHours ? "Gói 6 tiếng" : days === 1 ? "1 ngày" : `${days} ngày`
+      {/* Pricing Section */}
+      <div className="p-4 bg-[#FFFBF5] rounded-xl border-2 border-[#FFE4F0]">
+        <div className="flex justify-between items-center text-sm mb-2">
+          <span className="text-[#888] font-medium">Tiền thuê</span>
+          <span className="font-bold text-[#555]">
+            {Math.round(subTotal / 1000)}k
+          </span>
+        </div>
+        {discount > 0 && (
+          <div className="flex justify-between items-center text-sm mb-2">
+            <span className="text-green-600 font-bold">
+              🎉 Giảm giá Weekday
+            </span>
+            <span className="font-bold text-green-600">
+              -{Math.round(discount / 1000)}k
+            </span>
+          </div>
         )}
-        {renderInfoRow(
-          "Giờ",
-          `${format(t1, "HH:mm", { locale: vi })} - ${format(t2, "HH:mm", {
-            locale: vi,
-          })}`
-        )}
+        <div className="border-t border-dashed border-[#FFE4F0] my-3"></div>
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-black text-[#222] uppercase tracking-wider">
+            💰 Tổng tiền
+          </span>
+          <span className="text-2xl font-black text-[#E85C9C]">
+            {Math.round(total / 1000)}k
+          </span>
+        </div>
       </div>
 
-      <div className="border-t border-dashed border-pink-200 my-4"></div>
-
-      <div className="space-y-2">
-        {renderInfoRow(
-          "Tạm tính",
-          `${Number(subTotal).toLocaleString("vi-VN")} đ`
-        )}
-        {renderInfoRow(
-          "Giảm giá",
-          `- ${Number(discount).toLocaleString("vi-VN")} đ`
-        )}
-      </div>
-
-      <div className="!mt-4 p-4 bg-pink-100 rounded-xl flex justify-between items-center">
-        <span className="text-base font-semibold text-pink-800">
-          Thành tiền
-        </span>
-        <span className="text-xl font-bold text-pink-700">
-          {Number(total).toLocaleString("vi-VN")} đ
-        </span>
-      </div>
-
-      <div className="!mt-4 pt-4 border-t border-pink-200 text-sm text-slate-600 space-y-1">
-        <p>
-          <b>Khách hàng:</b> {customer.fullName || "—"}
-        </p>
-        <p>
-          <b>Số điện thoại:</b> {normalizePhone(customer.phone) || "—"}
-        </p>
-        {customer.ig && (
-          <p>
-            <b>Instagram:</b> {customer.ig}
-          </p>
-        )}
-      </div>
+      {/* Customer Info Preview */}
+      {(customer.fullName || customer.phone) && (
+        <div className="flex gap-4 items-center p-3 bg-green-50 rounded-xl border border-green-200">
+          <div className="text-2xl">👤</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] text-green-600 font-bold uppercase tracking-wider mb-0.5">
+              Khách hàng
+            </div>
+            <div className="font-black text-[#222] text-sm">
+              {customer.fullName || "—"}
+            </div>
+            <div className="text-xs text-[#888] font-medium">
+              {normalizePhone(customer.phone) || "—"}
+              {customer.ig && ` • IG: ${customer.ig}`}
+            </div>
+          </div>
+          <CheckCircleIcon className="w-6 h-6 text-green-500" />
+        </div>
+      )}
     </div>
   );
 }
@@ -394,7 +449,7 @@ function DateStrip({ selectedDate, onSelect }) {
   const days = useMemo(() => {
     const arr = [];
     const today = normalizeDate(new Date());
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 14; i++) {
       arr.push(addDays(today, i));
     }
     return arr;
@@ -404,32 +459,46 @@ function DateStrip({ selectedDate, onSelect }) {
 
   const getLabel = (day, index) => {
     if (index === 0) return "Hôm nay";
-    const dow = day.getDay(); // 0-6
+    if (index === 1) return "Ngày mai";
+    const dow = day.getDay();
     if (dow === 0) return "CN";
     return `T${dow + 1}`;
   };
 
   return (
-    <div className="bg-slate-900 text-white">
+    <div className="bg-[#222] text-white border-b border-[#333]">
       <div className="max-w-md mx-auto px-2 py-3">
         <div className="flex gap-2 overflow-x-auto no-scrollbar">
           {days.map((day, idx) => {
             const active = isSameDay(day, selectedDate);
+            const isWeekendDay = isWeekend(day);
             return (
               <button
                 key={day.toISOString()}
                 onClick={() => onSelect(day)}
-                className={`flex-shrink-0 w-12 text-center rounded-full py-1 ${
-                  active ? "bg-red-500" : "bg-slate-800"
+                className={`flex-shrink-0 w-12 text-center rounded-xl py-2 transition-all border-2 ${
+                  active
+                    ? "bg-[#FF9FCA] text-[#222] border-[#FF9FCA] shadow-lg shadow-[#FF9FCA]/30"
+                    : isWeekendDay
+                    ? "bg-[#333] border-[#444] text-[#FF9FCA]"
+                    : "bg-[#2a2a2a] border-[#333] hover:border-[#FF9FCA]"
                 }`}
               >
-                <div className="text-[10px] mb-0.5">{getLabel(day, idx)}</div>
-                <div className="text-sm font-semibold">{format(day, "dd")}</div>
+                <div className="text-[10px] mb-0.5 font-bold">
+                  {getLabel(day, idx)}
+                </div>
+                <div
+                  className={`text-sm font-black ${
+                    active ? "text-[#222]" : ""
+                  }`}
+                >
+                  {format(day, "dd")}
+                </div>
               </button>
             );
           })}
         </div>
-        <div className="mt-2 text-xs text-center text-slate-300">
+        <div className="mt-2 text-xs text-center text-[#FF9FCA] font-bold uppercase tracking-wider">
           {selectedDate &&
             format(selectedDate, "EEEE, dd 'tháng' MM, yyyy", { locale: vi })}
         </div>
@@ -438,7 +507,7 @@ function DateStrip({ selectedDate, onSelect }) {
   );
 }
 
-/* Panel chi nhánh kiểu CGV: tiêu đề chi nhánh + list 6 tiếng / 1/2/3 ngày */
+/* Panel chi nhánh kiểu CGV */
 function BranchPanel({
   branch,
   expanded,
@@ -455,29 +524,29 @@ function BranchPanel({
   const error = availability?.error;
 
   return (
-    <div className="border-b border-slate-100">
+    <div className="border-b border-[#eee]">
       <button
         onClick={onToggle}
-        className="w-full px-4 py-3 flex items-center justify-between bg-white"
+        className="w-full px-4 py-3 flex items-center justify-between bg-[#FFFBF5] hover:bg-[#FFF5F8] transition-colors"
       >
         <div className="text-left">
-          <div className="text-red-600 font-semibold text-sm">
+          <div className="text-[#E85C9C] font-black text-sm uppercase tracking-wide">
             {branch.label}
           </div>
-          <div className="text-[11px] text-slate-500">
-            {branch.distanceText}
+          <div className="text-[11px] text-[#888] font-medium">
+            {branch.address}
           </div>
         </div>
         <div className="flex items-center gap-2">
           {soldOut && (
-            <span className="text-[11px] text-red-500">
-              Hết chỗ trong khung này
+            <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">
+              Hết chỗ
             </span>
           )}
           <span
             className={`transform transition-transform ${
               expanded ? "rotate-180" : "rotate-0"
-            } text-slate-500`}
+            } text-[#999]`}
           >
             ▾
           </span>
@@ -485,15 +554,15 @@ function BranchPanel({
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 bg-slate-50">
+        <div className="px-4 pb-4 bg-[#FFFBF5]">
           {loading && (
-            <div className="text-[11px] text-slate-500 mb-2">
-              Đang kiểm tra tình trạng máy...
+            <div className="text-[11px] text-[#999] mb-2 font-medium">
+              Đang kiểm tra...
             </div>
           )}
           {error && (
-            <div className="text-[11px] text-amber-700 mb-2">
-              {error} Tụi mình vẫn cho phép đặt và sẽ gọi xác nhận lại.
+            <div className="text-[11px] text-amber-700 mb-2 font-medium bg-amber-50 p-2 rounded-lg">
+              {error} Vẫn có thể đặt và shop sẽ liên hệ xác nhận.
             </div>
           )}
           <div className="flex flex-wrap gap-2">
@@ -507,18 +576,22 @@ function BranchPanel({
                   key={opt.id}
                   disabled={disabled}
                   onClick={() => onSelectDuration(branch.id, opt.id)}
-                  className={`min-w-[88px] px-3 py-2 rounded-md border text-sm text-center transition ${
+                  className={`min-w-[88px] px-3 py-2 rounded-xl border-2 text-sm text-center transition-all ${
                     disabled
-                      ? "border-slate-200 text-slate-400 bg-slate-100 cursor-not-allowed"
+                      ? "border-[#eee] text-[#ccc] bg-[#f5f5f5] cursor-not-allowed"
                       : active
-                      ? "border-red-600 bg-red-600 text-white shadow-md shadow-red-400/30"
-                      : "border-slate-300 bg-white text-slate-800 hover:border-red-500 hover:text-red-600"
+                      ? "border-[#222] bg-[#222] text-[#FF9FCA] shadow-lg"
+                      : "border-[#ddd] bg-white text-[#555] hover:border-[#FF9FCA] hover:text-[#E85C9C]"
                   }`}
                 >
-                  <div className="text-sm font-semibold">{opt.label}</div>
+                  <div className="text-sm font-black">{opt.label}</div>
                   {price > 0 && (
-                    <div className="text-[11px] mt-0.5">
-                      {price.toLocaleString("vi-VN")} đ
+                    <div
+                      className={`text-[10px] mt-0.5 font-bold ${
+                        active ? "text-[#FF9FCA]" : "text-[#E85C9C]"
+                      }`}
+                    >
+                      {Math.round(price / 1000)}k
                     </div>
                   )}
                 </button>
@@ -531,38 +604,154 @@ function BranchPanel({
   );
 }
 
-/* ===================== BOOKING PAGE (CGV STYLE) ===================== */
+/* Alternative Device Suggestion */
+function AlternativeDevices({ currentDevice, allDevices, onSelect }) {
+  const alternatives = useMemo(() => {
+    if (!currentDevice || !allDevices || allDevices.length === 0) return [];
+
+    const currentBrand = inferBrand(currentDevice.name);
+
+    // Find similar devices (same brand, different device, available)
+    const similar = allDevices
+      .filter((d) => {
+        const dBrand = inferBrand(d.name);
+        const dName = normalizeDeviceName(d.name);
+        const currentName = normalizeDeviceName(currentDevice.name);
+        return dBrand === currentBrand && dName !== currentName;
+      })
+      .slice(0, 3);
+
+    return similar;
+  }, [currentDevice, allDevices]);
+
+  if (alternatives.length === 0) return null;
+
+  return (
+    <div className="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
+      <div className="flex items-center gap-2 text-amber-800 mb-3">
+        <SparklesIcon className="w-5 h-5" />
+        <span className="font-semibold text-sm">Gợi ý máy tương tự</span>
+      </div>
+      <div className="space-y-2">
+        {alternatives.map((device) => (
+          <button
+            key={device.id}
+            onClick={() => onSelect(device)}
+            className="w-full flex items-center gap-3 p-2 bg-white rounded-lg border border-amber-100 hover:border-pink-400 transition-colors text-left"
+          >
+            <img
+              src={device.images?.[0] || FALLBACK_IMG}
+              alt={device.name}
+              className="w-12 h-12 rounded-lg object-cover"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-slate-800 truncate">
+                {normalizeDeviceName(device.name)}
+              </div>
+              <div className="text-xs text-pink-600">
+                {device.priceOneDay?.toLocaleString("vi-VN")} đ/ngày
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ===================== BOOKING PAGE ===================== */
 
 export default function BookingPage() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const initialPrefs = useMemo(() => {
+    const prefs = loadBookingPrefs();
+    const branchId = BRANCHES.some((b) => b.id === prefs?.branchId)
+      ? prefs.branchId
+      : BRANCHES[0].id;
+    const durationId = DURATION_OPTIONS.some((d) => d.id === prefs?.durationId)
+      ? prefs.durationId
+      : "ONE_DAY";
+    return { branchId, durationId };
+  }, []);
+
+  // Get device from URL params
+  const urlDeviceId = searchParams.get("deviceId");
+  const urlDeviceName = searchParams.get("deviceName");
+
   const [allDevices, setAllDevices] = useState([]);
   const [isLoadingDevices, setIsLoadingDevices] = useState(true);
   const [devicesError, setDevicesError] = useState("");
 
-  const [selectedDeviceId, setSelectedDeviceId] = useState(null);
+  const [selectedDeviceId, setSelectedDeviceId] = useState(
+    urlDeviceId ? parseInt(urlDeviceId) : null
+  );
 
   const [selectedDate, setSelectedDate] = useState(() =>
     normalizeDate(new Date())
   );
-  const [durationOptionId, setDurationOptionId] = useState("ONE_DAY");
-  const [selectedBranchId, setSelectedBranchId] = useState(BRANCHES[0].id);
-  const [expandedBranchId, setExpandedBranchId] = useState(BRANCHES[0].id);
+  const [durationOptionId, setDurationOptionId] = useState(
+    initialPrefs.durationId
+  );
+  const [selectedBranchId, setSelectedBranchId] = useState(
+    initialPrefs.branchId
+  );
+  const [expandedBranchId, setExpandedBranchId] = useState(
+    initialPrefs.branchId
+  );
 
   const [availabilityByBranch, setAvailabilityByBranch] = useState({});
 
-  const [voucherId] = useState("NONE"); // giữ để logic pricing hoạt động
+  const [voucherId] = useState("NONE");
 
-  const [customer, setCustomer] = useState({
-    fullName: "",
-    phone: "",
-    ig: "",
-    fb: "",
+  // Initialize customer from localStorage
+  const [customer, setCustomer] = useState(() => {
+    const saved = loadCustomerInfo();
+    return (
+      saved || {
+        fullName: "",
+        phone: "",
+        ig: "",
+        fb: "",
+      }
+    );
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState("");
 
-  /* ==== Fetch devices ==== */
+  // Calculate current step for progress indicator
+  const currentStep = useMemo(() => {
+    if (!selectedDate || !selectedBranchId || !durationOptionId) return 1;
+    if (!customer.fullName || !customer.phone) return 2;
+    return 3;
+  }, [
+    selectedDate,
+    selectedBranchId,
+    durationOptionId,
+    customer.fullName,
+    customer.phone,
+  ]);
 
+  // Save customer info when it changes
+  useEffect(() => {
+    if (customer.fullName && customer.phone) {
+      saveCustomerInfo(customer);
+    }
+  }, [customer]);
+
+  // Save booking prefs when they change
+  useEffect(() => {
+    if (selectedBranchId && durationOptionId) {
+      saveBookingPrefs({
+        branchId: selectedBranchId,
+        durationId: durationOptionId,
+      });
+    }
+  }, [selectedBranchId, durationOptionId]);
+
+  /* ==== Fetch devices ==== */
   const fetchAllDevices = useCallback(async () => {
     setIsLoadingDevices(true);
     setDevicesError("");
@@ -571,9 +760,7 @@ export default function BookingPage() {
       setAllDevices(response.data || []);
     } catch (error) {
       console.error("Failed to fetch devices:", error);
-      setDevicesError(
-        "Không thể tải danh sách thiết bị. Vui lòng kiểm tra kết nối và thử lại."
-      );
+      setDevicesError("Không thể tải danh sách thiết bị. Vui lòng thử lại.");
       setAllDevices([]);
     } finally {
       setIsLoadingDevices(false);
@@ -586,13 +773,10 @@ export default function BookingPage() {
 
   const DERIVED = useMemo(() => {
     if (!allDevices) return [];
-    function normalizeName(name = "") {
-      return name.replace(/\s*\(\d+\)\s*$/, "").trim();
-    }
     const seen = new Set();
     const result = [];
     for (const it of allDevices) {
-      const normalized = normalizeName(it.name);
+      const normalized = normalizeDeviceName(it.name);
       if (seen.has(normalized)) continue;
       seen.add(normalized);
       result.push({
@@ -607,11 +791,19 @@ export default function BookingPage() {
     return result;
   }, [allDevices]);
 
+  // Set selected device from URL param or first device
   useEffect(() => {
-    if (!selectedDeviceId && DERIVED.length > 0) {
+    if (urlDeviceId && DERIVED.length > 0) {
+      const device = DERIVED.find((d) => d.id === parseInt(urlDeviceId));
+      if (device) {
+        setSelectedDeviceId(device.id);
+      } else if (!selectedDeviceId && DERIVED.length > 0) {
+        setSelectedDeviceId(DERIVED[0].id);
+      }
+    } else if (!selectedDeviceId && DERIVED.length > 0) {
       setSelectedDeviceId(DERIVED[0].id);
     }
-  }, [DERIVED, selectedDeviceId]);
+  }, [DERIVED, urlDeviceId, selectedDeviceId]);
 
   const selectedDevice = useMemo(
     () => DERIVED.find((i) => i.id === selectedDeviceId) || null,
@@ -619,14 +811,12 @@ export default function BookingPage() {
   );
 
   /* ==== Thời gian theo gói ==== */
-
   const { startDate, endDate, timeFrom, timeTo } = useMemo(
     () => getTimeRangeForDuration(selectedDate, durationOptionId),
     [selectedDate, durationOptionId]
   );
 
   /* ==== Pricing ==== */
-
   const { days, subTotal, discount, total, t1, t2, isSixHours } =
     useBookingPricing(
       selectedDevice,
@@ -638,7 +828,6 @@ export default function BookingPage() {
     );
 
   /* ==== Validate info ==== */
-
   const { validInfo, errors } = useMemo(() => {
     const err = {};
     const nameOk = customer.fullName?.trim().length >= 2;
@@ -656,8 +845,7 @@ export default function BookingPage() {
     };
   }, [customer]);
 
-  /* ==== Availability theo chi nhánh + gói (theo time range) ==== */
-
+  /* ==== Availability theo chi nhánh ==== */
   useEffect(() => {
     if (!selectedDevice || !startDate || !endDate || !timeFrom || !timeTo) {
       setAvailabilityByBranch({});
@@ -677,11 +865,7 @@ export default function BookingPage() {
     const fetchForBranch = async (branchId) => {
       setAvailabilityByBranch((prev) => ({
         ...prev,
-        [branchId]: {
-          ...(prev[branchId] || {}),
-          loading: true,
-          error: null,
-        },
+        [branchId]: { ...(prev[branchId] || {}), loading: true, error: null },
       }));
 
       try {
@@ -690,9 +874,7 @@ export default function BookingPage() {
           endDate: formatDateTimeLocalForAPI(toDateTime),
           branchId,
         };
-        const resp = await api.get("v1/devices/booking", {
-          params,
-        });
+        const resp = await api.get("v1/devices/booking", { params });
         if (cancelled) return;
 
         const data = resp.data || [];
@@ -705,11 +887,7 @@ export default function BookingPage() {
 
         setAvailabilityByBranch((prev) => ({
           ...prev,
-          [branchId]: {
-            loading: false,
-            error: null,
-            soldOut: deviceBusy,
-          },
+          [branchId]: { loading: false, error: null, soldOut: deviceBusy },
         }));
       } catch (err) {
         console.error("Failed to fetch bookings:", err);
@@ -718,7 +896,7 @@ export default function BookingPage() {
           ...prev,
           [branchId]: {
             loading: false,
-            error: "Không thể tải dữ liệu đặt máy. Vui lòng thử lại.",
+            error: "Không thể kiểm tra.",
             soldOut: false,
           },
         }));
@@ -732,8 +910,15 @@ export default function BookingPage() {
     };
   }, [selectedDevice, startDate, endDate, timeFrom, timeTo]);
 
-  /* ==== Submit conditions ==== */
+  /* ==== Check if any branch has sold out ==== */
+  const isSoldOutAllBranches = useMemo(() => {
+    return BRANCHES.every((b) => {
+      const av = availabilityByBranch[b.id];
+      return av?.soldOut === true;
+    });
+  }, [availabilityByBranch]);
 
+  /* ==== Submit conditions ==== */
   const canSubmit = useMemo(() => {
     if (!selectedDevice) return false;
     if (!selectedBranchId) return false;
@@ -755,7 +940,6 @@ export default function BookingPage() {
   ]);
 
   /* ==== Submit payment ==== */
-
   const submitPayment = async () => {
     if (!canSubmit || !selectedDevice || !t1 || !t2) return;
 
@@ -819,32 +1003,54 @@ export default function BookingPage() {
     }
   };
 
+  const handleSelectAlternative = (device) => {
+    setSelectedDeviceId(device.id);
+    navigate(
+      `/booking?deviceId=${device.id}&deviceName=${encodeURIComponent(
+        normalizeDeviceName(device.name)
+      )}`,
+      { replace: true }
+    );
+  };
+
   const showMiniSummary =
     selectedDevice && t1 && t2 && total > 0 && selectedBranchId;
 
   /* ==== JSX ==== */
-
   return (
-    <div className="min-h-dvh bg-slate-100 text-slate-900">
-      {/* HEADER kiểu CGV */}
-      <header className="bg-white sticky top-0 z-30 shadow-sm">
-        <div className="max-w-md mx-auto h-12 flex items-center px-4">
-          <button
-            onClick={() => window.history.back()}
-            className="w-8 h-8 flex items-center justify-center text-slate-700"
+    <div className="min-h-dvh bg-[#FEF5ED] text-[#333]">
+      {/* HEADER */}
+      <header className="bg-[#FFFBF5] sticky top-0 z-30 border-b border-[#FFE4F0]">
+        <div className="max-w-md mx-auto h-14 flex items-center px-4">
+          <Link
+            to="/catalog"
+            className="w-8 h-8 flex items-center justify-center text-[#555] hover:bg-[#FF9FCA]/20 rounded-full transition-colors"
           >
             <ArrowLeftIcon className="w-5 h-5" />
-          </button>
-          <div className="flex-1 text-center text-sm font-semibold line-clamp-1">
-            {selectedDevice ? selectedDevice.displayName : "Đang tải máy..."}
+          </Link>
+          <div className="flex-1 text-center">
+            <div className="text-sm font-black line-clamp-1 text-[#222] uppercase tracking-wide">
+              {selectedDevice
+                ? selectedDevice.displayName
+                : urlDeviceName || "Chọn máy"}
+            </div>
+            <div className="text-[10px] text-[#E85C9C] font-bold uppercase tracking-wider">
+              Đặt lịch thuê
+            </div>
           </div>
-          <button className="w-8 h-8 flex items-center justify-center text-slate-700">
-            <Bars3Icon className="w-5 h-5" />
-          </button>
+          <Link
+            to="/catalog"
+            className="text-xs text-[#E85C9C] font-bold hover:underline uppercase tracking-wide"
+          >
+            Đổi máy
+          </Link>
         </div>
       </header>
 
-      {/* Thanh chọn ngày kiểu CGV */}
+      {/* Progress Stepper */}
+      <BookingProgress currentStep={currentStep} />
+
+      {/* Thanh chọn ngày */}
       <DateStrip
         selectedDate={selectedDate}
         onSelect={(d) => setSelectedDate(normalizeDate(d))}
@@ -853,8 +1059,8 @@ export default function BookingPage() {
       {/* CONTENT */}
       <div className="max-w-md mx-auto pb-32 pt-3 px-0">
         {isLoadingDevices ? (
-          <div className="py-10 text-center text-sm text-slate-500">
-            Đang tải danh sách máy ảnh...
+          <div className="py-10 text-center text-sm text-[#999] font-medium">
+            Đang tải thông tin máy...
           </div>
         ) : devicesError ? (
           <div className="py-10 text-center px-4">
@@ -863,17 +1069,70 @@ export default function BookingPage() {
               onClick={fetchAllDevices}
               className="px-4 py-2 rounded-xl border-2 border-pink-500 text-pink-700 text-sm font-semibold hover:bg-pink-50 active:scale-95 transition"
             >
-              Thử tải lại
+              Thử lại
             </button>
           </div>
         ) : !selectedDevice ? (
-          <div className="py-10 text-center text-sm text-slate-500">
-            Không tìm thấy máy phù hợp để đặt.
+          <div className="py-10 text-center px-4">
+            <p className="text-sm text-slate-500 mb-4">Chưa chọn máy</p>
+            <Link
+              to="/catalog"
+              className="px-6 py-3 bg-pink-500 text-white rounded-full font-semibold hover:bg-pink-600 transition-colors"
+            >
+              Chọn máy ngay
+            </Link>
           </div>
         ) : (
           <>
-            {/* Danh sách chi nhánh + gói (giống CGV hiển thị rạp + suất chiếu) */}
-            <div className="bg-white">
+            {/* Device Preview Card */}
+            <div className="mx-4 mb-4 bg-[#FFFBF5] rounded-2xl shadow-md overflow-hidden border border-[#FFE4F0]">
+              <div className="flex gap-4 p-4">
+                <div className="w-20 h-20 rounded-full border-4 border-white shadow-lg overflow-hidden bg-white shrink-0">
+                  <img
+                    src={selectedDevice.img}
+                    alt={selectedDevice.displayName}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="flex-1">
+                  <h2 className="font-black text-[#222] mb-1 uppercase tracking-wide text-sm">
+                    {selectedDevice.displayName}
+                  </h2>
+                  <div className="text-xl font-black text-[#E85C9C]">
+                    {Math.round(selectedDevice.priceOneDay / 1000)}k
+                    <span className="text-xs font-medium text-[#999] ml-1">
+                      /ngày (weekday)
+                    </span>
+                  </div>
+                  <div className="text-xs text-[#888] mt-1 font-medium">
+                    Cọc: {Math.round(selectedDevice.deposit / 1000000)}tr
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sold Out Warning */}
+            {isSoldOutAllBranches && (
+              <div className="mx-4 mb-4 p-4 bg-red-50 rounded-xl border-2 border-red-200">
+                <div className="flex items-center gap-2 text-red-700 mb-2">
+                  <ExclamationTriangleIcon className="w-5 h-5" />
+                  <span className="font-black uppercase tracking-wide text-sm">
+                    Máy đã hết trong khung giờ này
+                  </span>
+                </div>
+                <p className="text-sm text-red-600 font-medium">
+                  Bạn có thể chọn ngày khác hoặc xem các máy tương tự bên dưới.
+                </p>
+                <AlternativeDevices
+                  currentDevice={selectedDevice}
+                  allDevices={allDevices}
+                  onSelect={handleSelectAlternative}
+                />
+              </div>
+            )}
+
+            {/* Chi nhánh + gói */}
+            <div className="bg-[#FFFBF5]">
               {BRANCHES.map((branch) => (
                 <BranchPanel
                   key={branch.id}
@@ -898,8 +1157,8 @@ export default function BookingPage() {
 
             {/* Info khách hàng */}
             <div className="mt-4 px-4">
-              <div className="rounded-2xl border border-pink-100 bg-white shadow-md shadow-pink-500/5">
-                <div className="px-5 py-4 border-b border-pink-100 text-base font-semibold text-pink-800">
+              <div className="rounded-2xl border border-[#FFE4F0] bg-[#FFFBF5] shadow-md">
+                <div className="px-5 py-4 border-b border-[#FFE4F0] text-sm font-black text-[#222] uppercase tracking-wider">
                   Thông tin liên lạc
                 </div>
                 <div className="p-5 space-y-4">
@@ -907,10 +1166,7 @@ export default function BookingPage() {
                     icon={<UserIcon className="h-5 w-5" />}
                     value={customer.fullName}
                     onChange={(e) =>
-                      setCustomer((c) => ({
-                        ...c,
-                        fullName: e.target.value,
-                      }))
+                      setCustomer((c) => ({ ...c, fullName: e.target.value }))
                     }
                     placeholder="Nguyễn Thị Bông"
                     error={errors.fullName}
@@ -920,24 +1176,18 @@ export default function BookingPage() {
                     icon={<DevicePhoneMobileIcon className="h-5 w-5" />}
                     value={customer.phone}
                     onChange={(e) =>
-                      setCustomer((c) => ({
-                        ...c,
-                        phone: e.target.value,
-                      }))
+                      setCustomer((c) => ({ ...c, phone: e.target.value }))
                     }
                     placeholder="0901234567"
                     inputMode="tel"
                     error={errors.phone}
-                    helpText="SĐT hợp lệ của Việt Nam có 10 số, bắt đầu bằng 0."
+                    helpText="SĐT hợp lệ có 10 số, bắt đầu bằng 0."
                   />
                   <InputField
                     icon={<span className="font-bold text-sm">IG</span>}
                     value={customer.ig}
                     onChange={(e) =>
-                      setCustomer((c) => ({
-                        ...c,
-                        ig: e.target.value,
-                      }))
+                      setCustomer((c) => ({ ...c, ig: e.target.value }))
                     }
                     placeholder="username_ig (không bắt buộc)"
                   />
@@ -976,22 +1226,22 @@ export default function BookingPage() {
         )}
       </div>
 
-      {/* BOTTOM BAR: mini summary + nút Thanh toán */}
+      {/* BOTTOM BAR */}
       <div className="fixed bottom-0 left-0 right-0 z-40">
         <div className="mx-auto max-w-md">
-          <div className="bg-white/90 backdrop-blur-lg border-t border-pink-200 rounded-t-3xl p-4 shadow-2xl shadow-pink-300/20">
+          <div className="bg-[#FFFBF5]/95 backdrop-blur-lg border-t border-[#FFE4F0] rounded-t-3xl p-4 shadow-2xl">
             {showMiniSummary && (
               <div className="flex items-baseline justify-between mb-3 text-xs">
-                <span className="text-slate-600 truncate max-w-[65%]">
+                <span className="text-[#555] truncate max-w-[65%] font-medium">
                   {selectedDevice.displayName} •{" "}
                   {isSixHours
-                    ? "Gói 6 tiếng"
+                    ? "6 tiếng"
                     : days === 1
                     ? "1 ngày"
                     : `${days} ngày`}
                 </span>
-                <span className="font-semibold text-pink-700">
-                  {total.toLocaleString("vi-VN")} đ
+                <span className="font-black text-[#E85C9C]">
+                  {Math.round(total / 1000)}k
                 </span>
               </div>
             )}
@@ -999,22 +1249,25 @@ export default function BookingPage() {
             <button
               onClick={submitPayment}
               disabled={!canSubmit || isSubmitting}
-              className="w-full px-4 py-3.5 rounded-xl bg-pink-600 text-white font-semibold disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
+              className="w-full px-4 py-3.5 rounded-xl bg-[#222] text-[#FF9FCA] font-black uppercase tracking-wider disabled:bg-[#ccc] disabled:text-[#999] disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:bg-[#333] transition-all active:scale-95"
             >
               {isSubmitting ? (
                 "Đang xử lý..."
               ) : (
                 <>
-                  <CreditCardIcon className="h-5 w-5" />{" "}
+                  <CreditCardIcon className="h-5 w-5" />
                   {canSubmit
-                    ? `Thanh toán (${total.toLocaleString("vi-VN")} đ)`
-                    : "Chọn chi nhánh, gói thuê & điền thông tin"}
+                    ? `Thanh toán ${Math.round(total / 1000)}k`
+                    : "Chọn gói thuê & điền thông tin"}
                 </>
               )}
             </button>
           </div>
         </div>
       </div>
+
+      {/* Floating Contact */}
+      <FloatingContactButton />
     </div>
   );
 }
