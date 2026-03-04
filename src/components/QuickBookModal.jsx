@@ -5,7 +5,7 @@ import React, {
   useCallback,
   useLayoutEffect,
 } from "react";
-import { format, addDays, isWeekend } from "date-fns";
+import { format, addDays } from "date-fns";
 import vi from "date-fns/locale/vi";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -37,6 +37,7 @@ import {
   normalizePhone,
   getDefaultBranchId,
   formatPriceK,
+  formatPriceFormula,
   computeDiscountedPrice,
   computeDiscountBreakdown,
 } from "../utils/bookingHelpers";
@@ -44,18 +45,23 @@ import { calculateRentalInfo } from "../utils/pricing";
 import BookingPrefsForm, {
   computeAvailabilityRange,
   getAvailabilityRangeError,
-  getSixHourAutoReturnTime,
   formatPickupReturnSummary,
 } from "./BookingPrefsForm";
 
 export default function QuickBookModal({
   device,
+  devices = [],
   isOpen,
   onClose,
   initialPrefs,
   pricing,
 }) {
   const hasInitialPrefs = !!initialPrefs;
+  const effectiveDevices = useMemo(
+    () => (devices?.length ? devices : device ? [device] : []),
+    [devices, device]
+  );
+  const isMulti = effectiveDevices.length > 1;
 
   // Load initial state from storage or defaults
   const getInitialPrefs = useCallback(() => {
@@ -191,32 +197,49 @@ export default function QuickBookModal({
   );
 
   // Base price từ khoảng thời gian thực tế (t1, t2) - đồng bộ manage
-  const rentalInfo = useMemo(() => {
-    if (!device || !t1 || !t2) return { price: 0, chargeableDays: 0 };
-    return calculateRentalInfo([t1, t2], device);
-  }, [device, t1, t2]);
+  const rentalInfoPerDevice = useMemo(() => {
+    if (!t1 || !t2) return [];
+    return effectiveDevices.map((d) => ({
+      device: d,
+      ...calculateRentalInfo([t1, t2], d),
+    }));
+  }, [effectiveDevices, t1, t2]);
 
-  const price = rentalInfo.price;
+  const rentalInfo = rentalInfoPerDevice[0] || { price: 0, chargeableDays: 0 };
+  const price = rentalInfoPerDevice.reduce((sum, r) => sum + (r?.price || 0), 0);
   const chargeableDays = rentalInfo.chargeableDays;
 
   const discountedTotal = useMemo(() => {
+    if (isMulti) {
+      return rentalInfoPerDevice.reduce((sum, r) => {
+        const p = r?.price || 0;
+        return sum + computeDiscountedPrice(p, t1, t2);
+      }, 0);
+    }
     if (hasInitialPrefs && pricing?.discounted != null)
       return pricing.discounted;
     return computeDiscountedPrice(price, t1, t2);
-  }, [hasInitialPrefs, pricing?.discounted, price, t1, t2]);
+  }, [isMulti, hasInitialPrefs, pricing?.discounted, price, t1, t2, rentalInfoPerDevice]);
   const discountedLabel = formatPriceK(discountedTotal);
 
   // Chi tiết công thức giá để hiển thị ở bước XÁC NHẬN
   const priceBreakdown = useMemo(() => {
-    const oneDayPrice = device?.priceOneDay || 0;
+    const primaryDevice = effectiveDevices[0];
+    const oneDayPrice = primaryDevice?.priceOneDay || 0;
     const days = chargeableDays >= 1 ? chargeableDays : chargeableDays || 0.5;
     const daysForRetail = days >= 1 ? days : 1;
-    const retailPrice = Math.round(oneDayPrice * daysForRetail); // Thuê lẻ = giá 1 ngày × số ngày
+    const retailPrice = isMulti
+      ? rentalInfoPerDevice.reduce(
+          (s, r) => s + Math.round((r?.device?.priceOneDay || 0) * daysForRetail),
+          0
+        )
+      : Math.round(oneDayPrice * daysForRetail);
     const packagePrice = price;
     const savingVsRetail = Math.max(0, retailPrice - packagePrice);
 
     let base = null;
     if (
+      !isMulti &&
       hasInitialPrefs &&
       pricing?.original != null &&
       pricing?.discounted != null
@@ -241,13 +264,15 @@ export default function QuickBookModal({
       oneDayPrice,
     };
   }, [
+    isMulti,
     hasInitialPrefs,
     pricing?.original,
     pricing?.discounted,
     price,
     t1,
     t2,
-    device?.priceOneDay,
+    effectiveDevices,
+    rentalInfoPerDevice,
     chargeableDays,
   ]);
 
@@ -259,35 +284,48 @@ export default function QuickBookModal({
 
   // Check availability
   const checkAvailability = useCallback(async () => {
-    if (!device || !t1 || !t2 || timeSelectionError) return;
+    if (effectiveDevices.length === 0 || !t1 || !t2 || timeSelectionError) return;
     setIsCheckingAvailability(true);
     try {
-      const params = {
-        startDate: t1.toISOString(),
-        endDate: t2.toISOString(),
-        branchId: selectedBranch,
-      };
-      const resp = await api.get("v1/devices/booking", { params });
-      const data = resp.data || [];
-      const busy = data.some(
-        (d) => d.id === device.id && d.bookingDtos?.length > 0,
-      );
-      setIsAvailable(!busy);
+      if (isMulti) {
+        const modelResp = await api.get("v1/devices/model-availability", {
+          params: { from: t1.toISOString(), to: t2.toISOString() },
+        });
+        const apiModel = modelResp.data || {};
+        const allAvailable = effectiveDevices.every(
+          (d) => apiModel[d.modelKey] === true
+        );
+        setIsAvailable(allAvailable);
+      } else {
+        const device = effectiveDevices[0];
+        const resp = await api.get("v1/devices/booking", {
+          params: {
+            startDate: t1.toISOString(),
+            endDate: t2.toISOString(),
+            branchId: selectedBranch,
+          },
+        });
+        const data = resp.data || [];
+        const busy = data.some(
+          (d) => d.id === device.id && d.bookingDtos?.length > 0
+        );
+        setIsAvailable(!busy);
+      }
     } catch (err) {
       console.error("Availability check failed:", err);
       setIsAvailable(true);
     } finally {
       setIsCheckingAvailability(false);
     }
-  }, [device, t1, t2, selectedBranch, timeSelectionError]);
+  }, [effectiveDevices, isMulti, t1, t2, selectedBranch, timeSelectionError]);
 
   useEffect(() => {
-    if (isOpen && device) {
+    if (isOpen && effectiveDevices.length > 0) {
       checkAvailability();
     }
   }, [
     isOpen,
-    device,
+    effectiveDevices,
     selectedDate,
     selectedDuration,
     selectedBranch,
@@ -303,7 +341,7 @@ export default function QuickBookModal({
 
   // Submit booking
   const handleSubmit = async () => {
-    if (!device || !t1 || !t2 || !isCustomerValid) return;
+    if (effectiveDevices.length === 0 || !t1 || !t2 || !isCustomerValid) return;
 
     setIsSubmitting(true);
     setError("");
@@ -322,35 +360,69 @@ export default function QuickBookModal({
 
       const branchLabel =
         BRANCHES.find((b) => b.id === selectedBranch)?.label || selectedBranch;
-
-      // Payload đồng bộ manage - gọn để tránh vượt giới hạn DB
       const fmt = (d) => (d ? format(d, "yyyy-MM-dd'T'HH:mm:ss") : null);
       const note = `${customer.fullName} ${phone} ${branchLabel}`.slice(0, 80);
-      const bookingRequest = {
-        customerId,
-        deviceId: device.id,
-        bookingFrom: fmt(t1),
-        bookingTo: fmt(t2),
-        total: discountedTotal,
-        note,
-        dayOfRent: chargeableDays,
-        originalPrice: price,
-        noteVoucher: "NONE",
-      };
 
-      const payload = {
-        amount: discountedTotal,
-        description: `Thue ${(device.name || device.displayName || "").slice(0, 15)}`,
-        bookingRequest,
-        returnSuccessUrl: `${window.location.origin}/payment-status`,
-        returnFailUrl: `${window.location.origin}/payment-status`,
-      };
+      if (isMulti) {
+        const bookingRequests = rentalInfoPerDevice.map((r) => {
+          const dev = r.device;
+          const devPrice = r.price || 0;
+          const devDiscounted = computeDiscountedPrice(devPrice, t1, t2);
+          return {
+            customerId,
+            deviceId: dev.id,
+            bookingFrom: fmt(t1),
+            bookingTo: fmt(t2),
+            total: Math.round(devDiscounted),
+            note,
+            dayOfRent: chargeableDays,
+            originalPrice: devPrice,
+            noteVoucher: "NONE",
+          };
+        });
 
-      const response = await api.post("/create-payment-link", payload);
-      if (response.data?.checkoutUrl) {
-        window.location.href = response.data.checkoutUrl;
+        const payload = {
+          amount: Math.round(discountedTotal),
+          description: `Thue ${effectiveDevices.length} may`,
+          bookingRequests,
+          returnSuccessUrl: `${window.location.origin}/payment-status`,
+          returnFailUrl: `${window.location.origin}/payment-status`,
+        };
+
+        const response = await api.post("/create-payment-link", payload);
+        if (response.data?.checkoutUrl) {
+          window.location.href = response.data.checkoutUrl;
+        } else {
+          throw new Error("Không nhận được link thanh toán");
+        }
       } else {
-        throw new Error("Không nhận được link thanh toán");
+        const dev = effectiveDevices[0];
+        const bookingRequest = {
+          customerId,
+          deviceId: dev.id,
+          bookingFrom: fmt(t1),
+          bookingTo: fmt(t2),
+          total: Math.round(discountedTotal),
+          note,
+          dayOfRent: chargeableDays,
+          originalPrice: price,
+          noteVoucher: "NONE",
+        };
+
+        const payload = {
+          amount: Math.round(discountedTotal),
+          description: `Thue ${(dev.name || dev.displayName || "").slice(0, 15)}`,
+          bookingRequest,
+          returnSuccessUrl: `${window.location.origin}/payment-status`,
+          returnFailUrl: `${window.location.origin}/payment-status`,
+        };
+
+        const response = await api.post("/create-payment-link", payload);
+        if (response.data?.checkoutUrl) {
+          window.location.href = response.data.checkoutUrl;
+        } else {
+          throw new Error("Không nhận được link thanh toán");
+        }
       }
     } catch (err) {
       console.error("Quick book failed:", err);
@@ -360,7 +432,7 @@ export default function QuickBookModal({
     }
   };
 
-  if (!isOpen || !device) return null;
+  if (!isOpen || effectiveDevices.length === 0) return null;
 
   return (
     <AnimatePresence>
@@ -382,16 +454,18 @@ export default function QuickBookModal({
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-[#FFE4F0]">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden bg-white">
+              <div className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden bg-white shrink-0">
                 <img
-                  src={device.img || device.images?.[0]}
-                  alt={device.displayName || device.name}
+                  src={effectiveDevices[0]?.img || effectiveDevices[0]?.images?.[0]}
+                  alt={effectiveDevices[0]?.displayName || effectiveDevices[0]?.name}
                   className="w-full h-full object-cover"
                 />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="font-black text-[#222] text-sm line-clamp-1 uppercase">
-                  {device.displayName || device.name}
+                  {isMulti
+                    ? `${effectiveDevices.length} máy`
+                    : (effectiveDevices[0]?.displayName || effectiveDevices[0]?.name)}
                 </div>
                 <div className="text-xs font-bold text-[#E85C9C]">
                   {discountedLabel}{" "}
@@ -539,12 +613,46 @@ export default function QuickBookModal({
             {step === 3 && (
               <div className="space-y-3">
                 <div className="p-4 bg-gradient-to-r from-[#FFE4F0] to-[#FFF5F8] rounded-xl border border-[#FF9FCA]">
-                  <div className="text-xs text-[#E85C9C] font-black uppercase tracking-wider mb-1">
-                    Thiết bị
+                  <div className="text-xs text-[#E85C9C] font-black uppercase tracking-wider mb-2">
+                    Thiết bị {isMulti && `(${effectiveDevices.length} máy)`}
                   </div>
-                  <div className="font-black text-[#222] uppercase">
-                    {device.displayName || device.name}
-                  </div>
+                  {isMulti ? (
+                    <div className="space-y-3">
+                      {rentalInfoPerDevice.map((r) => {
+                        const dev = r.device;
+                        const disc = computeDiscountedPrice(r.price || 0, t1, t2);
+                        const formula = formatPriceFormula(dev);
+                        return (
+                          <div key={dev.id} className="border-b border-[#FFE4F0] pb-2 last:border-0 last:pb-0">
+                            <div className="flex justify-between items-start text-sm">
+                              <span className="font-bold text-[#222]">
+                                {dev.displayName || dev.name}
+                              </span>
+                              <span className="font-black text-[#E85C9C] shrink-0 ml-2">
+                                {formatPriceK(disc)}
+                              </span>
+                            </div>
+                            {formula && (
+                              <p className="text-[10px] text-[#777] font-medium mt-1 leading-tight">
+                                {formula}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="font-black text-[#222] uppercase">
+                        {effectiveDevices[0]?.displayName || effectiveDevices[0]?.name}
+                      </div>
+                      {formatPriceFormula(effectiveDevices[0]) && (
+                        <p className="text-[10px] text-[#777] font-medium mt-1 leading-tight">
+                          {formatPriceFormula(effectiveDevices[0])}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="p-3 bg-white rounded-xl border border-[#eee]">
                   <div className="text-xs text-[#999] font-bold mb-1">

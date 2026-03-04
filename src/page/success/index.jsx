@@ -51,7 +51,10 @@ function SuccessCard({ details }) {
       return new Date(dateStr).toISOString().replace(/-|:|\.\d+/g, "");
     };
 
-    const title = `Thuê máy ảnh: ${details.device.name}`;
+    const deviceLabel = details.devices?.length
+      ? details.devices.map((d) => d.name).join(", ")
+      : details.device?.name || "";
+    const title = `Thuê máy ảnh: ${deviceLabel}`;
     const startTime = formatGCALDate(details.bookingFrom);
     const endTime = formatGCALDate(details.bookingTo);
     const description = `Cảm ơn bạn đã đặt lịch thuê máy ảnh!\n\nMã đơn hàng: ${details.orderCode}\nTổng tiền: ${details.total.toLocaleString("vi-VN")} đ\n\nVui lòng có mặt đúng giờ để nhận máy.\nLiên hệ: 0901355198`;
@@ -63,9 +66,12 @@ function SuccessCard({ details }) {
   };
 
   const handleShare = async () => {
+    const deviceLabel = details.devices?.length
+      ? details.devices.map((d) => d.name).join(", ")
+      : details.device?.name || "";
     const shareData = {
       title: "Thuê máy ảnh tại Fao Sài Gòn",
-      text: `Mình vừa đặt thuê ${details.device.name} tại Fao Sài Gòn! 📸`,
+      text: `Mình vừa đặt thuê ${deviceLabel} tại Fao Sài Gòn! 📸`,
       url: window.location.origin,
     };
 
@@ -94,11 +100,14 @@ function SuccessCard({ details }) {
 
   const getOrderSummary = () => {
     if (!details) return "";
+    const deviceNames = details.devices?.length
+      ? details.devices.map((d) => d.name).join(", ")
+      : details.device?.name || "";
     return [
       `📋 TÓM TẮT ĐƠN HÀNG`,
       ``,
       `Mã đơn: #${details.orderCode}`,
-      `Thiết bị: ${details.device.name}`,
+      `Thiết bị: ${deviceNames}`,
       `Ngày nhận: ${format(new Date(details.bookingFrom), "HH:mm, EEEE, dd/MM/yyyy", { locale: vi })}`,
       `Ngày trả: ${format(new Date(details.bookingTo), "HH:mm, EEEE, dd/MM/yyyy", { locale: vi })}`,
       `Tổng tiền: ${details.total.toLocaleString("vi-VN")} đ`,
@@ -180,17 +189,29 @@ function SuccessCard({ details }) {
           <h3 className="font-semibold text-pink-900 border-b border-pink-200 pb-2 mb-2">
             Chi tiết đơn hàng
           </h3>
-          <div className="flex items-center gap-4">
-            <img
-              src={details.device.img}
-              alt={details.device.name}
-              className="w-16 h-16 rounded-lg object-cover"
-            />
-            <div>
-              <p className="font-semibold text-pink-800">{details.device.name}</p>
-              <p className="text-sm text-slate-500">Mã đơn: {details.orderCode}</p>
+          {details.devices && details.devices.length > 1 ? (
+            <div className="space-y-2">
+              {details.devices.map((d, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <img src={d.img} alt={d.name} className="w-12 h-12 rounded-lg object-cover" />
+                  <p className="font-semibold text-pink-800">{d.name}</p>
+                </div>
+              ))}
+              <p className="text-sm text-slate-500 pt-1">Mã đơn: {details.orderCode}</p>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-4">
+              <img
+                src={details.device.img}
+                alt={details.device.name}
+                className="w-16 h-16 rounded-lg object-cover"
+              />
+              <div>
+                <p className="font-semibold text-pink-800">{details.device.name}</p>
+                <p className="text-sm text-slate-500">Mã đơn: {details.orderCode}</p>
+              </div>
+            </div>
+          )}
           <div className="text-sm space-y-1 pt-2">
             <p>
               <b>Nhận máy:</b>{" "}
@@ -401,7 +422,7 @@ function FailureCard() {
 
       <div className="mt-6 space-y-3">
         <Link
-          to="/booking"
+          to="/catalog"
           className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-pink-600 text-white font-semibold shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
         >
           <ArrowUturnLeftIcon className="w-5 h-5" />
@@ -445,26 +466,68 @@ export default function PaymentStatusPage() {
 
       if (code === "00" && orderCode && paymentStatus === "PAID") {
         try {
-          const bookingRes = await api.get(`/v1/bookings/booking/${orderCode}`);
-          const bookingData = bookingRes.data;
+          const pendingRes = await api.get(`/v1/bookings/booking/${orderCode}`);
+          const pending = pendingRes.data;
 
-          const payload = JSON.parse(bookingData.bookingPayloadJson);
+          // Nếu đã xử lý xong (DONE) và có orderIdNew → fetch theo orderIdNew
+          if (pending.orderIdNew && pending.status === "DONE") {
+            const bookingsRes = await api.get(`/v1/bookings/${pending.orderIdNew}`);
+            const bookings = bookingsRes.data || [];
+            if (bookings.length > 0) {
+              const first = bookings[0];
+              const totalSum = bookings.reduce((s, b) => s + (b.total || 0), 0);
+              const devices = await Promise.all(
+                bookings.map(async (b) => {
+                  try {
+                    const devRes = await api.get(`/v1/devices/${b.device?.id}`);
+                    return {
+                      name: devRes.data?.name || b.device?.name || "Thiết bị",
+                      img: devRes.data?.images?.[0] || FALLBACK_IMG,
+                    };
+                  } catch {
+                    return {
+                      name: b.device?.name || "Thiết bị",
+                      img: FALLBACK_IMG,
+                    };
+                  }
+                })
+              );
+              setBookingDetails({
+                orderCode: pending.orderCode,
+                bookingFrom: first.bookingFrom,
+                bookingTo: first.bookingTo,
+                total: totalSum,
+                device: devices[0],
+                devices: devices.length > 1 ? devices : null,
+              });
+              setStatus("success");
+              return;
+            }
+          }
 
-          const deviceRes = await api.get(`/v1/devices/${payload.deviceId}`);
+          // Fallback: parse payload (đơn lẻ hoặc webhook chưa chạy)
+          const payload = JSON.parse(pending.bookingPayloadJson || "{}");
+          const items = Array.isArray(payload) ? payload : [payload];
+          const firstItem = items[0];
+          if (!firstItem?.deviceId) {
+            setStatus("failed");
+            return;
+          }
+
+          const deviceRes = await api.get(`/v1/devices/${firstItem.deviceId}`);
           const deviceData = deviceRes.data;
+          const totalSum = items.reduce((s, i) => s + (i.total || 0), 0);
 
-          const finalDetails = {
-            orderCode: bookingData.orderCode,
-            bookingFrom: new Date(payload.bookingFrom),
-            bookingTo: new Date(payload.bookingTo),
-            total: payload.total,
+          setBookingDetails({
+            orderCode: pending.orderCode,
+            bookingFrom: new Date(firstItem.bookingFrom),
+            bookingTo: new Date(firstItem.bookingTo),
+            total: totalSum,
             device: {
-              name: deviceData.name,
-              img: deviceData.images?.[0] || FALLBACK_IMG,
+              name: deviceData?.name || "Thiết bị",
+              img: deviceData?.images?.[0] || FALLBACK_IMG,
             },
-          };
-
-          setBookingDetails(finalDetails);
+          });
           setStatus("success");
         } catch (error) {
           console.error("Lỗi khi lấy chi tiết đơn hàng:", error);

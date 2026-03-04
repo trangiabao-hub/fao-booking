@@ -40,6 +40,21 @@ export function formatPriceK(price) {
   return `${Math.round(price / 1000)}k`;
 }
 
+/** Công thức tính giá: 3 ngày 300k + ngày tiếp theo 100k */
+export function formatPriceFormula(device) {
+  if (!device) return "";
+  const p1 = device.priceOneDay || 0;
+  const p2 = device.priceTwoDay ?? p1 * 2;
+  const p3 = device.priceThreeDay ?? p2 + (device.priceNextDay || p1);
+  const pNext = device.priceNextDay || p1;
+
+  if (p3 > 0) return `3 ngày ${formatPriceK(p3)} + ngày tiếp ${formatPriceK(pNext)}`;
+  if (p2 > 0 && p2 !== p1 * 2) return `2 ngày ${formatPriceK(p2)} + ngày tiếp ${formatPriceK(pNext)}`;
+  if (p1 > 0) return `1 ngày ${formatPriceK(p1)}`;
+  if (device.priceSixHours > 0) return `6h ${formatPriceK(device.priceSixHours)}`;
+  return "";
+}
+
 export function getDurationDays(durationId) {
   switch (durationId) {
     case "ONE_DAY":

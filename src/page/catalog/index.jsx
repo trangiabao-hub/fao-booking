@@ -14,6 +14,7 @@ import {
   Search,
   X,
   SlidersHorizontal,
+  Check,
 } from "lucide-react";
 import api from "../../config/axios";
 import FloatingContactButton from "../../components/FloatingContactButton";
@@ -26,6 +27,7 @@ import BookingPrefsForm, {
   getSixHourAutoReturnTime,
 } from "../../components/BookingPrefsForm";
 import { computeDiscountBreakdown, calculateRentalInfo } from "../../utils/pricing";
+import { formatPriceFormula } from "../../utils/bookingHelpers";
 import { saveBookingPrefs } from "../../utils/storage";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -235,11 +237,12 @@ const cardVariants = {
 };
 
 // Chic Card Component (matching Menu style)
-function ChicCard({ device, pricing, onQuickBook }) {
+function ChicCard({ device, pricing, onQuickBook, isSelected, onToggleSelect }) {
   const originalLabel = formatPriceK(pricing?.original || 0);
   const discountedLabel = formatPriceK(pricing?.discounted || 0);
   const savingAmount = (pricing?.original || 0) - (pricing?.discounted || 0);
   const savingLabel = savingAmount > 0 ? formatPriceK(savingAmount) : null;
+  const priceFormula = formatPriceFormula(device);
   const isHot = device.bookingCount > 5 || device.priceOneDay >= 400000;
   const isAvailable = device.isAvailable !== false;
 
@@ -247,6 +250,12 @@ function ChicCard({ device, pricing, onQuickBook }) {
     e.stopPropagation();
     if (!isAvailable) return;
     onQuickBook(device);
+  };
+
+  const handleToggleSelect = (e) => {
+    e.stopPropagation();
+    if (!isAvailable) return;
+    onToggleSelect?.(device);
   };
 
   return (
@@ -282,6 +291,25 @@ function ChicCard({ device, pricing, onQuickBook }) {
 
         {/* IMAGE - full bleed top, fixed height đồng bộ */}
         <div className="w-full h-36 sm:h-40 relative shrink-0 bg-[#FFE4F0]/50 overflow-hidden">
+          {/* Checkbox chọn nhiều món - chỉ hiện khi máy available */}
+          {isAvailable && onToggleSelect && (
+            <button
+              type="button"
+              onClick={handleToggleSelect}
+              className={`absolute top-2 left-2 z-20 w-8 h-8 rounded-lg flex items-center justify-center border-2 transition-all shadow-md ${
+                isSelected
+                  ? "bg-[#E85C9C] border-[#E85C9C] text-white"
+                  : "bg-white/90 border-[#ddd] text-[#999] hover:border-[#E85C9C] hover:text-[#E85C9C]"
+              }`}
+              aria-label={isSelected ? "Bỏ chọn" : "Thêm vào đơn"}
+            >
+              {isSelected ? (
+                <Check size={18} strokeWidth={3} />
+              ) : (
+                <span className="text-xs font-bold">+</span>
+              )}
+            </button>
+          )}
           <img
             src={device.img || FALLBACK_IMG}
             alt={device.displayName}
@@ -328,6 +356,12 @@ function ChicCard({ device, pricing, onQuickBook }) {
               </span>
             </div>
           </div>
+
+          {priceFormula && (
+            <p className="text-[10px] text-[#777] font-medium mt-1.5 leading-tight">
+              {priceFormula}
+            </p>
+          )}
 
           <button
             onClick={handleQuickBook}
@@ -629,17 +663,41 @@ export default function DeviceCatalogPage() {
 
   // Quick Book Modal State
   const [quickBookDevice, setQuickBookDevice] = useState(null);
+  const [quickBookDevices, setQuickBookDevices] = useState([]); // Đơn nhiều món
   const [showQuickBookModal, setShowQuickBookModal] = useState(false);
+
+  // Chọn nhiều món - Set of device ids đã chọn
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState(new Set());
 
   const handleQuickBook = (device) => {
     if (device?.isAvailable === false) return;
     setQuickBookDevice(device);
+    setQuickBookDevices([device]);
     setShowQuickBookModal(true);
+  };
+
+  const handleQuickBookMulti = () => {
+    const selected = filteredDevices.filter((d) => selectedDeviceIds.has(d.id));
+    if (selected.length === 0) return;
+    setQuickBookDevice(null);
+    setQuickBookDevices(selected);
+    setShowQuickBookModal(true);
+  };
+
+  const handleToggleSelect = (device) => {
+    setSelectedDeviceIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(device.id)) next.delete(device.id);
+      else next.add(device.id);
+      return next;
+    });
   };
 
   const handleCloseQuickBook = () => {
     setShowQuickBookModal(false);
     setQuickBookDevice(null);
+    setQuickBookDevices([]);
+    setSelectedDeviceIds(new Set());
   };
 
   // Auto-save prefs
@@ -1078,6 +1136,8 @@ export default function DeviceCatalogPage() {
                   device={device}
                   pricing={getDevicePricing(device)}
                   onQuickBook={handleQuickBook}
+                  isSelected={selectedDeviceIds.has(device.id)}
+                  onToggleSelect={handleToggleSelect}
                 />
               ))}
             </motion.div>
@@ -1203,13 +1263,46 @@ export default function DeviceCatalogPage() {
         error={availabilityError}
       />
 
+      {/* Floating bar - Đặt nhiều món */}
+      <AnimatePresence>
+        {selectedDeviceIds.size > 0 && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-20 left-4 right-4 z-40 max-w-2xl mx-auto"
+          >
+            <div className="bg-[#222] text-white rounded-xl shadow-xl border-2 border-[#E85C9C] p-4 flex items-center justify-between gap-4">
+              <span className="font-bold text-[#FF9FCA] uppercase tracking-wide">
+                Đã chọn {selectedDeviceIds.size} món
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedDeviceIds(new Set())}
+                  className="px-4 py-2 rounded-lg border border-[#FF9FCA] text-[#FF9FCA] font-bold text-sm uppercase hover:bg-[#FF9FCA]/20 transition-colors"
+                >
+                  Xóa
+                </button>
+                <button
+                  onClick={handleQuickBookMulti}
+                  className="px-6 py-2 rounded-lg bg-[#E85C9C] text-white font-black text-sm uppercase hover:opacity-90 transition-opacity"
+                >
+                  Đặt tất cả
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Quick Book Modal - nhảy step 2 khi có prefs, cho back về step 1 */}
       <QuickBookModal
-        device={quickBookDevice}
+        device={quickBookDevices.length === 1 ? quickBookDevices[0] : null}
+        devices={quickBookDevices}
         isOpen={showQuickBookModal}
         onClose={handleCloseQuickBook}
         initialPrefs={
-          quickBookDevice
+          quickBookDevices.length > 0
             ? {
                 step: availabilityConfirmed ? 2 : 1,
                 branchId: availabilityPrefs.branchId,
@@ -1224,7 +1317,9 @@ export default function DeviceCatalogPage() {
             : null
         }
         pricing={
-          quickBookDevice ? getDevicePricing(quickBookDevice) : null
+          quickBookDevices.length === 1
+            ? getDevicePricing(quickBookDevices[0])
+            : null
         }
       />
 
