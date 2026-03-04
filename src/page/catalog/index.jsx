@@ -202,6 +202,7 @@ const PRICE_RANGES = [
 // Category tabs (matching Menu style)
 const CATEGORIES = [
   { key: "all", label: "TẤT CẢ" },
+  { key: "available", label: "MÁY TRỐNG" },
   { key: "fuji", label: "FUJI" },
   { key: "canon", label: "CANON" },
   { key: "sony", label: "SONY" },
@@ -289,18 +290,18 @@ function ChicCard({ device, pricing, onQuickBook }) {
             decoding="async"
           />
           {!isAvailable && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 backdrop-blur-[1px]">
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40">
               <div
-                className="flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20"
+                className="flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg bg-black/50 border border-red-300/50"
                 style={{
                   transform: "rotate(-12deg)",
-                  boxShadow: "0 2px 12px rgba(0,0,0,0.25)",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
                 }}
               >
-                <span className="font-black text-white text-sm uppercase tracking-tight text-center max-w-[120px] line-clamp-2 drop-shadow">
+                <span className="font-bold text-white text-xs md:text-sm uppercase tracking-tight text-center max-w-[110px] line-clamp-2" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
                   {device.displayName}
                 </span>
-                <span className="text-white/95 text-[9px] font-bold uppercase tracking-widest">
+                <span className="text-red-500 font-bold text-[9px] uppercase tracking-wider" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>
                   Đã hết chỗ
                 </span>
               </div>
@@ -694,9 +695,13 @@ export default function DeviceCatalogPage() {
 
     setAvailabilityError("");
     setAvailabilityLoading(true);
+    const from = formatDateTimeLocalForAPI(fromDateTime);
+    const to = formatDateTimeLocalForAPI(toDateTime);
+    if (!from || !to) {
+      setAvailabilityLoading(false);
+      return;
+    }
     try {
-      const from = formatDateTimeLocalForAPI(fromDateTime);
-      const to = formatDateTimeLocalForAPI(toDateTime);
       const [bookingResp, modelResp] = await Promise.all([
         api.get("v1/devices/booking", {
           params: {
@@ -753,10 +758,11 @@ export default function DeviceCatalogPage() {
         0,
       );
       // modelAvailability (từ API) = nguồn chính xác theo khoảng thời gian user chọn
+      // Chỉ coi available khi API trả về true; undefined/thiếu key = false (an toàn)
       const modelAvailable = modelAvailability[modelKey];
       const hasModelAvailability = availabilityConfirmed && Object.keys(modelAvailability).length > 0;
       const isAvailable = hasModelAvailability
-        ? modelAvailable !== false
+        ? modelAvailable === true
         : totalAvailable > 0;
 
       const rep = group.find((g) => g.isAvailable) || group[0];
@@ -830,7 +836,9 @@ export default function DeviceCatalogPage() {
     }
 
     // Filter by category
-    if (selectedCategory !== "all") {
+    if (selectedCategory === "available") {
+      filtered = filtered.filter((d) => d.isAvailable);
+    } else if (selectedCategory !== "all") {
       filtered = filtered.filter((d) => d.brand === selectedCategory);
     }
 
@@ -842,8 +850,12 @@ export default function DeviceCatalogPage() {
       );
     }
 
-    // Sort by orderNumber (ascending)
-    filtered.sort((a, b) => (a.orderNumber ?? 999999) - (b.orderNumber ?? 999999));
+    // Sort: máy trống lên trên, máy không trống xuống dưới; trong mỗi nhóm sort theo orderNumber
+    filtered.sort((a, b) => {
+      const availDiff = (b.isAvailable ? 1 : 0) - (a.isAvailable ? 1 : 0);
+      if (availDiff !== 0) return availDiff;
+      return (a.orderNumber ?? 999999) - (b.orderNumber ?? 999999);
+    });
 
     return filtered;
   }, [processedDevices, searchQuery, selectedCategory, priceRange]);
