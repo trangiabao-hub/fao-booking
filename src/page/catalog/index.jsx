@@ -252,15 +252,10 @@ function ChicCard({ device, pricing, onQuickBook }) {
     <motion.div
       variants={cardVariants}
       className={`relative group select-none h-full z-10 ${
-        isAvailable ? "" : "cursor-not-allowed opacity-60"
+        isAvailable ? "" : "cursor-not-allowed"
       }`}
     >
       <div className="bg-[#FFFBF5] rounded-xl overflow-hidden relative border-2 border-transparent shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-all duration-200 flex flex-col h-full touch-manipulation">
-        {!isAvailable && (
-          <div className="absolute top-2 left-2 z-30 bg-red-100 text-red-700 text-[9px] font-black px-2 py-1 rounded-full uppercase">
-            Hết chỗ
-          </div>
-        )}
         {/* PROMO BADGE - top right */}
         <div className="absolute top-0 right-0 bg-[#1a1a1a] text-white px-3 py-1.5 rounded-bl-xl z-30 shadow-md border-l-2 border-b-2 border-amber-400/90">
           <span className="text-[10px] md:text-[11px] font-black leading-none block">
@@ -293,6 +288,24 @@ function ChicCard({ device, pricing, onQuickBook }) {
             loading="lazy"
             decoding="async"
           />
+          {!isAvailable && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 backdrop-blur-[1px]">
+              <div
+                className="flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg bg-white/10 border border-white/20"
+                style={{
+                  transform: "rotate(-12deg)",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.25)",
+                }}
+              >
+                <span className="font-black text-white text-sm uppercase tracking-tight text-center max-w-[120px] line-clamp-2 drop-shadow">
+                  {device.displayName}
+                </span>
+                <span className="text-white/95 text-[9px] font-bold uppercase tracking-widest">
+                  Đã hết chỗ
+                </span>
+              </div>
+            </div>
+          )}
           <div className="absolute bottom-1.5 right-1.5 text-amber-400/90 drop-shadow-md">
             <Star size={16} fill="currentColor" />
           </div>
@@ -318,9 +331,13 @@ function ChicCard({ device, pricing, onQuickBook }) {
           <button
             onClick={handleQuickBook}
             disabled={!isAvailable}
-            className="w-full mt-3 py-2.5 bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white text-[11px] font-bold rounded-lg hover:opacity-90 active:scale-[0.98] shadow-md uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className={`w-full mt-3 py-2.5 text-[11px] font-bold rounded-lg uppercase tracking-wider transition-all ${
+              isAvailable
+                ? "bg-[#E85C9C] text-white hover:opacity-90 active:scale-[0.98] shadow-md"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+            }`}
           >
-            🚀 Đặt ngay
+            Đặt ngay
           </button>
         </div>
       </div>
@@ -659,6 +676,8 @@ export default function DeviceCatalogPage() {
     fetchDevices();
   }, [fetchDevices]);
 
+  const [modelAvailability, setModelAvailability] = useState({});
+
   const fetchAvailability = useCallback(async () => {
     if (!availabilityConfirmed) return;
     const { fromDateTime, toDateTime } =
@@ -676,13 +695,19 @@ export default function DeviceCatalogPage() {
     setAvailabilityError("");
     setAvailabilityLoading(true);
     try {
-      const params = {
-        startDate: formatDateTimeLocalForAPI(fromDateTime),
-        endDate: formatDateTimeLocalForAPI(toDateTime),
-        branchId: availabilityPrefs.branchId,
-      };
-      const resp = await api.get("v1/devices/booking", { params });
-      const data = resp.data || [];
+      const from = formatDateTimeLocalForAPI(fromDateTime);
+      const to = formatDateTimeLocalForAPI(toDateTime);
+      const [bookingResp, modelResp] = await Promise.all([
+        api.get("v1/devices/booking", {
+          params: {
+            startDate: from?.slice(0, 10),
+            endDate: to?.slice(0, 10),
+            branchId: availabilityPrefs.branchId,
+          },
+        }),
+        api.get("v1/devices/model-availability", { params: { from, to } }),
+      ]);
+      const data = bookingResp.data || [];
       const busySet = new Set();
       data.forEach((d) => {
         if (Array.isArray(d.bookingDtos) && d.bookingDtos.length > 0) {
@@ -690,9 +715,11 @@ export default function DeviceCatalogPage() {
         }
       });
       setBusyDeviceIds(Array.from(busySet));
+      setModelAvailability(modelResp.data || {});
     } catch (err) {
       console.error("Failed to fetch availability:", err);
       setBusyDeviceIds([]);
+      setModelAvailability({});
     } finally {
       setAvailabilityLoading(false);
     }
@@ -703,6 +730,7 @@ export default function DeviceCatalogPage() {
   }, [fetchAvailability]);
 
   // Process devices: group by modelKey, keep 1 representative per model
+  // isAvailable = theo modelAvailability (model-level) nếu đã confirm, else true
   const processedDevices = useMemo(() => {
     if (!devices || devices.length === 0) return [];
     const busySet = new Set(busyDeviceIds);
@@ -724,7 +752,13 @@ export default function DeviceCatalogPage() {
         (sum, g) => sum + (g.device.bookingDtos?.length || 0),
         0,
       );
-      // Pick representative: first available, else first
+      // modelAvailability (từ API) = nguồn chính xác theo khoảng thời gian user chọn
+      const modelAvailable = modelAvailability[modelKey];
+      const hasModelAvailability = availabilityConfirmed && Object.keys(modelAvailability).length > 0;
+      const isAvailable = hasModelAvailability
+        ? modelAvailable !== false
+        : totalAvailable > 0;
+
       const rep = group.find((g) => g.isAvailable) || group[0];
       const { device } = rep;
       const normalizedName = normalizeDeviceName(device.name);
@@ -742,12 +776,12 @@ export default function DeviceCatalogPage() {
         unitCount: group.length,
         bookingCount: totalBookingCount,
         availableCount: totalAvailable,
-        isAvailable: totalAvailable > 0,
+        isAvailable,
       });
     }
 
     return result;
-  }, [devices, busyDeviceIds]);
+  }, [devices, busyDeviceIds, modelAvailability, availabilityConfirmed]);
 
   const pricingContext = useMemo(() => {
     const { fromDateTime: from, toDateTime: to } =
