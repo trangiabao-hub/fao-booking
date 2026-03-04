@@ -82,10 +82,14 @@ function SuccessCard({ details }) {
     const deviceLabel = details.devices?.length
       ? details.devices.map((d) => d.name).join(", ")
       : details.device?.name || "";
+    const orderUrl = details.orderIdNew
+      ? `${window.location.origin}/order/${details.orderIdNew}`
+      : window.location.origin;
+    const shareText = `Mình vừa đặt thuê ${deviceLabel} tại Fao Sài Gòn! 📸\n${orderUrl}`;
     const shareData = {
       title: "Thuê máy ảnh tại Fao Sài Gòn",
-      text: `Mình vừa đặt thuê ${deviceLabel} tại Fao Sài Gòn! 📸`,
-      url: window.location.origin,
+      text: shareText,
+      url: orderUrl,
     };
 
     if (navigator.share) {
@@ -95,8 +99,8 @@ function SuccessCard({ details }) {
         console.log("Share cancelled");
       }
     } else {
-      // Fallback: copy to clipboard
-      navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
+      // Fallback: copy to clipboard (text + link để dán vào Messenger/Zalo)
+      navigator.clipboard.writeText(shareText);
       setShowShare(true);
       setTimeout(() => setShowShare(false), 2000);
     }
