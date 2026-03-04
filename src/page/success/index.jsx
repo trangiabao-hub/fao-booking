@@ -1,7 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { format } from "date-fns";
-import vi from "date-fns/locale/vi";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
+import "dayjs/locale/vi";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.locale("vi");
+
+/** Format datetime theo múi VN - đồng bộ manage */
+function formatVNDateTime(dateStr) {
+  if (!dateStr) return "";
+  return dayjs(dateStr).tz("Asia/Ho_Chi_Minh").format("HH:mm, dddd, DD/MM/YYYY");
+}
 import { motion } from "framer-motion";
 import {
   CheckCircleIcon,
@@ -15,6 +27,7 @@ import {
   CameraIcon,
   ChatBubbleLeftRightIcon,
   ClipboardDocumentIcon,
+  LinkIcon,
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
 import { MESSENGER_LINK } from "../../data/contactConfig";
@@ -108,8 +121,8 @@ function SuccessCard({ details }) {
       ``,
       `Mã đơn: #${details.orderCode}`,
       `Thiết bị: ${deviceNames}`,
-      `Ngày nhận: ${format(new Date(details.bookingFrom), "HH:mm, EEEE, dd/MM/yyyy", { locale: vi })}`,
-      `Ngày trả: ${format(new Date(details.bookingTo), "HH:mm, EEEE, dd/MM/yyyy", { locale: vi })}`,
+      `Ngày nhận: ${formatVNDateTime(details.bookingFrom)}`,
+      `Ngày trả: ${formatVNDateTime(details.bookingTo)}`,
       `Tổng tiền: ${details.total.toLocaleString("vi-VN")} đ`,
       ``,
       `Chào shop, mình vừa đặt đơn trên và đã thanh toán thành công. Mong shop xác nhận ạ!`,
@@ -215,11 +228,11 @@ function SuccessCard({ details }) {
           <div className="text-sm space-y-1 pt-2">
             <p>
               <b>Nhận máy:</b>{" "}
-              {format(new Date(details.bookingFrom), "HH:mm, EEEE, dd/MM/yyyy", { locale: vi })}
+              {formatVNDateTime(details.bookingFrom)}
             </p>
             <p>
               <b>Trả máy:</b>{" "}
-              {format(new Date(details.bookingTo), "HH:mm, EEEE, dd/MM/yyyy", { locale: vi })}
+              {formatVNDateTime(details.bookingTo)}
             </p>
             <p>
               <b>Tổng tiền:</b>{" "}
@@ -228,13 +241,24 @@ function SuccessCard({ details }) {
               </span>
             </p>
           </div>
-          <button
-            onClick={handleCopyOrder}
-            className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200 hover:bg-slate-200 transition-all active:scale-95"
-          >
-            <ClipboardDocumentIcon className="w-5 h-5" />
-            Copy đơn hàng
-          </button>
+          <div className="mt-3 space-y-2">
+            <button
+              onClick={handleCopyOrder}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200 hover:bg-slate-200 transition-all active:scale-95"
+            >
+              <ClipboardDocumentIcon className="w-5 h-5" />
+              Copy đơn hàng
+            </button>
+            {details.orderIdNew && (
+              <Link
+                to={`/order/${details.orderIdNew}`}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-pink-100 text-pink-700 font-semibold border border-pink-200 hover:bg-pink-200 transition-all active:scale-95"
+              >
+                <LinkIcon className="w-5 h-5" />
+                Xem / Chia sẻ link đơn hàng
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Action Buttons */}
@@ -494,6 +518,7 @@ export default function PaymentStatusPage() {
               );
               setBookingDetails({
                 orderCode: pending.orderCode,
+                orderIdNew: pending.orderIdNew,
                 bookingFrom: first.bookingFrom,
                 bookingTo: first.bookingTo,
                 total: totalSum,

@@ -23,6 +23,7 @@ import {
   UserIcon,
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
+import { formatDateForAPIPayload } from "../../utils/bookingHelpers";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
 
@@ -1160,7 +1161,7 @@ export default function BookingPage() {
             : "Giao tận nơi"
           : "Tại cửa hàng";
 
-      const fmt = (d) => (d ? format(d, "yyyy-MM-dd'T'HH:mm:ss") : null);
+      const fmt = (d) => formatDateForAPIPayload(d);
       const note = `${customer.fullName} ${phone} ${branchLabel} ${receiveText}`.slice(0, 80);
       const bookingRequest = {
         customerId,

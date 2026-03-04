@@ -46,6 +46,7 @@ import {
   countWeekdaysBetweenAligned,
   getSlotButtonClasses,
   getPriceForDuration,
+  formatDateForAPIPayload,
 } from "../../utils/bookingHelpers";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
@@ -889,7 +890,7 @@ export default function BookingPage() {
         BRANCHES.find((b) => b.id === selectedBranchId)?.label ||
         selectedBranchId;
 
-      const fmt = (d) => (d ? format(d, "yyyy-MM-dd'T'HH:mm:ss") : null);
+      const fmt = (d) => formatDateForAPIPayload(d);
       const note = `Khách ${customer.fullName} ${phone} ${branchLabel}`.slice(0, 80);
       const bookingRequest = {
         customerId,

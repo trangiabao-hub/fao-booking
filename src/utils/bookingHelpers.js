@@ -1,4 +1,7 @@
 import { format, addDays, isWeekend } from "date-fns";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
 import {
   BRANCHES,
   DURATION_OPTIONS,
@@ -9,6 +12,9 @@ import {
 import {
   computeDiscountBreakdown as computeDiscountBreakdownFromPricing,
 } from "./pricing";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 export function normalizeDate(date) {
   if (!date) return null;
@@ -38,6 +44,17 @@ export function combineDateWithTime(dateOnly, timeStr) {
 export function formatPriceK(price) {
   if (!price || price <= 0) return "0k";
   return `${Math.round(price / 1000)}k`;
+}
+
+/**
+ * Format datetime cho API payload - đồng bộ manage (Asia/Ho_Chi_Minh).
+ * Output có offset +07:00 để backend parse đúng múi giờ.
+ */
+export function formatDateForAPIPayload(date) {
+  if (!date) return null;
+  const d = dayjs(date);
+  if (!d.isValid()) return null;
+  return d.tz("Asia/Ho_Chi_Minh").format();
 }
 
 /** Công thức tính giá: 3 ngày 300k + ngày tiếp theo 100k */

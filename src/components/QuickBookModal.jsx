@@ -38,6 +38,7 @@ import {
   getDefaultBranchId,
   formatPriceK,
   formatPriceFormula,
+  formatDateForAPIPayload,
   computeDiscountedPrice,
   computeDiscountBreakdown,
 } from "../utils/bookingHelpers";
@@ -360,7 +361,7 @@ export default function QuickBookModal({
 
       const branchLabel =
         BRANCHES.find((b) => b.id === selectedBranch)?.label || selectedBranch;
-      const fmt = (d) => (d ? format(d, "yyyy-MM-dd'T'HH:mm:ss") : null);
+      const fmt = (d) => formatDateForAPIPayload(d);
       const note = `${customer.fullName} ${phone} ${branchLabel}`.slice(0, 80);
 
       if (isMulti) {

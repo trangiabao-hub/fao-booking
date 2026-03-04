@@ -5,6 +5,7 @@ import HomePage from "./page/home";
 import DeviceCatalogPage from "./page/catalog";
 import BookingPage from "./page/booking";
 import PaymentStatusPage from "./page/success";
+import OrderInfoPage from "./page/order-info";
 import Menu from "./page/menu";
 import PhotoBoothPage from "./page/photobooth";
 
@@ -25,6 +26,10 @@ const App = () => {
     {
       path: "/payment-status",
       element: <PaymentStatusPage />,
+    },
+    {
+      path: "/order/:orderIdNew",
+      element: <OrderInfoPage />,
     },
     {
       path: "/menu",
