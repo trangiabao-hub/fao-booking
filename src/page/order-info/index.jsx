@@ -57,7 +57,7 @@ function ErrorState({ message, onRetry }) {
 }
 
 export default function OrderInfoPage() {
-  const { orderIdNew } = useParams();
+  const { orderIdNew, orderCode } = useParams();
   const [orderDetails, setOrderDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -65,7 +65,9 @@ export default function OrderInfoPage() {
 
   useEffect(() => {
     const fetchOrder = async () => {
-      if (!orderIdNew) {
+      const byCode = !!orderCode;
+
+      if (!orderIdNew && !orderCode) {
         setError("Thiếu mã đơn hàng");
         setLoading(false);
         return;
@@ -74,7 +76,10 @@ export default function OrderInfoPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.get(`/v1/bookings/order/${orderIdNew}`);
+        const url = byCode
+          ? `/v1/bookings/order-by-code/${orderCode}`
+          : `/v1/bookings/order/${orderIdNew}`;
+        const res = await api.get(url);
         const bookings = res.data || [];
 
         if (bookings.length === 0) {
@@ -104,7 +109,8 @@ export default function OrderInfoPage() {
         );
 
         setOrderDetails({
-          orderIdNew,
+          orderIdNew: byCode ? null : orderIdNew,
+          orderCode: byCode ? orderCode : null,
           bookingFrom: first.bookingFrom,
           bookingTo: first.bookingTo,
           total: totalSum,
@@ -120,7 +126,7 @@ export default function OrderInfoPage() {
     };
 
     fetchOrder();
-  }, [orderIdNew]);
+  }, [orderIdNew, orderCode]);
 
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
   const deviceLabel = orderDetails?.devices?.length

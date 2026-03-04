@@ -43,7 +43,13 @@ export function combineDateWithTime(dateOnly, timeStr) {
 
 export function formatPriceK(price) {
   if (!price || price <= 0) return "0k";
-  return `${Math.round(price / 1000)}k`;
+  const rounded = Math.round(price);
+  if (rounded >= 1_000_000) {
+    const trieu = Math.floor(rounded / 1_000_000);
+    const remainder = Math.round((rounded % 1_000_000) / 1000);
+    return remainder > 0 ? `${trieu}tr${remainder}` : `${trieu}tr`;
+  }
+  return `${Math.round(rounded / 1000)}k`;
 }
 
 /**
@@ -55,6 +61,18 @@ export function formatDateForAPIPayload(date) {
   const d = dayjs(date);
   if (!d.isValid()) return null;
   return d.tz("Asia/Ho_Chi_Minh").format();
+}
+
+/**
+ * Công thức hiển thị khi > 3 ngày: 3 ngày 120k + n ngày × 30k
+ */
+export function formatPriceBreakdown(device, fullDays) {
+  if (!device || fullDays <= 3) return null;
+  const p3 = device.priceThreeDay ?? (device.priceTwoDay || (device.priceOneDay || 0) * 2) + (device.priceNextDay || device.priceOneDay || 0);
+  const pNext = device.priceNextDay || device.priceOneDay || 0;
+  if (p3 <= 0 || pNext <= 0) return null;
+  const n = fullDays - 3;
+  return `3 ngày đầu ${formatPriceK(p3)} + ${n} ngày sau × ${formatPriceK(pNext)}`;
 }
 
 /** Công thức tính giá: 3 ngày 300k + ngày tiếp theo 100k */

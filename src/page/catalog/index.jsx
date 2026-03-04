@@ -27,7 +27,7 @@ import BookingPrefsForm, {
   getSixHourAutoReturnTime,
 } from "../../components/BookingPrefsForm";
 import { computeDiscountBreakdown, calculateRentalInfo } from "../../utils/pricing";
-import { formatPriceFormula } from "../../utils/bookingHelpers";
+import { formatPriceFormula, formatPriceK } from "../../utils/bookingHelpers";
 import { saveBookingPrefs } from "../../utils/storage";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -186,11 +186,6 @@ function countWeekdaysInRange(startDateTime, endDateTime) {
   return { totalDays, weekdayDays };
 }
 
-
-function formatPriceK(amount) {
-  if (!amount || amount <= 0) return "0k";
-  return `${Math.round(amount / 1000)}k`;
-}
 
 // Price range definitions
 const PRICE_RANGES = [

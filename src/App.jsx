@@ -28,6 +28,10 @@ const App = () => {
       element: <PaymentStatusPage />,
     },
     {
+      path: "/order/code/:orderCode",
+      element: <OrderInfoPage />,
+    },
+    {
       path: "/order/:orderIdNew",
       element: <OrderInfoPage />,
     },

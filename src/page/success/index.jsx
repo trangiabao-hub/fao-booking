@@ -84,7 +84,9 @@ function SuccessCard({ details }) {
       : details.device?.name || "";
     const orderUrl = details.orderIdNew
       ? `${window.location.origin}/order/${details.orderIdNew}`
-      : window.location.origin;
+      : details.orderCode
+        ? `${window.location.origin}/order/code/${details.orderCode}`
+        : window.location.origin;
     const shareText = `Mình vừa đặt thuê ${deviceLabel} tại Fao Sài Gòn! 📸\n${orderUrl}`;
     const shareData = {
       title: "Thuê máy ảnh tại Fao Sài Gòn",
@@ -253,9 +255,9 @@ function SuccessCard({ details }) {
               <ClipboardDocumentIcon className="w-5 h-5" />
               Copy đơn hàng
             </button>
-            {details.orderIdNew && (
+            {(details.orderIdNew || details.orderCode) && (
               <Link
-                to={`/order/${details.orderIdNew}`}
+                to={details.orderIdNew ? `/order/${details.orderIdNew}` : `/order/code/${details.orderCode}`}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-pink-100 text-pink-700 font-semibold border border-pink-200 hover:bg-pink-200 transition-all active:scale-95"
               >
                 <LinkIcon className="w-5 h-5" />
@@ -549,6 +551,7 @@ export default function PaymentStatusPage() {
 
           setBookingDetails({
             orderCode: pending.orderCode,
+            orderIdNew: null,
             bookingFrom: new Date(firstItem.bookingFrom),
             bookingTo: new Date(firstItem.bookingTo),
             total: totalSum,

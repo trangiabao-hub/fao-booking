@@ -37,7 +37,7 @@ import {
   normalizePhone,
   getDefaultBranchId,
   formatPriceK,
-  formatPriceFormula,
+  formatPriceBreakdown,
   formatDateForAPIPayload,
   computeDiscountedPrice,
   computeDiscountBreakdown,
@@ -622,36 +622,52 @@ export default function QuickBookModal({
                       {rentalInfoPerDevice.map((r) => {
                         const dev = r.device;
                         const disc = computeDiscountedPrice(r.price || 0, t1, t2);
-                        const formula = formatPriceFormula(dev);
+                        const days = r.chargeableDays ?? chargeableDays;
+                        const fullDays = Math.floor(days);
+                        const basePrice = r.price || 0;
+                        const breakdown = fullDays > 3 ? formatPriceBreakdown(dev, fullDays) : null;
+                        const daysLabel = days >= 1 ? `${Math.round(days)} ngày` : "Gói 6h";
                         return (
                           <div key={dev.id} className="border-b border-[#FFE4F0] pb-2 last:border-0 last:pb-0">
-                            <div className="flex justify-between items-start text-sm">
-                              <span className="font-bold text-[#222]">
-                                {dev.displayName || dev.name}
-                              </span>
-                              <span className="font-black text-[#E85C9C] shrink-0 ml-2">
-                                {formatPriceK(disc)}
+                            <div className="flex justify-between items-start text-sm gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="font-bold text-[#222]">
+                                  {dev.displayName || dev.name}
+                                </div>
+                                <p className="text-xs text-[#888] mt-0.5">
+                                  {breakdown || `${daysLabel} ${formatPriceK(basePrice)}`}
+                                </p>
+                              </div>
+                              <span className="font-black text-[#E85C9C] shrink-0 text-base">
+                                {formatPriceK(basePrice)}
                               </span>
                             </div>
-                            {formula && (
-                              <p className="text-[10px] text-[#777] font-medium mt-1 leading-tight">
-                                {formula}
-                              </p>
-                            )}
                           </div>
                         );
                       })}
                     </div>
                   ) : (
-                    <div>
-                      <div className="font-black text-[#222] uppercase">
-                        {effectiveDevices[0]?.displayName || effectiveDevices[0]?.name}
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-black text-[#222] uppercase">
+                          {effectiveDevices[0]?.displayName || effectiveDevices[0]?.name}
+                        </div>
+                        {(() => {
+                          const r0 = rentalInfoPerDevice[0];
+                          const fullDays = Math.floor(chargeableDays);
+                          const breakdown = fullDays > 3 && r0?.device ? formatPriceBreakdown(r0.device, fullDays) : null;
+                          const base0 = r0?.price || 0;
+                          const daysLabel = chargeableDays >= 1 ? `${Math.round(chargeableDays)} ngày` : "Gói 6h";
+                          return (
+                            <p className="text-xs text-[#888] mt-0.5">
+                              {breakdown || `${daysLabel} ${formatPriceK(base0)}`}
+                            </p>
+                          );
+                        })()}
                       </div>
-                      {formatPriceFormula(effectiveDevices[0]) && (
-                        <p className="text-[10px] text-[#777] font-medium mt-1 leading-tight">
-                          {formatPriceFormula(effectiveDevices[0])}
-                        </p>
-                      )}
+                      <span className="font-black text-[#E85C9C] shrink-0 text-base">
+                        {formatPriceK(rentalInfoPerDevice[0]?.price || 0)}
+                      </span>
                     </div>
                   )}
                 </div>
