@@ -530,7 +530,7 @@ function AvailabilityGate({
           >
           <div className="px-5 pt-5 pb-3 border-b border-[#FFE4F0] bg-[#FFFBF5]">
             <div className="mb-2">
-              <h3 className="text-lg font-black text-[#222] uppercase tracking-wider">
+              <h3 className="text-xl font-black text-[#222] uppercase tracking-wider">
                 Chọn giờ nhận / trả
               </h3>
             </div>
@@ -565,7 +565,7 @@ function AvailabilityGate({
             >
               Giữ ưu đãi & xem máy còn trống
             </button>
-            <div className="text-center text-[11px] text-[#888] mt-2">
+            <div className="text-center text-sm text-[#888] mt-2">
               Bạn có thể đổi lại thời gian bất cứ lúc nào.
             </div>
           </div>

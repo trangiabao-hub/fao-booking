@@ -250,22 +250,22 @@ export default function BookingPrefsForm({
   return (
     <div className="min-w-0 overflow-x-hidden">
       {/* Promo banner */}
-      <div className="rounded-xl border border-pink-200/70 bg-[#fff7fb] px-3 py-2 mb-4">
+      <div className="rounded-xl border border-pink-200/70 bg-[#fff7fb] px-4 py-3 mb-4">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-[#E85C9C] text-[11px] font-semibold tracking-wide">
-            <Sparkles size={12} />
+          <div className="flex items-center gap-1.5 text-[#E85C9C] text-sm font-semibold tracking-wide">
+            <Sparkles size={14} />
             Khuyến mãi tuần này
           </div>
-          <span className="rounded-full bg-[#E85C9C] px-1.5 py-0.5 text-[9px] font-semibold text-white">
+          <span className="rounded-full bg-[#E85C9C] px-2 py-0.5 text-xs font-semibold text-white">
             Hot
           </span>
         </div>
-        <div className="text-[11px] text-[#555] mt-1 font-medium leading-relaxed">
+        <div className="text-sm text-[#555] mt-1.5 font-medium leading-relaxed">
           Giảm trực tiếp{" "}
           <span className="text-[#E85C9C] font-black">20%</span> từ thứ 2 đến
           thứ 6. Tự áp dụng khi đủ điều kiện, không cần nhập mã.
         </div>
-        <div className="text-[11px] text-[#555] mt-1 font-medium leading-relaxed">
+        <div className="text-sm text-[#555] mt-1.5 font-medium leading-relaxed">
           Thuê máy ảnh{" "}
           <span className="font-black text-[#E85C9C] bg-[#FFE4F0] px-1.5 py-0.5 rounded">
             không cần cọc
@@ -277,7 +277,7 @@ export default function BookingPrefsForm({
       <div className="space-y-4">
         {/* Gói thuê */}
         <div>
-          <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-2 block">
+          <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-2 block">
             Gói thuê
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -292,14 +292,14 @@ export default function BookingPrefsForm({
                 }`}
               >
                 <div
-                  className={`text-[12px] font-black tracking-wide ${
+                  className={`text-sm font-black tracking-wide ${
                     durationType === opt.id ? "text-[#FF9FCA]" : "text-[#222]"
                   }`}
                 >
                   {opt.label}
                 </div>
                 <div
-                  className={`text-[10px] mt-0.5 ${
+                  className={`text-xs mt-0.5 ${
                     durationType === opt.id ? "text-[#f3d7e6]" : "text-[#888]"
                   }`}
                 >
@@ -308,7 +308,7 @@ export default function BookingPrefsForm({
                     : "Linh hoạt theo giờ, nhận nhanh trong ngày"}
                 </div>
                 {opt.id === "ONE_DAY" && (
-                  <span className="mt-1 inline-flex rounded-md border border-[#FF9FCA]/50 bg-[#FF9FCA]/15 px-2 py-0.5 text-[9px] font-black leading-none tracking-normal text-[#E85C9C]">
+                  <span className="mt-1 inline-flex rounded-md border border-[#FF9FCA]/50 bg-[#FF9FCA]/15 px-2 py-0.5 text-xs font-black leading-none tracking-normal text-[#E85C9C]">
                     Giá ưu đãi
                   </span>
                 )}
@@ -320,7 +320,7 @@ export default function BookingPrefsForm({
         {/* Ngày nhận / trả */}
         <div className="grid grid-cols-2 gap-3 min-w-0">
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-1 block">
+            <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-1 block">
               Ngày nhận
             </label>
             <DatePicker
@@ -330,11 +330,11 @@ export default function BookingPrefsForm({
               locale="vi"
               minDate={normalizeDate(new Date())}
               placeholderText="Chọn ngày nhận"
-              className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-sm font-medium focus:border-[#FF9FCA] focus:outline-none"
+              className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-base font-medium focus:border-[#FF9FCA] focus:outline-none"
             />
           </div>
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-1 block">
+            <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-1 block">
               Ngày trả
             </label>
             {durationType === "SIX_HOURS" ? (
@@ -342,7 +342,7 @@ export default function BookingPrefsForm({
                 type="text"
                 value={toDateTime ? format(toDateTime, "dd/MM/yyyy") : ""}
                 disabled
-                className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-sm font-medium text-[#777] cursor-not-allowed"
+                className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-base font-medium text-[#777] cursor-not-allowed"
               />
             ) : (
               <DatePicker
@@ -358,7 +358,7 @@ export default function BookingPrefsForm({
                     : date || normalizeDate(new Date())
                 }
                 placeholderText="Chọn ngày trả"
-                className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-sm font-medium focus:border-[#FF9FCA] focus:outline-none"
+                className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-base font-medium focus:border-[#FF9FCA] focus:outline-none"
               />
             )}
           </div>
@@ -367,7 +367,7 @@ export default function BookingPrefsForm({
         {/* Nhận / Trả time display */}
         <div className="grid grid-cols-2 gap-3 min-w-0">
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-1 block">
+            <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-1 block">
               Nhận
             </label>
             {durationType === "SIX_HOURS" ? (
@@ -383,7 +383,7 @@ export default function BookingPrefsForm({
                           setTimeFrom(slot);
                           setTimeTo(getSixHourAutoReturnTime(slot));
                         }}
-                        className={`px-3 py-3 rounded-xl border-2 text-xs font-black uppercase tracking-wider transition-all ${
+                        className={`px-3 py-3 rounded-xl border-2 text-sm font-black uppercase tracking-wider transition-all ${
                           active
                             ? "bg-[#222] text-[#FF9FCA] border-[#222]"
                             : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
@@ -404,7 +404,7 @@ export default function BookingPrefsForm({
             )}
           </div>
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-1 block">
+            <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-1 block">
               Trả
             </label>
             {durationType === "SIX_HOURS" ? (
@@ -412,14 +412,14 @@ export default function BookingPrefsForm({
                 type="time"
                 value={timeTo}
                 disabled
-                className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-sm font-medium text-[#777] cursor-not-allowed"
+                className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-base font-medium text-[#777] cursor-not-allowed"
               />
             ) : durationType === "ONE_DAY" ? (
               <input
                 type="time"
                 value={timeTo || ""}
                 disabled
-                className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-sm font-medium text-[#777] cursor-not-allowed"
+                className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-base font-medium text-[#777] cursor-not-allowed"
               />
             ) : (
               <div className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-sm font-medium text-[#777]">
@@ -441,7 +441,7 @@ export default function BookingPrefsForm({
               className="overflow-hidden"
             >
               <div className="pt-2 space-y-3">
-                <div className="text-xs text-[#666] font-semibold">
+                <div className="text-sm text-[#666] font-semibold">
                   Chọn thời gian nhận máy
                 </div>
 
@@ -453,7 +453,7 @@ export default function BookingPrefsForm({
                       setTimeFrom(MORNING_PICKUP_TIME);
                       setTimeTo(MORNING_PICKUP_TIME);
                     }}
-                    className={`px-3 py-2 rounded-xl border-2 text-xs font-bold uppercase tracking-wide transition-all ${
+                    className={`px-3 py-2 rounded-xl border-2 text-sm font-bold uppercase tracking-wide transition-all ${
                       pickupType === "MORNING"
                         ? "bg-[#222] text-[#FF9FCA] border-[#222]"
                         : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
@@ -470,7 +470,7 @@ export default function BookingPrefsForm({
                       setTimeFrom(defaultNight);
                       setTimeTo(defaultNight);
                     }}
-                    className={`px-3 py-2 rounded-xl border-2 text-xs font-bold uppercase tracking-wide transition-all ${
+                    className={`px-3 py-2 rounded-xl border-2 text-sm font-bold uppercase tracking-wide transition-all ${
                       pickupType === "EVENING"
                         ? "bg-[#222] text-[#FF9FCA] border-[#222]"
                         : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
@@ -482,7 +482,7 @@ export default function BookingPrefsForm({
 
                 {pickupType === "MORNING" ? (
                   <div className="p-3 rounded-xl border border-[#eee] bg-white">
-                    <div className="text-sm font-black text-[#222] mb-2">
+                    <div className="text-base font-black text-[#222] mb-2">
                       Khung giờ nhận sáng
                     </div>
                     <button
@@ -492,14 +492,14 @@ export default function BookingPrefsForm({
                         setTimeFrom(MORNING_PICKUP_TIME);
                         setTimeTo(MORNING_PICKUP_TIME);
                       }}
-                      className="px-3 py-2 rounded-xl border-2 text-xs font-black bg-[#222] text-[#FF9FCA] border-[#222]"
+                      className="px-3 py-2 rounded-xl border-2 text-sm font-black bg-[#222] text-[#FF9FCA] border-[#222]"
                     >
                       {MORNING_PICKUP_TIME}
                     </button>
                   </div>
                 ) : (
                   <div className="p-3 rounded-xl border border-[#eee] bg-white">
-                    <div className="text-sm font-black text-[#222] mb-2">
+                    <div className="text-base font-black text-[#222] mb-2">
                       Khung giờ nhận tối
                     </div>
                     <div className="grid grid-cols-3 gap-2 min-w-0">
@@ -516,7 +516,7 @@ export default function BookingPrefsForm({
                               setTimeFrom(slot);
                               setTimeTo(slot);
                             }}
-                            className={`px-2 py-2 rounded-xl border-2 text-xs font-black transition-all ${
+                            className={`px-2 py-2 rounded-xl border-2 text-sm font-black transition-all ${
                               active
                                 ? "bg-[#222] text-[#FF9FCA] border-[#222]"
                                 : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
@@ -536,7 +536,7 @@ export default function BookingPrefsForm({
 
         {/* Billable days summary (ONE_DAY) */}
         {durationType === "ONE_DAY" && billableDays > 0 && (
-          <div className="rounded-xl border border-sky-200 bg-sky-50/70 px-3.5 py-3 text-[13px] text-slate-700">
+          <div className="rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm text-slate-700">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[#334155] font-medium">
                 Số ngày tính tiền:{" "}
@@ -545,14 +545,14 @@ export default function BookingPrefsForm({
                 </span>
               </div>
               {billableDays > 2 && (
-                <span className="rounded-full border border-[#0f766e]/25 bg-[#ecfdf5] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#0f766e]">
+                <span className="rounded-full border border-[#0f766e]/25 bg-[#ecfdf5] px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-[#0f766e]">
                   Ưu đãi dài ngày
                 </span>
               )}
             </div>
 
             {pickupLine && returnLine && (
-              <div className="mt-2 text-[11px] text-slate-700 space-y-1">
+              <div className="mt-2 text-sm text-slate-700 space-y-1">
                 <div className="text-[#475569]">
                   Nhận:{" "}
                   <span className="font-semibold text-slate-800">
@@ -567,7 +567,7 @@ export default function BookingPrefsForm({
                 </div>
               </div>
             )}
-            <div className="text-[11px] text-[#0f766e] mt-2.5 font-semibold">
+            <div className="text-sm text-[#0f766e] mt-2.5 font-semibold">
               Đơn hàng được giảm thẳng 20%. Giảm lên đến{" "}
               <span className="font-bold text-[#E85C9C]">
                 {teaserSavingLabel}
@@ -579,7 +579,7 @@ export default function BookingPrefsForm({
 
         {/* Chi nhánh */}
         <div>
-          <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-2 block">
+          <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-2 block">
             Chi nhánh
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -589,7 +589,7 @@ export default function BookingPrefsForm({
                 type="button"
                 disabled={branch.disabled}
                 onClick={() => !branch.disabled && setBranchId(branch.id)}
-                className={`px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider border-2 transition-all ${
+                className={`px-3 py-2 rounded-xl text-sm font-bold uppercase tracking-wider border-2 transition-all ${
                   branch.disabled
                     ? "bg-[#f5f5f5] text-[#bbb] border-[#eee] cursor-not-allowed"
                     : branchId === branch.id
@@ -606,7 +606,7 @@ export default function BookingPrefsForm({
 
         {/* Error */}
         {error && (
-          <div className="text-sm text-red-600 font-medium bg-red-50 border border-red-200 rounded-xl p-3">
+          <div className="text-base text-red-600 font-medium bg-red-50 border border-red-200 rounded-xl p-3">
             {error}
           </div>
         )}
