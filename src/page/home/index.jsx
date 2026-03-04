@@ -164,7 +164,7 @@ const Header = () => {
               Photo Booth
             </Link>
             <Link
-              to="/booking"
+              to="/catalog"
               className="hidden sm:inline-block bg-pink-500 text-white font-semibold px-5 py-2.5 rounded-full text-sm hover:bg-pink-600 transition-all duration-300 shadow-lg shadow-pink-500/30 hover:scale-105 active:scale-95"
             >
               Thuê máy ngay
@@ -208,7 +208,7 @@ const Header = () => {
                 Photo Booth
               </Link>
               <Link
-                to="/booking"
+                to="/catalog"
                 className="mt-4 bg-pink-500 text-white font-semibold px-8 py-3 rounded-full text-base hover:bg-pink-600 transition-all duration-300 shadow-lg shadow-pink-500/30 active:scale-95"
               >
                 Thuê máy ngay
@@ -571,7 +571,7 @@ const CallToActionSection = () => (
           ảnh thật lung linh. Bạn chỉ việc sáng tạo, mọi thứ cứ để Fao lo.
         </p>
         <Link
-          to="/booking"
+          to="/catalog"
           className="mt-8 inline-block bg-white text-pink-600 font-bold px-8 py-3 rounded-full text-lg hover:bg-rose-50 transition-all duration-300 shadow-xl transform hover:scale-105"
         >
           Chọn máy ngay
