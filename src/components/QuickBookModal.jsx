@@ -450,7 +450,7 @@ export default function QuickBookModal({
           </div>
 
           {/* Content */}
-          <div className="flex-1 min-w-0 overflow-y-auto p-4">
+          <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4">
             {step === 1 && (
               <div>
                 <BookingPrefsForm

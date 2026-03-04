@@ -248,7 +248,7 @@ export default function BookingPrefsForm({
   }, [durationType, timeFrom, timeTo, setTimeTo]);
 
   return (
-    <>
+    <div className="min-w-0 overflow-x-hidden">
       {/* Promo banner */}
       <div className="rounded-xl border border-pink-200/70 bg-[#fff7fb] px-3 py-2 mb-4">
         <div className="flex items-center justify-between gap-2">
@@ -318,7 +318,7 @@ export default function BookingPrefsForm({
         </div>
 
         {/* Ngày nhận / trả */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 min-w-0">
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-1 block">
               Ngày nhận
@@ -365,7 +365,7 @@ export default function BookingPrefsForm({
         </div>
 
         {/* Nhận / Trả time display */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 min-w-0">
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-1 block">
               Nhận
@@ -502,7 +502,7 @@ export default function BookingPrefsForm({
                     <div className="text-sm font-black text-[#222] mb-2">
                       Khung giờ nhận tối
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-2 min-w-0">
                       {ONE_DAY_EVENING_SLOTS.map((slot) => {
                         const active =
                           pickupType === "EVENING" && pickupSlot === slot;
@@ -611,6 +611,6 @@ export default function BookingPrefsForm({
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }

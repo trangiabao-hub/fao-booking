@@ -526,7 +526,7 @@ function AvailabilityGate({
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 400 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#FFFBF5] w-full max-w-md rounded-t-3xl max-h-[90dvh] flex flex-col overflow-hidden"
+            className="bg-[#FFFBF5] w-full max-w-md rounded-t-3xl max-h-[90dvh] flex flex-col overflow-hidden min-w-0"
           >
           <div className="px-5 pt-5 pb-3 border-b border-[#FFE4F0] bg-[#FFFBF5]">
             <div className="mb-2">
@@ -536,7 +536,7 @@ function AvailabilityGate({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-4 min-w-0">
             <BookingPrefsForm
               branchId={branchId}
               date={date}
