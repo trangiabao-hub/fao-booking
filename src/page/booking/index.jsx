@@ -6,47 +6,53 @@ import vi from "date-fns/locale/vi";
 import {
   ArrowLeftIcon,
   CheckCircleIcon,
-  CreditCardIcon,
   DevicePhoneMobileIcon,
   UserIcon,
   ExclamationTriangleIcon,
   SparklesIcon,
+  PrinterIcon,
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
 import FloatingContactButton from "../../components/FloatingContactButton";
 import BookingProgress from "../../components/BookingProgress";
+import BookingPrefsForm, {
+  computeAvailabilityRange,
+  getAvailabilityRangeError,
+  getSixHourAutoReturnTime,
+} from "../../components/BookingPrefsForm";
 import {
   saveCustomerInfo,
   loadCustomerInfo,
   saveBookingPrefs,
   loadBookingPrefs,
 } from "../../utils/storage";
+import {
+  BRANCHES,
+  DURATION_OPTIONS,
+  MORNING_PICKUP_TIME,
+  SIX_HOUR_SECOND_PICKUP_TIME,
+  SIX_HOUR_RETURN_TIME,
+  DEFAULT_EVENING_SLOT,
+  EVENING_SLOTS,
+  SIX_HOUR_MAX_HOURS,
+} from "../../data/bookingConstants";
+import {
+  normalizeDate,
+  normalizePhone,
+  combineDateWithTime,
+  getDurationDays,
+  getDefaultBranchId,
+  getTimeRange,
+  countWeekdaysBetweenAligned,
+  getSlotButtonClasses,
+  getPriceForDuration,
+} from "../../utils/bookingHelpers";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
 
-// Chi nhánh
-const BRANCHES = [
-  {
-    id: "PHU_NHUAN",
-    label: "FAO Phú Nhuận",
-    distanceText: "3.2km",
-    address: "330/22 Phan Đình Phùng, P.1",
-  },
-  {
-    id: "Q9",
-    label: "FAO Q9 (Vinhomes)",
-    distanceText: "18.4km",
-    address: "Vinhomes Grand Park, Q9",
-  },
-];
-
-// Gói thời gian
-const DURATION_OPTIONS = [
-  { id: "SIX_HOURS", label: "6 tiếng", days: 0.5 },
-  { id: "ONE_DAY", label: "1 ngày", days: 1 },
-  { id: "TWO_DAYS", label: "2 ngày", days: 2 },
-  { id: "THREE_DAYS", label: "3 ngày", days: 3 },
-];
+const TET_BASE_DATE = new Date(2026, 1, 12); // Mùng 1 Tết
+const TET_START_OFFSET = -6; // 25 Tết
+const TET_END_OFFSET = 9; // Mùng 10
 
 // Vouchers
 const VOUCHERS = [
@@ -57,13 +63,6 @@ const VOUCHERS = [
 const FALLBACK_IMG = "https://placehold.co/640x360/fdf2f8/ec4899?text=No+Image";
 
 /* ========= HELPERS ========= */
-
-function normalizeDate(date) {
-  if (!date) return null;
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 function inferBrand(name = "") {
   const n = name.toUpperCase();
@@ -91,33 +90,7 @@ function parseDeposit(desc) {
   return 2000000;
 }
 
-function combineDateWithTimeString(dateOnly, timeStr) {
-  if (!dateOnly || !timeStr) return null;
-  const [hStr, mStr] = timeStr.split(":");
-  const h = parseInt(hStr, 10);
-  const m = parseInt(mStr, 10) || 0;
-  if (isNaN(h) || isNaN(m)) return null;
-  const d = new Date(dateOnly);
-  d.setHours(h, m, 0, 0);
-  return d;
-}
-
 const diffHours = (d1, d2) => (d2.getTime() - d1.getTime()) / (1000 * 60 * 60);
-
-function countWeekdaysBetweenAligned(t1, t2) {
-  let days = 0,
-    weekdays = 0;
-  let cur = new Date(t1.getTime());
-  cur.setHours(0, 0, 0, 0);
-  const end = new Date(t2.getTime());
-  end.setHours(0, 0, 0, 0);
-  while (cur < end) {
-    days += 1;
-    if (!isWeekend(cur)) weekdays += 1;
-    cur = addDays(cur, 1);
-  }
-  return { days, weekdays };
-}
 
 function safeDesc(s) {
   if (!s) return "Thanh toan don hang";
@@ -125,70 +98,119 @@ function safeDesc(s) {
   return t.length <= 25 ? t : t.slice(0, 24) + "…";
 }
 
-function normalizePhone(p) {
-  if (!p) return "";
-  let s = p.replace(/[^\d]/g, "");
-  if (s.startsWith("84")) s = "0" + s.slice(2);
-  return s;
-}
-
 function formatDateTimeLocalForAPI(date) {
   if (!date) return null;
   return format(date, "yyyy-MM-dd'T'HH:mm:ss");
 }
 
-function getPriceForDuration(device, durationId) {
-  if (!device) return 0;
-  switch (durationId) {
-    case "SIX_HOURS":
-      return (
-        device.priceSixHours ||
-        (device.priceOneDay ? Math.round(device.priceOneDay / 2) : 0)
-      );
-    case "ONE_DAY":
-      return device.priceOneDay || 0;
-    case "TWO_DAYS":
-      return device.priceTwoDay || 0;
-    case "THREE_DAYS":
-      return device.priceThreeDay || 0;
-    default:
-      return 0;
-  }
-}
-
-function getTimeRangeForDuration(selectedDate, durationId) {
-  if (!selectedDate) {
-    return { startDate: null, endDate: null, timeFrom: null, timeTo: null };
-  }
-  const startDate = normalizeDate(selectedDate);
-  let endDate = normalizeDate(selectedDate);
-  let timeFrom = "09:00";
-  let timeTo = "20:30";
-
-  switch (durationId) {
-    case "SIX_HOURS":
-      timeFrom = "09:00";
-      timeTo = "15:00";
-      endDate = startDate;
-      break;
-    case "ONE_DAY":
-      endDate = startDate;
-      break;
-    case "TWO_DAYS":
-      endDate = addDays(startDate, 1);
-      break;
-    case "THREE_DAYS":
-      endDate = addDays(startDate, 2);
-      break;
-    default:
-      break;
-  }
-
-  return { startDate, endDate, timeFrom, timeTo };
-}
 
 function normalizeDeviceName(name = "") {
   return name.replace(/\s*\(\d+\)\s*$/, "").trim();
+}
+
+function getTetDayLabel(date) {
+  if (!date) return null;
+  const d = normalizeDate(date);
+  const base = normalizeDate(TET_BASE_DATE);
+  const diff = Math.round((d - base) / (1000 * 60 * 60 * 24));
+  if (diff < TET_START_OFFSET || diff > TET_END_OFFSET) return null;
+  if (diff >= 0) return `Mùng ${diff + 1}`;
+  return `${31 + diff} Tết`;
+}
+
+function getDayPartLabel(date) {
+  const hour = date.getHours();
+  if (hour < 12) return "Sáng";
+  if (hour < 18) return "Chiều";
+  return "Tối";
+}
+
+function formatTimeLabel(date) {
+  const h = format(date, "HH");
+  const m = format(date, "mm");
+  return m === "00" ? `${h}h` : `${h}:${m}`;
+}
+
+function formatWeekdayShort(date) {
+  const dow = date.getDay();
+  if (dow === 0) return "CN";
+  return `Thứ ${dow + 1}`;
+}
+
+function formatBookingSummaryDate(date) {
+  const tetLabel = getTetDayLabel(date);
+  if (!tetLabel) {
+    return format(date, "dd/MM HH:mm", { locale: vi });
+  }
+  const timeLabel = formatTimeLabel(date);
+  const dayPart = getDayPartLabel(date);
+  const weekday = formatWeekdayShort(date);
+  return `${timeLabel} • ${dayPart} • ${tetLabel} • ${weekday} (${format(
+    date,
+    "dd/MM"
+  )})`;
+}
+
+
+/** Format số tiền VND để in hợp đồng */
+function formatVnd(amount) {
+  if (amount == null || isNaN(amount)) return "0";
+  return Math.round(amount).toLocaleString("vi-VN");
+}
+
+function escapeHtmlContract(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * Mở cửa sổ in hợp đồng thuê máy với dữ liệu đã điền.
+ * @param {{ device: { displayName: string, deposit: number }, total: number, t1: Date, t2: Date }} data
+ */
+function printContract({ device, total, t1, t2 }) {
+  if (!device || !t1 || !t2) return;
+  const machineName = escapeHtmlContract(device.displayName || "—");
+  const machineValue = escapeHtmlContract(formatVnd(device.deposit)) + " VND";
+  const rentalPrice = escapeHtmlContract(formatVnd(total)) + " VND";
+  const fromTime = format(t1, "HH");
+  const fromDate = format(t1, "dd/MM/yyyy");
+  const toTime = format(t2, "HH");
+  const toDate = format(t2, "dd/MM/yyyy");
+  const timeRange = `Từ ${fromTime} Giờ, Ngày ${fromDate} Đến ${toTime} Giờ, Ngày ${toDate}`;
+
+  const html = `<!DOCTYPE html>
+<html lang="vi">
+<head><meta charset="UTF-8"><title>Hợp đồng thuê máy</title>
+<style>body{font-family:"Times New Roman",Times,serif;font-size:14px;line-height:1.6;padding:24px;max-width:600px;margin:0 auto;}
+h2{text-align:center;font-size:18px;margin-bottom:24px;}
+.clause{margin:14px 0;}.clause-num{font-weight:bold;}
+.fill{text-decoration:underline;text-underline-offset:2px;}
+@media print{body{padding:16px;}}</style>
+</head>
+<body>
+<h2>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM<br>Độc lập - Tự do - Hạnh phúc</h2>
+<h2>HỢP ĐỒNG THUÊ MÁY</h2>
+<div class="clause"><span class="clause-num">1.</span> Dòng Máy Tên: <span class="fill">${machineName}</span></div>
+<div class="clause"><span class="clause-num">2.</span> Giá Trị Máy: <span class="fill">${machineValue}</span></div>
+<div class="clause"><span class="clause-num">3.</span> Giá Thuê: <span class="fill">${rentalPrice}</span></div>
+<div class="clause"><span class="clause-num">5.</span> Thời Hạn Thuê: <span class="fill">${timeRange}</span></div>
+<script>window.onload=function(){window.focus();window.print();};window.onafterprint=function(){window.close();};</script>
+</body>
+</html>`;
+
+  try {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    URL.revokeObjectURL(url);
+    if (!w) alert("Vui lòng cho phép popup để in hợp đồng.");
+  } catch (e) {
+    console.error("In hợp đồng:", e);
+  }
 }
 
 /* ===== Hook tính giá ===== */
@@ -198,7 +220,8 @@ function useBookingPricing(
   timeFrom,
   endDate,
   timeTo,
-  voucherId
+  voucherId,
+  durationId
 ) {
   return useMemo(() => {
     if (!device || !startDate || !endDate || !timeFrom || !timeTo)
@@ -212,8 +235,8 @@ function useBookingPricing(
         isSixHours: false,
       };
 
-    const t1 = combineDateWithTimeString(startDate, timeFrom);
-    const t2 = combineDateWithTimeString(endDate, timeTo);
+    const t1 = combineDateWithTime(startDate, timeFrom);
+    const t2 = combineDateWithTime(endDate, timeTo);
 
     if (!t1 || !t2 || t2 <= t1) {
       return {
@@ -234,7 +257,13 @@ function useBookingPricing(
     let subTotal = 0;
     let isSixHours = false;
 
-    if (sameDay && hours <= 6.05) {
+    if (durationId === "SIX_HOURS") {
+      if (hours > 0 && hours <= SIX_HOUR_MAX_HOURS + 0.05) {
+        isSixHours = true;
+        days = 0.5;
+        subTotal = device.priceSixHours || device.priceOneDay || 0;
+      }
+    } else if (sameDay && hours <= 6.05) {
       isSixHours = true;
       days = 0.5;
       subTotal = device.priceSixHours || device.priceOneDay || 0;
@@ -269,7 +298,7 @@ function useBookingPricing(
     const total = Math.max(0, subTotal - discount);
 
     return { days, subTotal, discount, total, t1, t2, isSixHours };
-  }, [device, startDate, timeFrom, endDate, timeTo, voucherId]);
+  }, [device, startDate, timeFrom, endDate, timeTo, voucherId, durationId]);
 }
 
 /* ===================== UI Components ===================== */
@@ -379,13 +408,13 @@ function Summary({
             <div>
               <span className="text-[#888]">Nhận:</span>
               <span className="font-black text-white ml-1">
-                {format(t1, "dd/MM HH:mm", { locale: vi })}
+                {formatBookingSummaryDate(t1)}
               </span>
             </div>
             <div>
               <span className="text-[#888]">Trả:</span>
               <span className="font-black text-white ml-1">
-                {format(t2, "dd/MM HH:mm", { locale: vi })}
+                {formatBookingSummaryDate(t2)}
               </span>
             </div>
           </div>
@@ -438,166 +467,6 @@ function Summary({
             </div>
           </div>
           <CheckCircleIcon className="w-6 h-6 text-green-500" />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* Thanh chọn ngày kiểu CGV */
-function DateStrip({ selectedDate, onSelect }) {
-  const days = useMemo(() => {
-    const arr = [];
-    const today = normalizeDate(new Date());
-    for (let i = 0; i < 14; i++) {
-      arr.push(addDays(today, i));
-    }
-    return arr;
-  }, []);
-
-  const isSameDay = (d1, d2) => d1 && d2 && d1.getTime() === d2.getTime();
-
-  const getLabel = (day, index) => {
-    if (index === 0) return "Hôm nay";
-    if (index === 1) return "Ngày mai";
-    const dow = day.getDay();
-    if (dow === 0) return "CN";
-    return `T${dow + 1}`;
-  };
-
-  return (
-    <div className="bg-[#222] text-white border-b border-[#333]">
-      <div className="max-w-md mx-auto px-2 py-3">
-        <div className="flex gap-2 overflow-x-auto no-scrollbar">
-          {days.map((day, idx) => {
-            const active = isSameDay(day, selectedDate);
-            const isWeekendDay = isWeekend(day);
-            return (
-              <button
-                key={day.toISOString()}
-                onClick={() => onSelect(day)}
-                className={`flex-shrink-0 w-12 text-center rounded-xl py-2 transition-all border-2 ${
-                  active
-                    ? "bg-[#FF9FCA] text-[#222] border-[#FF9FCA] shadow-lg shadow-[#FF9FCA]/30"
-                    : isWeekendDay
-                    ? "bg-[#333] border-[#444] text-[#FF9FCA]"
-                    : "bg-[#2a2a2a] border-[#333] hover:border-[#FF9FCA]"
-                }`}
-              >
-                <div className="text-[10px] mb-0.5 font-bold">
-                  {getLabel(day, idx)}
-                </div>
-                <div
-                  className={`text-sm font-black ${
-                    active ? "text-[#222]" : ""
-                  }`}
-                >
-                  {format(day, "dd")}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-        <div className="mt-2 text-xs text-center text-[#FF9FCA] font-bold uppercase tracking-wider">
-          {selectedDate &&
-            format(selectedDate, "EEEE, dd 'tháng' MM, yyyy", { locale: vi })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* Panel chi nhánh kiểu CGV */
-function BranchPanel({
-  branch,
-  expanded,
-  onToggle,
-  device,
-  selectedBranchId,
-  selectedDurationId,
-  onSelectDuration,
-  availability,
-}) {
-  const isSelectedBranch = selectedBranchId === branch.id;
-  const soldOut = availability?.soldOut;
-  const loading = availability?.loading;
-  const error = availability?.error;
-
-  return (
-    <div className="border-b border-[#eee]">
-      <button
-        onClick={onToggle}
-        className="w-full px-4 py-3 flex items-center justify-between bg-[#FFFBF5] hover:bg-[#FFF5F8] transition-colors"
-      >
-        <div className="text-left">
-          <div className="text-[#E85C9C] font-black text-sm uppercase tracking-wide">
-            {branch.label}
-          </div>
-          <div className="text-[11px] text-[#888] font-medium">
-            {branch.address}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {soldOut && (
-            <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">
-              Hết chỗ
-            </span>
-          )}
-          <span
-            className={`transform transition-transform ${
-              expanded ? "rotate-180" : "rotate-0"
-            } text-[#999]`}
-          >
-            ▾
-          </span>
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4 bg-[#FFFBF5]">
-          {loading && (
-            <div className="text-[11px] text-[#999] mb-2 font-medium">
-              Đang kiểm tra...
-            </div>
-          )}
-          {error && (
-            <div className="text-[11px] text-amber-700 mb-2 font-medium bg-amber-50 p-2 rounded-lg">
-              {error} Vẫn có thể đặt và shop sẽ liên hệ xác nhận.
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {DURATION_OPTIONS.map((opt) => {
-              const price = getPriceForDuration(device, opt.id);
-              const disabled = !device || price <= 0 || soldOut || loading;
-              const active = isSelectedBranch && selectedDurationId === opt.id;
-
-              return (
-                <button
-                  key={opt.id}
-                  disabled={disabled}
-                  onClick={() => onSelectDuration(branch.id, opt.id)}
-                  className={`min-w-[88px] px-3 py-2 rounded-xl border-2 text-sm text-center transition-all ${
-                    disabled
-                      ? "border-[#eee] text-[#ccc] bg-[#f5f5f5] cursor-not-allowed"
-                      : active
-                      ? "border-[#222] bg-[#222] text-[#FF9FCA] shadow-lg"
-                      : "border-[#ddd] bg-white text-[#555] hover:border-[#FF9FCA] hover:text-[#E85C9C]"
-                  }`}
-                >
-                  <div className="text-sm font-black">{opt.label}</div>
-                  {price > 0 && (
-                    <div
-                      className={`text-[10px] mt-0.5 font-bold ${
-                        active ? "text-[#FF9FCA]" : "text-[#E85C9C]"
-                      }`}
-                    >
-                      {Math.round(price / 1000)}k
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
         </div>
       )}
     </div>
@@ -669,11 +538,21 @@ export default function BookingPage() {
     const prefs = loadBookingPrefs();
     const branchId = BRANCHES.some((b) => b.id === prefs?.branchId)
       ? prefs.branchId
-      : BRANCHES[0].id;
-    const durationId = DURATION_OPTIONS.some((d) => d.id === prefs?.durationId)
-      ? prefs.durationId
-      : "ONE_DAY";
-    return { branchId, durationId };
+      : getDefaultBranchId();
+    const safeBranchId =
+      BRANCHES.find((b) => b.id === branchId && !b.disabled)?.id ||
+      getDefaultBranchId();
+    
+    return { 
+      branchId: safeBranchId, 
+      durationId: prefs?.durationId || "ONE_DAY",
+      date: prefs?.date ? normalizeDate(new Date(prefs.date)) : normalizeDate(new Date()),
+      endDate: prefs?.endDate ? normalizeDate(new Date(prefs.endDate)) : addDays(normalizeDate(new Date()), 1),
+      timeFrom: prefs?.timeFrom || MORNING_PICKUP_TIME,
+      timeTo: prefs?.timeTo || SIX_HOUR_RETURN_TIME,
+      pickupType: prefs?.pickupType || "MORNING",
+      pickupSlot: prefs?.pickupSlot || DEFAULT_EVENING_SLOT
+    };
   }, []);
 
   // Get device from URL params
@@ -688,22 +567,15 @@ export default function BookingPage() {
     urlDeviceId ? parseInt(urlDeviceId) : null
   );
 
-  const [selectedDate, setSelectedDate] = useState(() =>
-    normalizeDate(new Date())
-  );
-  const [durationOptionId, setDurationOptionId] = useState(
-    initialPrefs.durationId
-  );
-  const [selectedBranchId, setSelectedBranchId] = useState(
-    initialPrefs.branchId
-  );
-  const [expandedBranchId, setExpandedBranchId] = useState(
-    initialPrefs.branchId
-  );
-
+  const [selectedDate, setSelectedDate] = useState(initialPrefs.date);
+  const [durationOptionId, setDurationOptionId] = useState(initialPrefs.durationId);
+  const [pickupType, setPickupType] = useState(initialPrefs.pickupType);
+  const [pickupSlot, setPickupSlot] = useState(initialPrefs.pickupSlot);
+  const [sixHourTimeFrom, setSixHourTimeFrom] = useState(initialPrefs.timeFrom);
+  const [sixHourTimeTo, setSixHourTimeTo] = useState(initialPrefs.timeTo);
+  const [selectedBranchId, setSelectedBranchId] = useState(initialPrefs.branchId);
+  const [endDateState, setEndDateState] = useState(initialPrefs.endDate);
   const [availabilityByBranch, setAvailabilityByBranch] = useState({});
-
-  const [voucherId] = useState("NONE");
 
   // Initialize customer from localStorage
   const [customer, setCustomer] = useState(() => {
@@ -743,13 +615,41 @@ export default function BookingPage() {
 
   // Save booking prefs when they change
   useEffect(() => {
-    if (selectedBranchId && durationOptionId) {
-      saveBookingPrefs({
-        branchId: selectedBranchId,
-        durationId: durationOptionId,
-      });
+    saveBookingPrefs({
+      branchId: selectedBranchId,
+      durationId: durationOptionId,
+      date: selectedDate?.toISOString(),
+      endDate: endDateState?.toISOString(),
+      timeFrom: sixHourTimeFrom,
+      timeTo: sixHourTimeTo,
+      pickupType,
+      pickupSlot,
+    });
+  }, [
+    selectedBranchId,
+    durationOptionId,
+    selectedDate,
+    endDateState,
+    sixHourTimeFrom,
+    sixHourTimeTo,
+    pickupType,
+    pickupSlot,
+  ]);
+
+  useEffect(() => {
+    if (durationOptionId === "SIX_HOURS") {
+      setSixHourTimeFrom(MORNING_PICKUP_TIME);
+      setSixHourTimeTo(getSixHourAutoReturnTime(MORNING_PICKUP_TIME));
+    } else {
+      setPickupType("MORNING");
+      setPickupSlot(DEFAULT_EVENING_SLOT);
+      setSixHourTimeFrom(MORNING_PICKUP_TIME);
+      setSixHourTimeTo(MORNING_PICKUP_TIME);
+      if (!endDateState || endDateState <= selectedDate) {
+        setEndDateState(addDays(selectedDate || new Date(), 1));
+      }
     }
-  }, [selectedBranchId, durationOptionId]);
+  }, [durationOptionId]);
 
   /* ==== Fetch devices ==== */
   const fetchAllDevices = useCallback(async () => {
@@ -810,22 +710,48 @@ export default function BookingPage() {
     [DERIVED, selectedDeviceId]
   );
 
-  /* ==== Thời gian theo gói ==== */
-  const { startDate, endDate, timeFrom, timeTo } = useMemo(
-    () => getTimeRangeForDuration(selectedDate, durationOptionId),
-    [selectedDate, durationOptionId]
+  // Compute availability range using the same shared logic
+  const prefsForRange = useMemo(() => ({
+    date: selectedDate,
+    endDate: endDateState,
+    timeFrom: sixHourTimeFrom,
+    timeTo: sixHourTimeTo,
+    durationType: durationOptionId,
+    pickupType,
+    pickupSlot,
+  }), [selectedDate, endDateState, sixHourTimeFrom, sixHourTimeTo, durationOptionId, pickupType, pickupSlot]);
+
+  const { fromDateTime: t1, toDateTime: t2 } = useMemo(
+    () => computeAvailabilityRange(prefsForRange),
+    [prefsForRange],
   );
 
+  const startDate = t1 ? normalizeDate(t1) : null;
+  const endDate = t2 ? normalizeDate(t2) : null;
+  const timeFrom = t1 ? format(t1, "HH:mm") : null;
+  const timeTo = t2 ? format(t2, "HH:mm") : null;
+
+  const timeSelectionError = useMemo(() => {
+    return getAvailabilityRangeError(prefsForRange, t1, t2);
+  }, [prefsForRange, t1, t2]);
+
   /* ==== Pricing ==== */
-  const { days, subTotal, discount, total, t1, t2, isSixHours } =
+  const { days, subTotal, discount, total, isSixHours } =
     useBookingPricing(
       selectedDevice,
       startDate,
       timeFrom,
       endDate,
       timeTo,
-      voucherId
+      voucherId,
+      durationOptionId
     );
+
+  const durationDays = useMemo(() => {
+    if (durationOptionId === "SIX_HOURS") return 0.5;
+    return getDurationDays(durationOptionId);
+  }, [durationOptionId]);
+
 
   /* ==== Validate info ==== */
   const { validInfo, errors } = useMemo(() => {
@@ -852,8 +778,8 @@ export default function BookingPage() {
       return;
     }
 
-    const fromDateTime = combineDateWithTimeString(startDate, timeFrom);
-    const toDateTime = combineDateWithTimeString(endDate, timeTo);
+    const fromDateTime = combineDateWithTime(startDate, timeFrom);
+    const toDateTime = combineDateWithTime(endDate, timeTo);
 
     if (!fromDateTime || !toDateTime || toDateTime <= fromDateTime) {
       setAvailabilityByBranch({});
@@ -903,7 +829,7 @@ export default function BookingPage() {
       }
     };
 
-    BRANCHES.forEach((b) => fetchForBranch(b.id));
+    BRANCHES.filter((b) => !b.disabled).forEach((b) => fetchForBranch(b.id));
 
     return () => {
       cancelled = true;
@@ -923,6 +849,7 @@ export default function BookingPage() {
     if (!selectedDevice) return false;
     if (!selectedBranchId) return false;
     if (!t1 || !t2 || total <= 0) return false;
+    if (timeSelectionError) return false;
     if (!validInfo) return false;
 
     const av = availabilityByBranch[selectedBranchId];
@@ -935,6 +862,7 @@ export default function BookingPage() {
     t1,
     t2,
     total,
+    timeSelectionError,
     validInfo,
     availabilityByBranch,
   ]);
@@ -961,17 +889,18 @@ export default function BookingPage() {
         BRANCHES.find((b) => b.id === selectedBranchId)?.label ||
         selectedBranchId;
 
+      const fmt = (d) => (d ? format(d, "yyyy-MM-dd'T'HH:mm:ss") : null);
+      const note = `Khách ${customer.fullName} ${phone} ${branchLabel}`.slice(0, 80);
       const bookingRequest = {
         customerId,
         deviceId: selectedDevice.id,
-        bookingFrom: t1.toISOString(),
-        bookingTo: t2.toISOString(),
-        total: total,
-        note: `Khách: ${customer.fullName} - ${phone}${
-          customer.ig ? " - IG:" + customer.ig : ""
-        }${
-          customer.fb ? " - FB:" + customer.fb : ""
-        } - Chi nhánh: ${branchLabel}`,
+        bookingFrom: fmt(t1),
+        bookingTo: fmt(t2),
+        total,
+        note,
+        dayOfRent: days,
+        originalPrice: subTotal,
+        noteVoucher: voucherId || "NONE",
       };
 
       const rawDesc = `Thue ${selectedDevice.displayName}`;
@@ -1131,28 +1060,29 @@ export default function BookingPage() {
               </div>
             )}
 
-            {/* Chi nhánh + gói */}
-            <div className="bg-[#FFFBF5]">
-              {BRANCHES.map((branch) => (
-                <BranchPanel
-                  key={branch.id}
-                  branch={branch}
-                  expanded={expandedBranchId === branch.id}
-                  onToggle={() =>
-                    setExpandedBranchId((prev) =>
-                      prev === branch.id ? null : branch.id
-                    )
-                  }
-                  device={selectedDevice}
-                  selectedBranchId={selectedBranchId}
-                  selectedDurationId={durationOptionId}
-                  onSelectDuration={(bId, durationId) => {
-                    setSelectedBranchId(bId);
-                    setDurationOptionId(durationId);
-                  }}
-                  availability={availabilityByBranch[branch.id]}
+            {/* Preferences Form (Branch, Duration, Date, Time) */}
+            <div className="mx-4 mb-4">
+              <div className="rounded-2xl border border-[#FFE4F0] bg-white p-4 shadow-md">
+                <BookingPrefsForm
+                  branchId={selectedBranchId}
+                  date={selectedDate}
+                  endDate={endDateState}
+                  timeFrom={sixHourTimeFrom}
+                  timeTo={sixHourTimeTo}
+                  durationType={durationOptionId}
+                  pickupType={pickupType}
+                  pickupSlot={pickupSlot}
+                  setBranchId={setSelectedBranchId}
+                  setDate={setSelectedDate}
+                  setEndDate={setEndDateState}
+                  setTimeFrom={setSixHourTimeFrom}
+                  setTimeTo={setSixHourTimeTo}
+                  setDurationType={setDurationOptionId}
+                  setPickupType={setPickupType}
+                  setPickupSlot={setPickupSlot}
+                  error={timeSelectionError || (availabilityByBranch[selectedBranchId]?.soldOut ? "⚠️ Máy đã hết trong khung giờ này." : "")}
                 />
-              ))}
+              </div>
             </div>
 
             {/* Info khách hàng */}
@@ -1214,6 +1144,23 @@ export default function BookingPage() {
                     customer={customer}
                     isSixHours={isSixHours}
                   />
+                  {selectedDevice && t1 && t2 && total > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        printContract({
+                          device: selectedDevice,
+                          total,
+                          t1,
+                          t2,
+                        })
+                      }
+                      className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-[#FF9FCA] bg-[#FFF5F8] text-[#222] font-bold uppercase tracking-wider hover:bg-[#FFE4F0] transition-colors"
+                    >
+                      <PrinterIcon className="h-5 w-5 text-[#E85C9C]" />
+                      In hợp đồng
+                    </button>
+                  )}
                   {paymentError && (
                     <div className="mt-4 p-3 rounded-xl bg-red-50 text-sm text-red-600">
                       {paymentError}
@@ -1255,7 +1202,6 @@ export default function BookingPage() {
                 "Đang xử lý..."
               ) : (
                 <>
-                  <CreditCardIcon className="h-5 w-5" />
                   {canSubmit
                     ? `Thanh toán ${Math.round(total / 1000)}k`
                     : "Chọn gói thuê & điền thông tin"}

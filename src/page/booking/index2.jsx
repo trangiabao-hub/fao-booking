@@ -19,7 +19,6 @@ import {
   ArrowRightIcon,
   CalendarDaysIcon,
   CheckCircleIcon,
-  CreditCardIcon,
   DevicePhoneMobileIcon,
   UserIcon,
 } from "@heroicons/react/24/solid";
@@ -1157,24 +1156,25 @@ export default function BookingPage() {
       const receiveText =
         receiveMethod === "DELIVERY"
           ? deliveryAddress?.trim()
-            ? `Giao tận nơi (${deliveryAddress.trim()})`
+            ? `Giao (${deliveryAddress.trim().slice(0, 30)})`
             : "Giao tận nơi"
-          : "Nhận tại cửa hàng";
+          : "Tại cửa hàng";
 
+      const fmt = (d) => (d ? format(d, "yyyy-MM-dd'T'HH:mm:ss") : null);
+      const note = `${customer.fullName} ${phone} ${branchLabel} ${receiveText}`.slice(0, 80);
       const bookingRequest = {
         customerId,
         deviceId: selectedDevice.id,
-        bookingFrom: t1.toISOString(),
-        bookingTo: t2.toISOString(),
-        total: total,
-        note: `Khách: ${customer.fullName} - ${phone}${
-          customer.ig ? " - IG:" + customer.ig : ""
-        }${
-          customer.fb ? " - FB:" + customer.fb : ""
-        } - Cửa hàng: ${branchLabel} - Hình thức: ${receiveText}`,
+        bookingFrom: fmt(t1),
+        bookingTo: fmt(t2),
+        total,
+        note,
+        dayOfRent: days,
+        originalPrice: subTotal,
+        noteVoucher: voucherId || "NONE",
       };
 
-      const rawDesc = `Thue ${selectedDevice.displayName}`;
+      const rawDesc = `Thue ${(selectedDevice.displayName || "").slice(0, 15)}`;
       const returnUrl = `${window.location.origin}/payment-status`;
       const payload = {
         amount: total,
@@ -1522,8 +1522,7 @@ export default function BookingPage() {
                     "Đang xử lý..."
                   ) : (
                     <>
-                      <CreditCardIcon className="h-5 w-5" /> Thanh toán (
-                      {total.toLocaleString("vi-VN")} đ)
+                      Thanh toán ({total.toLocaleString("vi-VN")} đ)
                     </>
                   )}
                 </button>

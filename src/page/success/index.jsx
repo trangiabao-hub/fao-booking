@@ -13,8 +13,11 @@ import {
   SparklesIcon,
   BookOpenIcon,
   CameraIcon,
+  ChatBubbleLeftRightIcon,
+  ClipboardDocumentIcon,
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
+import { MESSENGER_LINK } from "../../data/contactConfig";
 import FloatingContactButton from "../../components/FloatingContactButton";
 
 const FALLBACK_IMG = "https://placehold.co/640x360/fdf2f8/ec4899?text=No+Image";
@@ -36,6 +39,8 @@ const USAGE_TIPS = [
 
 function SuccessCard({ details }) {
   const [showShare, setShowShare] = useState(false);
+  const [showMessengerToast, setShowMessengerToast] = useState(false);
+  const [showCopyOrderToast, setShowCopyOrderToast] = useState(false);
   const [email, setEmail] = useState("");
   const [emailSubmitted, setEmailSubmitted] = useState(false);
 
@@ -87,6 +92,47 @@ function SuccessCard({ details }) {
     }
   };
 
+  const getOrderSummary = () => {
+    if (!details) return "";
+    return [
+      `📋 TÓM TẮT ĐƠN HÀNG`,
+      ``,
+      `Mã đơn: #${details.orderCode}`,
+      `Thiết bị: ${details.device.name}`,
+      `Ngày nhận: ${format(new Date(details.bookingFrom), "HH:mm, EEEE, dd/MM/yyyy", { locale: vi })}`,
+      `Ngày trả: ${format(new Date(details.bookingTo), "HH:mm, EEEE, dd/MM/yyyy", { locale: vi })}`,
+      `Tổng tiền: ${details.total.toLocaleString("vi-VN")} đ`,
+      ``,
+      `Chào shop, mình vừa đặt đơn trên và đã thanh toán thành công. Mong shop xác nhận ạ!`,
+    ].join("\n");
+  };
+
+  const handleCopyOrder = async () => {
+    if (!details) return;
+    const summary = getOrderSummary();
+    try {
+      await navigator.clipboard.writeText(summary);
+      setShowCopyOrderToast(true);
+      setTimeout(() => setShowCopyOrderToast(false), 3000);
+    } catch (err) {
+      console.warn("Clipboard failed:", err);
+    }
+  };
+
+  const handleMessengerClick = async () => {
+    if (!details) return;
+    const message = getOrderSummary();
+    try {
+      await navigator.clipboard.writeText(message);
+      window.open(MESSENGER_LINK, "_blank");
+      setShowMessengerToast(true);
+      setTimeout(() => setShowMessengerToast(false), 3000);
+    } catch (err) {
+      console.warn("Clipboard failed, opening Messenger only:", err);
+      window.open(MESSENGER_LINK, "_blank");
+    }
+  };
+
   if (!details) {
     return <LoadingState message="Đang tải chi tiết đơn hàng..." />;
   }
@@ -113,6 +159,22 @@ function SuccessCard({ details }) {
         <p className="text-slate-600 mt-2">
           Cảm ơn bạn đã tin tưởng. Tụi mình đã nhận được lịch đặt của bạn.
         </p>
+
+        {/* Lưu ý hoàn tất đơn - ưu tiên đầu */}
+        <div className="mt-6 p-5 bg-blue-50 rounded-xl border border-blue-200 text-left">
+          <h3 className="font-bold text-blue-800 text-lg mb-3 flex items-center gap-2">
+            <ChatBubbleLeftRightIcon className="w-6 h-6 text-blue-600" />
+            Lưu ý: Nhắn cho page để hoàn tất đơn hàng
+          </h3>
+          <p className="text-base text-blue-700 mb-3">
+            Để shop xác nhận đơn, vui lòng gửi thông tin đơn cho page Facebook:
+          </p>
+          <ol className="text-base text-blue-800 space-y-2 list-decimal list-inside">
+            <li>Ấn <strong>"Copy đơn hàng"</strong> để copy thông tin</li>
+            <li>Ấn <strong>"Nhắn shop qua Messenger"</strong></li>
+            <li>Dán nội dung (Ctrl+V hoặc giữ → Dán) vào ô chat và gửi</li>
+          </ol>
+        </div>
 
         <div className="text-left bg-pink-50 rounded-xl p-4 mt-6 space-y-3">
           <h3 className="font-semibold text-pink-900 border-b border-pink-200 pb-2 mb-2">
@@ -145,6 +207,13 @@ function SuccessCard({ details }) {
               </span>
             </p>
           </div>
+          <button
+            onClick={handleCopyOrder}
+            className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200 hover:bg-slate-200 transition-all active:scale-95"
+          >
+            <ClipboardDocumentIcon className="w-5 h-5" />
+            Copy đơn hàng
+          </button>
         </div>
 
         {/* Action Buttons */}
@@ -155,6 +224,14 @@ function SuccessCard({ details }) {
           >
             <CalendarIcon className="w-5 h-5" />
             Thêm vào Lịch Google
+          </button>
+
+          <button
+            onClick={handleMessengerClick}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#0084FF] text-white font-semibold shadow-lg shadow-blue-500/30 hover:bg-[#0066CC] transition-all active:scale-95"
+          >
+            <ChatBubbleLeftRightIcon className="w-5 h-5" />
+            Nhắn shop qua Messenger
           </button>
 
           <button
@@ -172,6 +249,26 @@ function SuccessCard({ details }) {
               className="text-sm text-green-600 bg-green-50 rounded-lg py-2"
             >
               ✓ Đã copy link!
+            </motion.div>
+          )}
+
+          {showMessengerToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-sm text-green-600 bg-green-50 rounded-lg py-2"
+            >
+              Đã copy tin nhắn! Mở Messenger và dán (Ctrl+V) để gửi nhé.
+            </motion.div>
+          )}
+
+          {showCopyOrderToast && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-sm text-green-600 bg-green-50 rounded-lg py-2"
+            >
+              ✓ Đã copy tóm tắt đơn hàng!
             </motion.div>
           )}
         </div>

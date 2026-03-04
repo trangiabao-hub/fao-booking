@@ -158,6 +158,12 @@ const Header = () => {
           </nav>
           <div className="flex items-center gap-4">
             <Link
+              to="/photobooth"
+              className="hidden sm:inline-block bg-white text-pink-600 border border-pink-200 font-semibold px-5 py-2.5 rounded-full text-sm hover:bg-pink-50 transition-all duration-300"
+            >
+              Photo Booth
+            </Link>
+            <Link
               to="/booking"
               className="hidden sm:inline-block bg-pink-500 text-white font-semibold px-5 py-2.5 rounded-full text-sm hover:bg-pink-600 transition-all duration-300 shadow-lg shadow-pink-500/30 hover:scale-105 active:scale-95"
             >
@@ -195,6 +201,12 @@ const Header = () => {
                   {link.name}
                 </a>
               ))}
+              <Link
+                to="/photobooth"
+                className="bg-white text-pink-600 border border-pink-200 font-semibold px-8 py-3 rounded-full text-base hover:bg-pink-50 transition-all duration-300 active:scale-95"
+              >
+                Photo Booth
+              </Link>
               <Link
                 to="/booking"
                 className="mt-4 bg-pink-500 text-white font-semibold px-8 py-3 rounded-full text-base hover:bg-pink-600 transition-all duration-300 shadow-lg shadow-pink-500/30 active:scale-95"

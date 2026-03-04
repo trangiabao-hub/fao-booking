@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { format, addHours } from "date-fns";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { format, addDays } from "date-fns";
+import vi from "date-fns/locale/vi";
+import { Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import DatePicker, { registerLocale } from "react-datepicker";
 import {
   MapPin,
   Phone,
@@ -16,22 +18,44 @@ import {
 import api from "../../config/axios";
 import FloatingContactButton from "../../components/FloatingContactButton";
 import QuickBookModal from "../../components/QuickBookModal";
+import BookingPrefsForm, {
+  normalizeDate,
+  getDefaultBranchId,
+  computeAvailabilityRange,
+  getAvailabilityRangeError,
+  getSixHourAutoReturnTime,
+} from "../../components/BookingPrefsForm";
+import { computeDiscountBreakdown, calculateRentalInfo } from "../../utils/pricing";
+import { saveBookingPrefs } from "../../utils/storage";
+import "react-datepicker/dist/react-datepicker.css";
 
-const FALLBACK_IMG = "https://placehold.co/400x300/fdf2f8/ec4899?text=No+Image";
+registerLocale("vi", vi);
+
+const FALLBACK_IMG = "https://placehold.co/400x300/FFE4F0/E85C9C?text=📷";
 const DEFAULT_TIME_FROM = "09:00";
-const DEFAULT_TIME_TO = "20:30";
-const DEFAULT_MULTI_DAY_TIME_TO = "20:30";
+const MORNING_PICKUP_TIME = "09:00";
+const SIX_HOUR_SECOND_PICKUP_TIME = "15:00";
+const DEFAULT_EVENING_SLOT = "20:30";
+const ONE_DAY_EVENING_SLOTS = [
+  "19:15",
+  "19:00",
+  "19:30",
+  "20:00",
+  "20:15",
+  "20:30",
+];
+const SIX_HOUR_MAX_HOURS = 12;
 
 const DURATION_TYPES = [
   { id: "SIX_HOURS", label: "6 tiếng" },
-  { id: "ONE_DAY", label: "1 ngày" },
-  { id: "MULTI_DAY", label: "Nhiều ngày" },
+  { id: "ONE_DAY", label: "Thuê theo ngày" },
 ];
 
 const BRANCHES = [
   { id: "PHU_NHUAN", label: "FAO Phú Nhuận" },
-  { id: "Q9", label: "FAO Q9 (Vinhomes)" },
+  { id: "Q9", label: "FAO Q9 (Vinhomes)", disabled: true, comingSoon: true },
 ];
+
 
 // --- CSS NOISE TEXTURE (from Menu) ---
 const NoiseOverlay = () => (
@@ -93,12 +117,6 @@ function normalizeDeviceName(name = "") {
   return name.replace(/\s*\(\d+\)\s*$/, "").trim();
 }
 
-function normalizeDate(date) {
-  if (!date) return null;
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 function combineDateWithTimeString(dateOnly, timeStr) {
   if (!dateOnly || !timeStr) return null;
@@ -116,18 +134,60 @@ function formatDateTimeLocalForAPI(date) {
   return format(date, "yyyy-MM-dd'T'HH:mm:ss");
 }
 
-function addHoursToTimeString(dateOnly, timeStr, hoursToAdd) {
-  const base = combineDateWithTimeString(dateOnly, timeStr);
-  if (!base) return null;
-  return addHours(base, hoursToAdd);
+function getDayPartLabel(date) {
+  if (!date) return "";
+  const hour = date.getHours();
+  if (hour < 12) return "Sáng";
+  if (hour < 18) return "Chiều";
+  return "Tối";
 }
 
-// Get discount price (weekday -20%)
-function getDiscountPrice(price) {
-  if (!price || price <= 0) return { original: "0k", discounted: "0k" };
-  const originalK = Math.round(price / 1000);
-  const discountedK = Math.floor(originalK * 0.8);
-  return { original: `${originalK}k`, discounted: `${discountedK}k` };
+function formatWeekdayLabel(date) {
+  if (!date) return "";
+  const dow = date.getDay();
+  if (dow === 0) return "CN";
+  return `Thứ ${dow + 1}`;
+}
+
+function formatTimeShort(date) {
+  if (!date) return "";
+  const hour = format(date, "HH");
+  const minute = format(date, "mm");
+  return minute === "00" ? `${hour}h` : `${hour}:${minute}`;
+}
+
+function formatPickupReturnSummary(date) {
+  if (!date) return "";
+  return `${formatTimeShort(date)} • ${getDayPartLabel(date)} • ${formatWeekdayLabel(
+    date
+  )} (${format(date, "dd/MM")})`;
+}
+
+function countWeekdaysInRange(startDateTime, endDateTime) {
+  if (!startDateTime || !endDateTime || endDateTime <= startDateTime) {
+    return { totalDays: 0, weekdayDays: 0 };
+  }
+  const start = new Date(startDateTime);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(endDateTime);
+  end.setHours(0, 0, 0, 0);
+
+  let totalDays = 0;
+  let weekdayDays = 0;
+  const cur = new Date(start);
+  while (cur < end) {
+    totalDays += 1;
+    const dow = cur.getDay();
+    if (dow >= 1 && dow <= 5) weekdayDays += 1;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return { totalDays, weekdayDays };
+}
+
+
+function formatPriceK(amount) {
+  if (!amount || amount <= 0) return "0k";
+  return `${Math.round(amount / 1000)}k`;
 }
 
 // Price range definitions
@@ -174,8 +234,11 @@ const cardVariants = {
 };
 
 // Chic Card Component (matching Menu style)
-function ChicCard({ device, onClick, onQuickBook }) {
-  const { original, discounted } = getDiscountPrice(device.priceOneDay);
+function ChicCard({ device, pricing, onQuickBook }) {
+  const originalLabel = formatPriceK(pricing?.original || 0);
+  const discountedLabel = formatPriceK(pricing?.discounted || 0);
+  const savingAmount = (pricing?.original || 0) - (pricing?.discounted || 0);
+  const savingLabel = savingAmount > 0 ? formatPriceK(savingAmount) : null;
   const isHot = device.bookingCount > 5 || device.priceOneDay >= 400000;
   const isAvailable = device.isAvailable !== false;
 
@@ -189,90 +252,75 @@ function ChicCard({ device, onClick, onQuickBook }) {
     <motion.div
       variants={cardVariants}
       className={`relative group select-none h-full z-10 ${
-        isAvailable ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+        isAvailable ? "" : "cursor-not-allowed opacity-60"
       }`}
-      onClick={isAvailable ? onClick : undefined}
     >
-      <div className="bg-[#FFFBF5] rounded-xl p-3 pt-10 pb-3 relative border-2 border-transparent hover:border-[#FF9FCA] shadow-[0_4px_10px_rgba(0,0,0,0.03)] active:scale-[0.98] transition-all duration-200 flex flex-col items-center h-full overflow-hidden cursor-pointer touch-manipulation">
+      <div className="bg-[#FFFBF5] rounded-xl overflow-hidden relative border-2 border-transparent shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-all duration-200 flex flex-col h-full touch-manipulation">
         {!isAvailable && (
-          <div className="absolute top-2 right-2 z-30 bg-red-100 text-red-700 text-[9px] font-black px-2 py-1 rounded-full uppercase">
+          <div className="absolute top-2 left-2 z-30 bg-red-100 text-red-700 text-[9px] font-black px-2 py-1 rounded-full uppercase">
             Hết chỗ
           </div>
         )}
-        {/* SALE BADGE */}
-        <div className="absolute top-0 left-0 bg-[#333] group-hover:bg-[#E85C9C] text-white px-3 py-1.5 rounded-br-xl z-20 shadow-sm transition-colors duration-300">
-          <span className="text-[9px] md:text-[10px] font-black tracking-widest leading-none block">
-            -20% trong tuần
+        {/* PROMO BADGE - top right */}
+        <div className="absolute top-0 right-0 bg-[#1a1a1a] text-white px-3 py-1.5 rounded-bl-xl z-30 shadow-md border-l-2 border-b-2 border-amber-400/90">
+          <span className="text-[10px] md:text-[11px] font-black leading-none block">
+            {savingLabel ? (
+              <>
+                Giảm trực tiếp{" "}
+                <span className="text-amber-400">{savingLabel}</span>
+              </>
+            ) : (
+              "-20% trong tuần"
+            )}
           </span>
         </div>
 
         {/* HOT BADGE */}
         {isHot && (
-          <div className="absolute top-2 right-2 z-20 flex flex-col items-center transform rotate-6">
-            <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-1 rounded border border-white shadow-[2px_2px_0_rgba(0,0,0,0.1)] uppercase text-center leading-[1.1]">
-              <div className="flex items-center gap-1">
-                <Sparkles size={10} />
-                HOT
-              </div>
+          <div className="absolute top-2 left-2 z-20 flex flex-col items-center transform rotate-6">
+            <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-1 rounded border border-white shadow-sm uppercase">
+              <Sparkles size={10} className="inline" /> HOT
             </div>
           </div>
         )}
 
-        {/* IMAGE CONTAINER */}
-        <div className="w-24 h-24 md:w-32 md:h-32 mb-4 relative shrink-0">
-          <div className="w-full h-full rounded-full border-4 border-white shadow-[0_5px_20px_#ffe4f0] overflow-hidden relative bg-white">
-            <img
-              src={device.img || FALLBACK_IMG}
-              alt={device.displayName}
-              className="w-full h-full object-cover"
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-          <div className="absolute -bottom-1 -right-1 text-yellow-400 drop-shadow-sm z-20">
-            <Star size={20} fill="currentColor" />
+        {/* IMAGE - full bleed top, fixed height đồng bộ */}
+        <div className="w-full h-36 sm:h-40 relative shrink-0 bg-[#FFE4F0]/50 overflow-hidden">
+          <img
+            src={device.img || FALLBACK_IMG}
+            alt={device.displayName}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
+          />
+          <div className="absolute bottom-1.5 right-1.5 text-amber-400/90 drop-shadow-md">
+            <Star size={16} fill="currentColor" />
           </div>
         </div>
 
-        {/* INFO BODY */}
-        <div className="text-center w-full flex flex-col flex-grow">
-          <h3 className="font-sans text-[#222] text-sm md:text-base font-black uppercase tracking-tight mb-1 leading-tight line-clamp-2 min-h-[2.5rem]">
+        {/* CONTENT */}
+        <div className="p-3 flex flex-col flex-grow">
+          <h3 className="font-sans text-[#222] text-[13px] md:text-sm font-black uppercase tracking-tight leading-tight line-clamp-2 mb-2">
             {device.displayName}
           </h3>
 
-          {device.priceSixHours > 0 && (
-            <p className="text-[10px] md:text-xs text-gray-500 font-medium italic line-clamp-1 mb-2">
-              6h: {Math.round(device.priceSixHours / 1000)}k
-            </p>
-          )}
-
-          <div className="w-full h-px bg-gradient-to-r from-transparent via-[#FF9FCA] to-transparent opacity-50 mb-3" />
-
-          <div className="mt-auto flex items-end justify-between w-full px-1 mb-3">
-            <div className="flex flex-col items-start leading-none">
-              <span className="text-[10px] text-gray-400 line-through decoration-rose-400 decoration-1 mb-0.5">
-                {original}
+          <div className="flex items-end gap-2 mt-auto pt-2 border-t border-pink-100">
+            <div>
+              <span className="text-xs md:text-sm text-gray-500 line-through block font-semibold">
+                {originalLabel}
               </span>
-              <span
-                className="text-lg md:text-xl font-black text-[#E85C9C]"
-                style={{ textShadow: "1px 1px 0 #FFF" }}
-              >
-                {discounted}
+              <span className="text-base md:text-lg font-black text-[#E85C9C] leading-none">
+                {savingLabel ? `Chỉ còn ${discountedLabel}` : discountedLabel}
               </span>
-            </div>
-
-            <div className="bg-[#222] text-white w-8 h-8 rounded-full flex items-center justify-center shadow-md">
-              <ArrowRight size={16} strokeWidth={3} />
             </div>
           </div>
 
-          {/* Quick Book Button */}
           <button
             onClick={handleQuickBook}
             disabled={!isAvailable}
-            className="w-full py-2 bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white text-xs font-bold rounded-lg hover:opacity-90 transition-all active:scale-95 shadow-md uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full mt-3 py-2.5 bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white text-[11px] font-bold rounded-lg hover:opacity-90 active:scale-[0.98] shadow-md uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            🚀 Đặt nhanh
+            🚀 Đặt ngay
           </button>
         </div>
       </div>
@@ -298,14 +346,7 @@ function StylishTabs({ activeTab, setActiveTab }) {
               }`}
             >
               {isActive && (
-                <div className="absolute inset-0 rounded-lg shadow-[3px_3px_0_#ddd] -z-10" />
-              )}
-              {isActive && (
-                <motion.div
-                  layoutId="activeTabChic"
-                  className="absolute inset-0 bg-[#222] rounded-lg border border-[#222]"
-                  transition={{ duration: 0.15, ease: "easeInOut" }}
-                />
+                <div className="absolute inset-0 rounded-lg bg-[#222] border border-[#222] shadow-[3px_3px_0_#ddd] -z-10" />
               )}
               <span
                 className={`relative z-10 flex items-center gap-2 transition-all ${
@@ -325,23 +366,24 @@ function StylishTabs({ activeTab, setActiveTab }) {
 
 // Filter Modal (bottom sheet style)
 function FilterModal({ isOpen, onClose, priceRange, setPriceRange }) {
-  if (!isOpen) return null;
-
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center"
-        onClick={onClose}
-      >
+      {isOpen && (
         <motion.div
-          initial={{ y: "100%" }}
-          animate={{ y: 0 }}
-          exit={{ y: "100%" }}
-          transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          onClick={(e) => e.stopPropagation()}
+          key="filter-modal"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center"
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 28, stiffness: 400 }}
+            onClick={(e) => e.stopPropagation()}
           className="bg-[#FFFBF5] w-full max-w-md rounded-t-3xl p-6"
         >
           <div className="flex items-center justify-between mb-6">
@@ -374,8 +416,9 @@ function FilterModal({ isOpen, onClose, priceRange, setPriceRange }) {
               </button>
             ))}
           </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
     </AnimatePresence>
   );
 }
@@ -389,150 +432,146 @@ function AvailabilityGate({
   timeFrom,
   timeTo,
   durationType,
+  pickupType,
+  pickupSlot,
   setBranchId,
   setDate,
   setEndDate,
   setTimeFrom,
   setTimeTo,
+  setPickupType,
+  setPickupSlot,
   setDurationType,
   error,
 }) {
-  if (!isOpen) return null;
+  const { fromDateTime, toDateTime } = useMemo(
+    () =>
+      computeAvailabilityRange({
+        date,
+        endDate,
+        timeFrom,
+        timeTo,
+        durationType,
+        pickupType,
+        pickupSlot,
+      }),
+    [date, endDate, timeFrom, timeTo, durationType, pickupType, pickupSlot],
+  );
+
+  const billableDays = useMemo(() => {
+    if (durationType !== "ONE_DAY" || !fromDateTime || !toDateTime) return 0;
+    const diffMs = toDateTime.getTime() - fromDateTime.getTime();
+    if (diffMs <= 0) return 0;
+    return Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  }, [durationType, fromDateTime, toDateTime]);
+
+  const pickupLine = fromDateTime ? formatPickupReturnSummary(fromDateTime) : "";
+  const returnLine = toDateTime ? formatPickupReturnSummary(toDateTime) : "";
+  const { weekdayDays } = useMemo(
+    () => countWeekdaysInRange(fromDateTime, toDateTime),
+    [fromDateTime, toDateTime]
+  );
+  const teaserSaving = useMemo(() => weekdayDays * 90000, [weekdayDays]);
+  const teaserSavingLabel = useMemo(
+    () => `${teaserSaving.toLocaleString("vi-VN")} VND`,
+    [teaserSaving]
+  );
+  const MotionDiv = motion.div;
+
+  useEffect(() => {
+    if (durationType === "SIX_HOURS") {
+      const autoTimeTo = getSixHourAutoReturnTime(timeFrom);
+      if (timeTo !== autoTimeTo) setTimeTo(autoTimeTo);
+    }
+  }, [durationType, timeFrom, timeTo, setTimeTo]);
+
+  useEffect(() => {
+    if (durationType === "ONE_DAY" && timeFrom && timeTo !== timeFrom) {
+      setTimeTo(timeFrom);
+    }
+  }, [durationType, timeFrom, timeTo, setTimeTo]);
+
+  const prefs = {
+    date,
+    endDate,
+    timeFrom,
+    timeTo,
+    durationType,
+    pickupType,
+    pickupSlot,
+    branchId,
+  };
+  const rangeError = getAvailabilityRangeError(prefs, fromDateTime, toDateTime);
+  const isComplete = !rangeError;
+
+  const handleBackdropClick = () => {
+    if (isComplete) onConfirm();
+  };
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center"
-      >
-        <motion.div
-          initial={{ y: "100%" }}
-          animate={{ y: 0 }}
-          exit={{ y: "100%" }}
-          transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          className="bg-[#FFFBF5] w-full max-w-md rounded-t-3xl p-6"
+      {isOpen && (
+        <MotionDiv
+          key="availability-gate"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          onClick={handleBackdropClick}
+          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center"
         >
-          <h3 className="text-lg font-black text-[#222] uppercase tracking-wider mb-4">
-            Chọn giờ nhận / trả
-          </h3>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-2 block">
-                Gói thuê
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {DURATION_TYPES.map((opt) => (
-                  <button
-                    key={opt.id}
-                    onClick={() => setDurationType(opt.id)}
-                    className={`px-2 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 transition-all ${
-                      durationType === opt.id
-                        ? "bg-[#222] text-[#FF9FCA] border-[#222]"
-                        : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+          <MotionDiv
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 28, stiffness: 400 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#FFFBF5] w-full max-w-md rounded-t-3xl max-h-[90dvh] flex flex-col overflow-hidden"
+          >
+          <div className="px-5 pt-5 pb-3 border-b border-[#FFE4F0] bg-[#FFFBF5]">
+            <div className="mb-2">
+              <h3 className="text-lg font-black text-[#222] uppercase tracking-wider">
+                Chọn giờ nhận / trả
+              </h3>
             </div>
-
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-1 block">
-                Ngày nhận
-              </label>
-              <input
-                type="date"
-                value={date ? format(date, "yyyy-MM-dd") : ""}
-                onChange={(e) => setDate(normalizeDate(e.target.value))}
-                className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-sm font-medium focus:border-[#FF9FCA] focus:outline-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-1 block">
-                  Nhận
-                </label>
-                <input
-                  type="time"
-                  value={timeFrom}
-                  onChange={(e) => setTimeFrom(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-sm font-medium focus:border-[#FF9FCA] focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-1 block">
-                  Trả
-                </label>
-                {durationType === "SIX_HOURS" ? (
-                  <div className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-sm font-medium text-[#777]">
-                    {timeTo}
-                  </div>
-                ) : (
-                  <input
-                    type="time"
-                    value={timeTo}
-                    onChange={(e) => setTimeTo(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-sm font-medium focus:border-[#FF9FCA] focus:outline-none"
-                  />
-                )}
-              </div>
-            </div>
-
-            {durationType === "MULTI_DAY" && (
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-1 block">
-                  Ngày trả
-                </label>
-                <input
-                  type="date"
-                  value={endDate ? format(endDate, "yyyy-MM-dd") : ""}
-                  onChange={(e) => setEndDate(normalizeDate(e.target.value))}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-sm font-medium focus:border-[#FF9FCA] focus:outline-none"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-[#777] mb-2 block">
-                Chi nhánh
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {BRANCHES.map((branch) => (
-                  <button
-                    key={branch.id}
-                    onClick={() => setBranchId(branch.id)}
-                    className={`px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider border-2 transition-all ${
-                      branchId === branch.id
-                        ? "bg-[#222] text-[#FF9FCA] border-[#222]"
-                        : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                    }`}
-                  >
-                    {branch.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {error && (
-              <div className="text-sm text-red-600 font-medium bg-red-50 border border-red-200 rounded-xl p-3">
-                {error}
-              </div>
-            )}
           </div>
 
-          <button
-            onClick={onConfirm}
-            className="mt-6 w-full py-3 bg-[#222] text-[#FF9FCA] rounded-xl font-black uppercase tracking-wider hover:bg-[#333] transition-all"
-          >
-            Xác nhận giờ nhận / trả
-          </button>
-        </motion.div>
-      </motion.div>
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            <BookingPrefsForm
+              branchId={branchId}
+              date={date}
+              endDate={endDate}
+              timeFrom={timeFrom}
+              timeTo={timeTo}
+              durationType={durationType}
+              pickupType={pickupType}
+              pickupSlot={pickupSlot}
+              setBranchId={setBranchId}
+              setDate={setDate}
+              setEndDate={setEndDate}
+              setTimeFrom={setTimeFrom}
+              setTimeTo={setTimeTo}
+              setDurationType={setDurationType}
+              setPickupType={setPickupType}
+              setPickupSlot={setPickupSlot}
+              error={error}
+            />
+          </div>
+
+          <div className="px-5 pt-3 pb-4 border-t border-[#FFE4F0] bg-[#FFFBF5]">
+            <button
+              onClick={onConfirm}
+              className="w-full py-3 bg-[#222] text-[#FF9FCA] rounded-xl font-black uppercase tracking-wider hover:bg-[#333] transition-all"
+            >
+              Giữ ưu đãi & xem máy còn trống
+            </button>
+            <div className="text-center text-[11px] text-[#888] mt-2">
+              Bạn có thể đổi lại thời gian bất cứ lúc nào.
+            </div>
+          </div>
+          </MotionDiv>
+        </MotionDiv>
+      )}
     </AnimatePresence>
   );
 }
@@ -540,7 +579,6 @@ function AvailabilityGate({
 // Main Component
 export default function DeviceCatalogPage() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   const initialCategory = searchParams.get("category") || "all";
 
@@ -557,14 +595,19 @@ export default function DeviceCatalogPage() {
   const [availabilityError, setAvailabilityError] = useState("");
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [busyDeviceIds, setBusyDeviceIds] = useState([]);
-  const [availabilityPrefs, setAvailabilityPrefs] = useState(() => ({
-    date: normalizeDate(new Date()),
-    endDate: normalizeDate(new Date()),
-    timeFrom: DEFAULT_TIME_FROM,
-    timeTo: DEFAULT_TIME_TO,
-    branchId: BRANCHES[0].id,
-    durationType: "ONE_DAY",
-  }));
+  const [availabilityPrefs, setAvailabilityPrefs] = useState(() => {
+    const p = typeof window !== "undefined" ? JSON.parse(localStorage.getItem("fao_booking_prefs") || "null") : null;
+    return {
+      date: p?.date ? normalizeDate(new Date(p.date)) : normalizeDate(new Date()),
+      endDate: p?.endDate ? normalizeDate(new Date(p.endDate)) : normalizeDate(addDays(new Date(), 1)),
+      timeFrom: p?.timeFrom || DEFAULT_TIME_FROM,
+      timeTo: p?.timeTo || DEFAULT_TIME_FROM,
+      pickupType: p?.pickupType || "MORNING",
+      pickupSlot: p?.pickupSlot || DEFAULT_EVENING_SLOT,
+      branchId: p?.branchId || getDefaultBranchId(),
+      durationType: p?.durationType || "ONE_DAY",
+    };
+  });
 
   // Quick Book Modal State
   const [quickBookDevice, setQuickBookDevice] = useState(null);
@@ -580,6 +623,22 @@ export default function DeviceCatalogPage() {
     setShowQuickBookModal(false);
     setQuickBookDevice(null);
   };
+
+  // Auto-save prefs
+  useEffect(() => {
+    const data = {
+      branchId: availabilityPrefs.branchId,
+      durationId: availabilityPrefs.durationType,
+      date: availabilityPrefs.date?.toISOString(),
+      endDate: availabilityPrefs.endDate?.toISOString(),
+      timeFrom: availabilityPrefs.timeFrom,
+      timeTo: availabilityPrefs.timeTo,
+      pickupType: availabilityPrefs.pickupType,
+      pickupSlot: availabilityPrefs.pickupSlot,
+      durationType: availabilityPrefs.durationType,
+    };
+    saveBookingPrefs(data);
+  }, [availabilityPrefs]);
 
   // Fetch devices
   const fetchDevices = useCallback(async () => {
@@ -602,30 +661,15 @@ export default function DeviceCatalogPage() {
 
   const fetchAvailability = useCallback(async () => {
     if (!availabilityConfirmed) return;
-    const fromDateTime = combineDateWithTimeString(
-      availabilityPrefs.date,
-      availabilityPrefs.timeFrom
+    const { fromDateTime, toDateTime } =
+      computeAvailabilityRange(availabilityPrefs);
+    const rangeError = getAvailabilityRangeError(
+      availabilityPrefs,
+      fromDateTime,
+      toDateTime,
     );
-    let toDateTime = null;
-    if (availabilityPrefs.durationType === "SIX_HOURS") {
-      toDateTime = addHoursToTimeString(
-        availabilityPrefs.date,
-        availabilityPrefs.timeFrom,
-        6
-      );
-    } else if (availabilityPrefs.durationType === "ONE_DAY") {
-      toDateTime = combineDateWithTimeString(
-        availabilityPrefs.date,
-        availabilityPrefs.timeTo
-      );
-    } else {
-      toDateTime = combineDateWithTimeString(
-        availabilityPrefs.endDate,
-        availabilityPrefs.timeTo
-      );
-    }
-    if (!fromDateTime || !toDateTime || toDateTime <= fromDateTime) {
-      setAvailabilityError("Thời gian trả phải sau thời gian nhận.");
+    if (rangeError) {
+      setAvailabilityError(rangeError);
       return;
     }
 
@@ -658,44 +702,86 @@ export default function DeviceCatalogPage() {
     fetchAvailability();
   }, [fetchAvailability]);
 
-  // Process devices: deduplicate by model, add computed fields
+  // Process devices: group by modelKey, keep 1 representative per model
   const processedDevices = useMemo(() => {
     if (!devices || devices.length === 0) return [];
     const busySet = new Set(busyDeviceIds);
 
-    const seen = new Map();
-    const result = [];
-
+    const byModel = new Map(); // modelKey -> [{ device, isAvailable }, ...]
     for (const device of devices) {
-      const normalizedName = normalizeDeviceName(device.name);
+      const deviceType = String(device.type || "").toUpperCase();
+      if (deviceType !== "DEVICE") continue;
+      const modelKey = (device.modelKey || "").trim() || normalizeDeviceName(device.name);
       const isAvailable = !busySet.has(device.id);
+      if (!byModel.has(modelKey)) byModel.set(modelKey, []);
+      byModel.get(modelKey).push({ device, isAvailable });
+    }
 
-      if (seen.has(normalizedName)) {
-        const existing = seen.get(normalizedName);
-        existing.unitCount = (existing.unitCount || 1) + 1;
-        if (isAvailable)
-          existing.availableCount = (existing.availableCount || 0) + 1;
-        existing.isAvailable = (existing.availableCount || 0) > 0;
-        continue;
-      }
+    const result = [];
+    for (const [modelKey, group] of byModel) {
+      const totalAvailable = group.filter((g) => g.isAvailable).length;
+      const totalBookingCount = group.reduce(
+        (sum, g) => sum + (g.device.bookingDtos?.length || 0),
+        0,
+      );
+      // Pick representative: first available, else first
+      const rep = group.find((g) => g.isAvailable) || group[0];
+      const { device } = rep;
+      const normalizedName = normalizeDeviceName(device.name);
+      const minOrderNumber = Math.min(
+        ...group.map((g) => g.device.orderNumber ?? 999999),
+      );
 
-      const processed = {
+      result.push({
         ...device,
+        orderNumber: minOrderNumber,
+        modelKey,
         displayName: normalizedName,
         brand: inferBrand(device.name),
         img: device.images?.[0] || FALLBACK_IMG,
-        unitCount: 1,
-        bookingCount: device.bookingDtos?.length || 0,
-        availableCount: isAvailable ? 1 : 0,
-        isAvailable,
-      };
-
-      seen.set(normalizedName, processed);
-      result.push(processed);
+        unitCount: group.length,
+        bookingCount: totalBookingCount,
+        availableCount: totalAvailable,
+        isAvailable: totalAvailable > 0,
+      });
     }
 
     return result;
-  }, [devices]);
+  }, [devices, busyDeviceIds]);
+
+  const pricingContext = useMemo(() => {
+    const { fromDateTime: from, toDateTime: to } =
+      computeAvailabilityRange(availabilityPrefs);
+    const { totalDays, weekdayDays } = countWeekdaysInRange(from, to);
+    return {
+      durationType: availabilityPrefs.durationType,
+      fromDateTime: from,
+      toDateTime: to,
+      totalDays,
+      weekdayDays,
+    };
+  }, [availabilityPrefs]);
+
+  const getDevicePricing = useCallback(
+    (device) => {
+      const { durationType, fromDateTime, toDateTime } = pricingContext;
+
+      const { price: original } = calculateRentalInfo(
+        fromDateTime && toDateTime ? [fromDateTime, toDateTime] : [],
+        device || {}
+      );
+
+      if (original <= 0) {
+        const oneDayPrice = device?.priceOneDay || 0;
+        return { original: oneDayPrice, discounted: oneDayPrice };
+      }
+
+      const b = computeDiscountBreakdown(original, fromDateTime, toDateTime);
+      if (!b) return { original, discounted: original };
+      return { original: b.original, discounted: b.discounted };
+    },
+    [pricingContext]
+  );
 
   // Filter devices based on search, category, price
   const filteredDevices = useMemo(() => {
@@ -705,7 +791,7 @@ export default function DeviceCatalogPage() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((d) =>
-        d.displayName.toLowerCase().includes(query)
+        d.displayName.toLowerCase().includes(query),
       );
     }
 
@@ -718,79 +804,48 @@ export default function DeviceCatalogPage() {
     const range = PRICE_RANGES.find((r) => r.id === priceRange);
     if (range && priceRange !== "all") {
       filtered = filtered.filter(
-        (d) => d.priceOneDay >= range.min && d.priceOneDay < range.max
+        (d) => d.priceOneDay >= range.min && d.priceOneDay < range.max,
       );
     }
 
-    // Sort by price (ascending)
-    filtered.sort((a, b) => (a.priceOneDay || 0) - (b.priceOneDay || 0));
+    // Sort by orderNumber (ascending)
+    filtered.sort((a, b) => (a.orderNumber ?? 999999) - (b.orderNumber ?? 999999));
 
     return filtered;
   }, [processedDevices, searchQuery, selectedCategory, priceRange]);
 
   // Handle device selection
-  const handleSelectDevice = (device) => {
-    if (device?.isAvailable === false) return;
-    navigate(
-      `/booking?deviceId=${device.id}&deviceName=${encodeURIComponent(
-        device.displayName
-      )}`
-    );
-  };
-
   const handleConfirmAvailability = () => {
-    const fromDateTime = combineDateWithTimeString(
-      availabilityPrefs.date,
-      availabilityPrefs.timeFrom
+    const { fromDateTime, toDateTime } =
+      computeAvailabilityRange(availabilityPrefs);
+    const rangeError = getAvailabilityRangeError(
+      availabilityPrefs,
+      fromDateTime,
+      toDateTime,
     );
-    let toDateTime = null;
-    if (availabilityPrefs.durationType === "SIX_HOURS") {
-      toDateTime = addHoursToTimeString(
-        availabilityPrefs.date,
-        availabilityPrefs.timeFrom,
-        6
-      );
-    } else if (availabilityPrefs.durationType === "ONE_DAY") {
-      toDateTime = combineDateWithTimeString(
-        availabilityPrefs.date,
-        availabilityPrefs.timeTo
-      );
-    } else {
-      toDateTime = combineDateWithTimeString(
-        availabilityPrefs.endDate,
-        availabilityPrefs.timeTo
-      );
-    }
-    if (!fromDateTime || !toDateTime || toDateTime <= fromDateTime) {
-      setAvailabilityError("Thời gian trả phải sau thời gian nhận.");
+    if (rangeError) {
+      setAvailabilityError(rangeError);
       return;
     }
     setAvailabilityError("");
     setAvailabilityConfirmed(true);
   };
 
-  const availabilityDisplayTimeTo = useMemo(() => {
-    if (availabilityPrefs.durationType === "SIX_HOURS") {
-      const end = addHoursToTimeString(
-        availabilityPrefs.date,
-        availabilityPrefs.timeFrom,
-        6
-      );
-      return end ? format(end, "HH:mm") : availabilityPrefs.timeTo;
-    }
-    return availabilityPrefs.timeTo;
-  }, [availabilityPrefs]);
+  const availabilityRange = useMemo(
+    () => computeAvailabilityRange(availabilityPrefs),
+    [availabilityPrefs],
+  );
 
-  const availabilityDisplayDateTo = useMemo(() => {
-    if (availabilityPrefs.durationType === "MULTI_DAY") {
-      return availabilityPrefs.endDate
-        ? format(availabilityPrefs.endDate, "dd/MM")
-        : "";
-    }
-    return availabilityPrefs.date
-      ? format(availabilityPrefs.date, "dd/MM")
-      : "";
-  }, [availabilityPrefs]);
+  const availabilityDisplay = useMemo(() => {
+    const from = availabilityRange.fromDateTime;
+    const to = availabilityRange.toDateTime;
+    return {
+      fromTime: from ? format(from, "HH:mm") : availabilityPrefs.timeFrom,
+      fromDate: from ? format(from, "dd/MM") : "",
+      toTime: to ? format(to, "HH:mm") : availabilityPrefs.timeTo,
+      toDate: to ? format(to, "dd/MM") : "",
+    };
+  }, [availabilityRange, availabilityPrefs]);
 
   return (
     <div className="min-h-screen font-sans relative text-[#333] overflow-x-hidden flex flex-col pb-10 selection:bg-[#FF9FCA] selection:text-white">
@@ -852,45 +907,50 @@ export default function DeviceCatalogPage() {
 
         {/* Availability Summary */}
         {availabilityConfirmed && (
-          <div className="mb-4 px-3 py-3 bg-white/90 border border-[#FFE4F0] rounded-xl shadow-sm flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-sm md:text-base">
-            <div className="text-[#222] font-black leading-relaxed">
-              {availabilityPrefs.durationType === "SIX_HOURS"
-                ? "Gói 6 tiếng"
-                : availabilityPrefs.durationType === "ONE_DAY"
-                ? "Gói 1 ngày"
-                : "Gói nhiều ngày"}{" "}
-              • Nhận{" "}
-              <span className="font-bold text-[#222]">
-                {availabilityPrefs.timeFrom}
-              </span>{" "}
-              <span className="font-bold text-[#999]">
-                {" "}
-                {availabilityPrefs.date
-                  ? format(availabilityPrefs.date, "dd/MM")
-                  : ""}
-              </span>{" "}
-              • Trả{" "}
-              <span className="font-bold text-[#222]">
-                {availabilityDisplayTimeTo}
-              </span>{" "}
-              <span className="font-bold text-[#999]">
-                {" "}
-                {availabilityDisplayDateTo}
-              </span>{" "}
-              •{" "}
-              <span className="font-bold text-[#E85C9C]">
-                {
-                  BRANCHES.find((b) => b.id === availabilityPrefs.branchId)
-                    ?.label
-                }
+          <div className="mb-4 overflow-hidden rounded-xl bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] border border-pink-100/60">
+            <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#FFF5F9] to-white border-b border-pink-100/50">
+              <span className="text-sm font-black text-[#333] uppercase tracking-wide">
+                {availabilityPrefs.durationType === "SIX_HOURS"
+                  ? "Gói 6 tiếng"
+                  : "Thuê theo ngày"}
               </span>
+              <button
+                onClick={() => setAvailabilityConfirmed(false)}
+                className="text-xs font-bold text-[#E85C9C] hover:text-[#c9185b] px-3 py-1.5 rounded-lg hover:bg-[#E85C9C]/10 transition-all touch-manipulation"
+              >
+                Đổi giờ
+              </button>
             </div>
-            <button
-              onClick={() => setAvailabilityConfirmed(false)}
-              className="self-start sm:self-auto text-[#E85C9C] font-black text-xs md:text-sm hover:underline"
-            >
-              Đổi giờ
-            </button>
+            <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg bg-gray-50/80 px-3 py-2.5">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-0.5">
+                  Nhận
+                </p>
+                <p className="text-sm font-black text-[#222]">
+                  {availabilityDisplay.fromTime}
+                </p>
+                <p className="text-xs text-gray-500">{availabilityDisplay.fromDate}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50/80 px-3 py-2.5">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-0.5">
+                  Trả
+                </p>
+                <p className="text-sm font-black text-[#222]">
+                  {availabilityDisplay.toTime}
+                </p>
+                <p className="text-xs text-gray-500">{availabilityDisplay.toDate}</p>
+              </div>
+              <div className="rounded-lg bg-[#FFF0F5] px-3 py-2.5 col-span-2 sm:col-span-1">
+                <p className="text-[10px] uppercase tracking-wider text-[#E85C9C]/80 font-semibold mb-0.5 flex items-center gap-1">
+                  <MapPin size={10} />
+                  Chi nhánh
+                </p>
+                <p className="text-sm font-black text-[#E85C9C]">
+                  {BRANCHES.find((b) => b.id === availabilityPrefs.branchId)
+                    ?.label ?? ""}
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -964,13 +1024,13 @@ export default function DeviceCatalogPage() {
               variants={gridVariants}
               initial="hidden"
               animate="visible"
-              className="grid grid-cols-2 gap-4 md:gap-6"
+              className="grid grid-cols-2 gap-3 sm:gap-4"
             >
               {filteredDevices.map((device) => (
                 <ChicCard
                   key={device.id}
                   device={device}
-                  onClick={() => handleSelectDevice(device)}
+                  pricing={getDevicePricing(device)}
                   onQuickBook={handleQuickBook}
                 />
               ))}
@@ -1032,18 +1092,22 @@ export default function DeviceCatalogPage() {
         date={availabilityPrefs.date}
         endDate={availabilityPrefs.endDate}
         timeFrom={availabilityPrefs.timeFrom}
-        timeTo={availabilityDisplayTimeTo}
+        timeTo={availabilityPrefs.timeTo}
         durationType={availabilityPrefs.durationType}
+        pickupType={availabilityPrefs.pickupType}
+        pickupSlot={availabilityPrefs.pickupSlot}
         setBranchId={(branchId) =>
           setAvailabilityPrefs((prev) => ({ ...prev, branchId }))
         }
         setDate={(date) =>
           setAvailabilityPrefs((prev) => {
             const nextEndDate =
-              prev.durationType === "MULTI_DAY" && prev.endDate && date
-                ? prev.endDate.getTime() >= date.getTime()
-                  ? prev.endDate
-                  : date
+              prev.durationType === "ONE_DAY"
+                ? prev.endDate && date
+                  ? prev.endDate.getTime() >= addDays(date, 1).getTime()
+                    ? prev.endDate
+                    : addDays(date, 1)
+                  : addDays(date || new Date(), 1)
                 : date;
             return { ...prev, date, endDate: nextEndDate };
           })
@@ -1057,37 +1121,65 @@ export default function DeviceCatalogPage() {
         setTimeTo={(timeTo) =>
           setAvailabilityPrefs((prev) => ({ ...prev, timeTo }))
         }
+        setPickupType={(pickupType) =>
+          setAvailabilityPrefs((prev) => ({ ...prev, pickupType }))
+        }
+        setPickupSlot={(pickupSlot) =>
+          setAvailabilityPrefs((prev) => ({ ...prev, pickupSlot }))
+        }
         setDurationType={(durationType) =>
           setAvailabilityPrefs((prev) => {
             const nextEndDate =
-              durationType === "MULTI_DAY"
-                ? prev.endDate && prev.date
-                  ? prev.endDate.getTime() >= prev.date.getTime()
-                    ? prev.endDate
-                    : prev.date
-                  : prev.date
+              durationType === "ONE_DAY"
+                ? addDays(prev.date || new Date(), 1)
                 : prev.date;
             return {
               ...prev,
               durationType,
               endDate: nextEndDate,
+              pickupType:
+                durationType === "SIX_HOURS" ? prev.pickupType : "MORNING",
+              pickupSlot:
+                durationType === "SIX_HOURS"
+                  ? prev.pickupSlot
+                  : DEFAULT_EVENING_SLOT,
+              timeFrom:
+                durationType === "SIX_HOURS"
+                  ? MORNING_PICKUP_TIME
+                  : MORNING_PICKUP_TIME,
               timeTo:
                 durationType === "SIX_HOURS"
-                  ? prev.timeTo
-                  : durationType === "ONE_DAY"
-                  ? DEFAULT_TIME_TO
-                  : DEFAULT_MULTI_DAY_TIME_TO,
+                  ? getSixHourAutoReturnTime(MORNING_PICKUP_TIME)
+                  : MORNING_PICKUP_TIME,
             };
           })
         }
         error={availabilityError}
       />
 
-      {/* Quick Book Modal */}
+      {/* Quick Book Modal - nhảy step 2 khi có prefs, cho back về step 1 */}
       <QuickBookModal
         device={quickBookDevice}
         isOpen={showQuickBookModal}
         onClose={handleCloseQuickBook}
+        initialPrefs={
+          quickBookDevice
+            ? {
+                step: availabilityConfirmed ? 2 : 1,
+                branchId: availabilityPrefs.branchId,
+                durationType: availabilityPrefs.durationType,
+                date: availabilityPrefs.date,
+                endDate: availabilityPrefs.endDate,
+                timeFrom: availabilityPrefs.timeFrom,
+                timeTo: availabilityPrefs.timeTo,
+                pickupType: availabilityPrefs.pickupType,
+                pickupSlot: availabilityPrefs.pickupSlot,
+              }
+            : null
+        }
+        pricing={
+          quickBookDevice ? getDevicePricing(quickBookDevice) : null
+        }
       />
 
       {/* Floating Contact Button */}

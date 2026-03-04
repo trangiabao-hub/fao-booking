@@ -6,6 +6,7 @@ import DeviceCatalogPage from "./page/catalog";
 import BookingPage from "./page/booking";
 import PaymentStatusPage from "./page/success";
 import Menu from "./page/menu";
+import PhotoBoothPage from "./page/photobooth";
 
 const App = () => {
   const router = createBrowserRouter([
@@ -28,6 +29,10 @@ const App = () => {
     {
       path: "/menu",
       element: <Menu />,
+    },
+    {
+      path: "/photobooth",
+      element: <PhotoBoothPage />,
     },
   ]);
   return <RouterProvider router={router} />;

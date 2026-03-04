@@ -13,7 +13,6 @@ import {
   Calendar,
   MapPin,
   Clock,
-  CreditCard,
   User,
   Phone,
   Check,
@@ -24,183 +23,243 @@ import {
   loadBookingPrefs,
   loadCustomerInfo,
   saveCustomerInfo,
+  saveBookingPrefs,
 } from "../utils/storage";
+import {
+  BRANCHES,
+  DURATION_OPTIONS,
+  MORNING_PICKUP_TIME,
+  SIX_HOUR_RETURN_TIME,
+  DEFAULT_EVENING_SLOT,
+} from "../data/bookingConstants";
+import {
+  normalizeDate,
+  normalizePhone,
+  getDefaultBranchId,
+  formatPriceK,
+  computeDiscountedPrice,
+  computeDiscountBreakdown,
+} from "../utils/bookingHelpers";
+import { calculateRentalInfo } from "../utils/pricing";
+import BookingPrefsForm, {
+  computeAvailabilityRange,
+  getAvailabilityRangeError,
+  getSixHourAutoReturnTime,
+  formatPickupReturnSummary,
+} from "./BookingPrefsForm";
 
-const BRANCHES = [
-  { id: "PHU_NHUAN", label: "FAO Phú Nhuận", address: "330/22 PĐP, P.1" },
-  { id: "Q9", label: "FAO Q9 (Vinhomes)", address: "Vinhomes Grand Park" },
-];
+export default function QuickBookModal({
+  device,
+  isOpen,
+  onClose,
+  initialPrefs,
+  pricing,
+}) {
+  const hasInitialPrefs = !!initialPrefs;
 
-const DURATION_OPTIONS = [
-  { id: "SIX_HOURS", label: "6 tiếng", priceKey: "priceSixHours" },
-  { id: "ONE_DAY", label: "1 ngày", priceKey: "priceOneDay" },
-  { id: "TWO_DAYS", label: "2 ngày", priceKey: "priceTwoDay" },
-  { id: "THREE_DAYS", label: "3 ngày", priceKey: "priceThreeDay" },
-];
-
-function normalizeDate(date) {
-  if (!date) return null;
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function normalizePhone(p) {
-  if (!p) return "";
-  let s = p.replace(/[^\d]/g, "");
-  if (s.startsWith("84")) s = "0" + s.slice(2);
-  return s;
-}
-
-function getTimeRange(selectedDate, durationId) {
-  const startDate = normalizeDate(selectedDate);
-  let endDate = startDate;
-  let timeFrom = "09:00";
-  let timeTo = "20:30";
-
-  switch (durationId) {
-    case "SIX_HOURS":
-      timeTo = "15:00";
-      break;
-    case "TWO_DAYS":
-      endDate = addDays(startDate, 1);
-      break;
-    case "THREE_DAYS":
-      endDate = addDays(startDate, 2);
-      break;
-    default:
-      break;
-  }
-
-  return { startDate, endDate, timeFrom, timeTo };
-}
-
-function combineDateWithTime(dateOnly, timeStr) {
-  if (!dateOnly || !timeStr) return null;
-  const [h, m] = timeStr.split(":").map(Number);
-  const d = new Date(dateOnly);
-  d.setHours(h, m, 0, 0);
-  return d;
-}
-
-function formatPriceK(price) {
-  if (!price || price <= 0) return "0k";
-  return `${Math.round(price / 1000)}k`;
-}
-
-function countWeekdaysBetweenAligned(t1, t2) {
-  let days = 0;
-  let weekdays = 0;
-  let cur = new Date(t1.getTime());
-  cur.setHours(0, 0, 0, 0);
-  const end = new Date(t2.getTime());
-  end.setHours(0, 0, 0, 0);
-  while (cur < end) {
-    days += 1;
-    if (!isWeekend(cur)) weekdays += 1;
-    cur = addDays(cur, 1);
-  }
-  return { days, weekdays };
-}
-
-function computeDiscountedPrice(price, startDate, endDate) {
-  if (!price || price <= 0 || !startDate || !endDate) return price || 0;
-  const sameDay = startDate.toDateString() === endDate.toDateString();
-  if (sameDay) {
-    return isWeekend(startDate) ? price : Math.round(price * 0.8);
-  }
-  const { days, weekdays } = countWeekdaysBetweenAligned(startDate, endDate);
-  if (days <= 0) return price;
-  const ratio = weekdays / days;
-  const discount = Math.round(price * 0.2 * ratio);
-  return Math.max(0, price - discount);
-}
-
-export default function QuickBookModal({ device, isOpen, onClose }) {
-  const initialPrefs = useMemo(() => {
+  // Load initial state from storage or defaults
+  const getInitialPrefs = useCallback(() => {
     const prefs = loadBookingPrefs();
-    const branchId = BRANCHES.some((b) => b.id === prefs?.branchId)
-      ? prefs.branchId
-      : BRANCHES[0].id;
+    const branchId =
+      BRANCHES.find((b) => b.id === prefs?.branchId && !b.disabled)?.id ||
+      getDefaultBranchId();
     const durationId = DURATION_OPTIONS.some((d) => d.id === prefs?.durationId)
       ? prefs.durationId
       : "ONE_DAY";
-    return { branchId, durationId };
+    return {
+      branchId,
+      durationId,
+      date: prefs?.date
+        ? normalizeDate(new Date(prefs.date))
+        : normalizeDate(new Date()),
+      endDate: prefs?.endDate
+        ? normalizeDate(new Date(prefs.endDate))
+        : addDays(normalizeDate(new Date()), 1),
+      timeFrom: prefs?.timeFrom || MORNING_PICKUP_TIME,
+      timeTo: prefs?.timeTo || SIX_HOUR_RETURN_TIME,
+      pickupType: prefs?.pickupType || "MORNING",
+      pickupSlot: prefs?.pickupSlot || DEFAULT_EVENING_SLOT,
+    };
   }, []);
 
+  const initialValues = useMemo(() => getInitialPrefs(), [getInitialPrefs]);
+
   const [step, setStep] = useState(1);
-  const [selectedDate, setSelectedDate] = useState(() =>
-    normalizeDate(new Date())
-  );
-  const [selectedBranch, setSelectedBranch] = useState(initialPrefs.branchId);
+  const [selectedDate, setSelectedDate] = useState(initialValues.date);
+  const [selectedBranch, setSelectedBranch] = useState(initialValues.branchId);
   const [selectedDuration, setSelectedDuration] = useState(
-    initialPrefs.durationId
+    initialValues.durationId,
   );
+  const [pickupType, setPickupType] = useState(initialValues.pickupType);
+  const [pickupSlot, setPickupSlot] = useState(initialValues.pickupSlot);
+  const [sixHourTimeFrom, setSixHourTimeFrom] = useState(
+    initialValues.timeFrom,
+  );
+  const [sixHourTimeTo, setSixHourTimeTo] = useState(initialValues.timeTo);
+  const [endDateState, setEndDateState] = useState(initialValues.endDate);
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
+
   const [isAvailable, setIsAvailable] = useState(true);
   const [customer, setCustomer] = useState(
-    () => loadCustomerInfo() || { fullName: "", phone: "", ig: "" }
+    () => loadCustomerInfo() || { fullName: "", phone: "", ig: "" },
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  // Reset when modal opens
+  // Sync state when modal opens
   useLayoutEffect(() => {
     if (isOpen) {
-      setStep(1);
       setError("");
-      const prefs = loadBookingPrefs();
-      if (prefs?.branchId && BRANCHES.some((b) => b.id === prefs.branchId)) {
-        setSelectedBranch((prev) =>
-          prev === prefs.branchId ? prev : prefs.branchId
-        );
-      }
-      if (
-        prefs?.durationId &&
-        DURATION_OPTIONS.some((d) => d.id === prefs.durationId)
-      ) {
-        setSelectedDuration((prev) =>
-          prev === prefs.durationId ? prev : prefs.durationId
-        );
+      if (hasInitialPrefs && initialPrefs) {
+        const p = initialPrefs;
+        setStep(p.step || 1);
+        if (p.branchId) setSelectedBranch(p.branchId);
+        if (p.durationType) setSelectedDuration(p.durationType);
+        if (p.date) setSelectedDate(normalizeDate(p.date));
+        if (p.endDate) setEndDateState(normalizeDate(p.endDate));
+        if (p.timeFrom) setSixHourTimeFrom(p.timeFrom);
+        if (p.timeTo) setSixHourTimeTo(p.timeTo);
+        if (p.pickupType) setPickupType(p.pickupType);
+        if (p.pickupSlot) setPickupSlot(p.pickupSlot);
+      } else {
+        const p = getInitialPrefs();
+        setStep(1);
+        setSelectedBranch(p.branchId);
+        setSelectedDuration(p.durationId);
+        setSelectedDate(p.date);
+        setEndDateState(p.endDate);
+        setSixHourTimeFrom(p.timeFrom);
+        setSixHourTimeTo(p.timeTo);
+        setPickupType(p.pickupType);
+        setPickupSlot(p.pickupSlot);
       }
     }
-  }, [isOpen]);
+  }, [isOpen, hasInitialPrefs, initialPrefs, getInitialPrefs]);
 
-  // Generate next 14 days
-  const days = useMemo(() => {
-    const arr = [];
-    const today = normalizeDate(new Date());
-    for (let i = 0; i < 14; i++) {
-      arr.push(addDays(today, i));
+  // Auto-save search prefs
+  useEffect(() => {
+    if (!hasInitialPrefs && isOpen) {
+      saveBookingPrefs({
+        branchId: selectedBranch,
+        durationId: selectedDuration,
+        date: selectedDate?.toISOString(),
+        endDate: endDateState?.toISOString(),
+        timeFrom: sixHourTimeFrom,
+        timeTo: sixHourTimeTo,
+        pickupType,
+        pickupSlot,
+      });
     }
-    return arr;
-  }, []);
+  }, [
+    selectedBranch,
+    selectedDuration,
+    selectedDate,
+    endDateState,
+    sixHourTimeFrom,
+    sixHourTimeTo,
+    pickupType,
+    pickupSlot,
+    isOpen,
+    hasInitialPrefs,
+  ]);
 
-  // Calculate price
-  const price = useMemo(() => {
-    if (!device) return 0;
-    const opt = DURATION_OPTIONS.find((o) => o.id === selectedDuration);
-    return device[opt?.priceKey] || device.priceOneDay || 0;
-  }, [device, selectedDuration]);
-
-  // Time range
-  const { startDate, endDate, timeFrom, timeTo } = useMemo(
-    () => getTimeRange(selectedDate, selectedDuration),
-    [selectedDate, selectedDuration]
+  // Compute time range via BookingPrefsForm's model
+  const prefsForRange = useMemo(
+    () => ({
+      date: selectedDate,
+      endDate: endDateState,
+      timeFrom: sixHourTimeFrom,
+      timeTo: sixHourTimeTo,
+      durationType: selectedDuration,
+      pickupType,
+      pickupSlot,
+    }),
+    [
+      selectedDate,
+      endDateState,
+      sixHourTimeFrom,
+      sixHourTimeTo,
+      selectedDuration,
+      pickupType,
+      pickupSlot,
+    ],
   );
 
-  const discountedTotal = useMemo(
-    () => computeDiscountedPrice(price, startDate, endDate),
-    [price, startDate, endDate]
+  const { fromDateTime: t1, toDateTime: t2 } = useMemo(
+    () => computeAvailabilityRange(prefsForRange),
+    [prefsForRange],
   );
+
+  // Base price từ khoảng thời gian thực tế (t1, t2) - đồng bộ manage
+  const rentalInfo = useMemo(() => {
+    if (!device || !t1 || !t2) return { price: 0, chargeableDays: 0 };
+    return calculateRentalInfo([t1, t2], device);
+  }, [device, t1, t2]);
+
+  const price = rentalInfo.price;
+  const chargeableDays = rentalInfo.chargeableDays;
+
+  const discountedTotal = useMemo(() => {
+    if (hasInitialPrefs && pricing?.discounted != null)
+      return pricing.discounted;
+    return computeDiscountedPrice(price, t1, t2);
+  }, [hasInitialPrefs, pricing?.discounted, price, t1, t2]);
   const discountedLabel = formatPriceK(discountedTotal);
 
-  const t1 = combineDateWithTime(startDate, timeFrom);
-  const t2 = combineDateWithTime(endDate, timeTo);
+  // Chi tiết công thức giá để hiển thị ở bước XÁC NHẬN
+  const priceBreakdown = useMemo(() => {
+    const oneDayPrice = device?.priceOneDay || 0;
+    const days = chargeableDays >= 1 ? chargeableDays : chargeableDays || 0.5;
+    const daysForRetail = days >= 1 ? days : 1;
+    const retailPrice = Math.round(oneDayPrice * daysForRetail); // Thuê lẻ = giá 1 ngày × số ngày
+    const packagePrice = price;
+    const savingVsRetail = Math.max(0, retailPrice - packagePrice);
+
+    let base = null;
+    if (
+      hasInitialPrefs &&
+      pricing?.original != null &&
+      pricing?.discounted != null
+    ) {
+      const discount = Math.max(0, pricing.original - pricing.discounted);
+      base = {
+        original: pricing.original,
+        discount,
+        discounted: pricing.discounted,
+        discountLabel: discount > 0 ? "Khuyến mãi" : null,
+      };
+    } else if (t1 && t2 && price > 0) {
+      base = computeDiscountBreakdown(price, t1, t2);
+    }
+    if (!base) return null;
+
+    return {
+      ...base,
+      retailPrice: retailPrice > 0 ? retailPrice : null,
+      savingVsRetail: savingVsRetail > 0 ? savingVsRetail : 0,
+      days,
+      oneDayPrice,
+    };
+  }, [
+    hasInitialPrefs,
+    pricing?.original,
+    pricing?.discounted,
+    price,
+    t1,
+    t2,
+    device?.priceOneDay,
+    chargeableDays,
+  ]);
+
+  const durationDays = chargeableDays;
+
+  const timeSelectionError = useMemo(() => {
+    return getAvailabilityRangeError(prefsForRange, t1, t2);
+  }, [prefsForRange, t1, t2]);
 
   // Check availability
   const checkAvailability = useCallback(async () => {
-    if (!device || !t1 || !t2) return;
+    if (!device || !t1 || !t2 || timeSelectionError) return;
     setIsCheckingAvailability(true);
     try {
       const params = {
@@ -211,7 +270,7 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
       const resp = await api.get("v1/devices/booking", { params });
       const data = resp.data || [];
       const busy = data.some(
-        (d) => d.id === device.id && d.bookingDtos?.length > 0
+        (d) => d.id === device.id && d.bookingDtos?.length > 0,
       );
       setIsAvailable(!busy);
     } catch (err) {
@@ -220,7 +279,7 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
     } finally {
       setIsCheckingAvailability(false);
     }
-  }, [device, t1, t2, selectedBranch]);
+  }, [device, t1, t2, selectedBranch, timeSelectionError]);
 
   useEffect(() => {
     if (isOpen && device) {
@@ -232,6 +291,7 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
     selectedDate,
     selectedDuration,
     selectedBranch,
+    initialPrefs,
     checkAvailability,
   ]);
 
@@ -263,18 +323,24 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
       const branchLabel =
         BRANCHES.find((b) => b.id === selectedBranch)?.label || selectedBranch;
 
+      // Payload đồng bộ manage - gọn để tránh vượt giới hạn DB
+      const fmt = (d) => (d ? format(d, "yyyy-MM-dd'T'HH:mm:ss") : null);
+      const note = `${customer.fullName} ${phone} ${branchLabel}`.slice(0, 80);
       const bookingRequest = {
         customerId,
         deviceId: device.id,
-        bookingFrom: t1.toISOString(),
-        bookingTo: t2.toISOString(),
+        bookingFrom: fmt(t1),
+        bookingTo: fmt(t2),
         total: discountedTotal,
-        note: `Quick Book: ${customer.fullName} - ${phone} - Chi nhánh: ${branchLabel}`,
+        note,
+        dayOfRent: chargeableDays,
+        originalPrice: price,
+        noteVoucher: "NONE",
       };
 
       const payload = {
         amount: discountedTotal,
-        description: `Thue ${device.name || device.displayName}`.slice(0, 25),
+        description: `Thue ${(device.name || device.displayName || "").slice(0, 15)}`,
         bookingRequest,
         returnSuccessUrl: `${window.location.origin}/payment-status`,
         returnFailUrl: `${window.location.origin}/payment-status`,
@@ -329,8 +395,16 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
                 </div>
                 <div className="text-xs font-bold text-[#E85C9C]">
                   {discountedLabel}{" "}
-                  <span className="text-[#999] font-normal">(giá weekday)</span>
+                  <span className="text-[#999] font-normal uppercase text-[10px] ml-1">
+                    ({durationDays < 1 ? "Gói 6h" : `${durationDays} ngày`})
+                  </span>
                 </div>
+                {t1 && t2 && (
+                  <div className="text-[10px] text-[#888] font-bold mt-0.5 uppercase tracking-wide">
+                    {format(t1, "dd/MM HH:mm", { locale: vi })} -{" "}
+                    {format(t2, "dd/MM HH:mm", { locale: vi })}
+                  </div>
+                )}
               </div>
             </div>
             <button
@@ -364,153 +438,50 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
                   )}
                 </div>
               ))}
-              <span className="ml-2 text-xs text-[#FF9FCA] font-bold uppercase tracking-wider">
+              <span className="ml-2 text-xs text-[#FF9FCA] font-black uppercase tracking-[0.15em]">
+                BƯỚC {step}:{" "}
                 {step === 1
-                  ? "Chọn ngày"
+                  ? "CHỌN NGÀY"
                   : step === 2
-                  ? "Thông tin"
-                  : "Xác nhận"}
+                    ? "THÔNG TIN"
+                    : "XÁC NHẬN"}
               </span>
             </div>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 min-w-0 overflow-y-auto p-4">
             {step === 1 && (
-              <div className="space-y-5">
-                {/* Date Selection */}
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-black text-[#222] mb-3 uppercase tracking-wider">
-                    <Calendar size={16} className="text-[#E85C9C]" />
-                    Chọn ngày
-                  </label>
-                  <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                    {days.map((day, idx) => {
-                      const isSelected =
-                        day.getTime() === selectedDate?.getTime();
-                      const isWeekendDay = isWeekend(day);
-                      return (
-                        <button
-                          key={day.toISOString()}
-                          onClick={() => setSelectedDate(day)}
-                          className={`flex-shrink-0 w-14 text-center py-2 px-1 rounded-xl transition-all border-2 ${
-                            isSelected
-                              ? "bg-[#222] text-[#FF9FCA] border-[#222] shadow-lg"
-                              : isWeekendDay
-                              ? "bg-[#FFE4F0] text-[#E85C9C] border-[#FFE4F0]"
-                              : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                          }`}
-                        >
-                          <div className="text-[10px] mb-0.5 font-bold">
-                            {idx === 0
-                              ? "Hôm nay"
-                              : idx === 1
-                              ? "Ngày mai"
-                              : format(day, "EEE", { locale: vi })}
-                          </div>
-                          <div className="font-black">{format(day, "dd")}</div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Duration Selection */}
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-black text-[#222] mb-3 uppercase tracking-wider">
-                    <Clock size={16} className="text-[#E85C9C]" />
-                    Gói thuê
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {DURATION_OPTIONS.map((opt) => {
-                      const optPrice = device[opt.priceKey] || 0;
-                      const isSelected = opt.id === selectedDuration;
-                      const { startDate: optStartDate, endDate: optEndDate } =
-                        getTimeRange(selectedDate, opt.id);
-                      const optDiscounted = formatPriceK(
-                        computeDiscountedPrice(
-                          optPrice,
-                          optStartDate,
-                          optEndDate
-                        )
-                      );
-                      return (
-                        <button
-                          key={opt.id}
-                          disabled={!optPrice}
-                          onClick={() => setSelectedDuration(opt.id)}
-                          className={`p-3 rounded-xl text-left transition-all border-2 ${
-                            !optPrice
-                              ? "bg-[#f5f5f5] text-[#bbb] border-[#eee] cursor-not-allowed"
-                              : isSelected
-                              ? "bg-[#222] text-[#FF9FCA] border-[#222] shadow-lg"
-                              : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                          }`}
-                        >
-                          <div className="font-black text-sm">{opt.label}</div>
-                          {optPrice > 0 && (
-                            <div
-                              className={`text-xs font-bold ${
-                                isSelected ? "text-[#FF9FCA]" : "text-[#E85C9C]"
-                              }`}
-                            >
-                              {optDiscounted}
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Branch Selection */}
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-black text-[#222] mb-3 uppercase tracking-wider">
-                    <MapPin size={16} className="text-[#E85C9C]" />
-                    Chi nhánh
-                  </label>
-                  <div className="space-y-2">
-                    {BRANCHES.map((branch) => {
-                      const isSelected = branch.id === selectedBranch;
-                      return (
-                        <button
-                          key={branch.id}
-                          onClick={() => setSelectedBranch(branch.id)}
-                          className={`w-full p-3 rounded-xl text-left transition-all border-2 ${
-                            isSelected
-                              ? "bg-[#222] text-white border-[#222]"
-                              : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                          }`}
-                        >
-                          <div className="font-black text-sm">
-                            {branch.label}
-                          </div>
-                          <div
-                            className={`text-xs ${
-                              isSelected ? "text-[#FF9FCA]" : "text-[#999]"
-                            }`}
-                          >
-                            {branch.address}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              <div>
+                <BookingPrefsForm
+                  branchId={selectedBranch}
+                  date={selectedDate}
+                  endDate={endDateState}
+                  timeFrom={sixHourTimeFrom}
+                  timeTo={sixHourTimeTo}
+                  durationType={selectedDuration}
+                  pickupType={pickupType}
+                  pickupSlot={pickupSlot}
+                  setBranchId={setSelectedBranch}
+                  setDate={setSelectedDate}
+                  setEndDate={setEndDateState}
+                  setTimeFrom={setSixHourTimeFrom}
+                  setTimeTo={setSixHourTimeTo}
+                  setDurationType={setSelectedDuration}
+                  setPickupType={setPickupType}
+                  setPickupSlot={setPickupSlot}
+                  error={
+                    timeSelectionError ||
+                    (!isAvailable
+                      ? "⚠️ Máy đã được đặt trong khung giờ này. Vui lòng chọn ngày khác."
+                      : "")
+                  }
+                />
 
                 {/* Availability Check */}
-                <div className="min-h-[44px]">
-                  {isCheckingAvailability ? (
+                <div className="min-h-[44px] mt-3">
+                  {isCheckingAvailability && (
                     <div className="text-center py-2 text-sm text-[#777] font-medium">
-                      Đang kiểm tra tình trạng máy...
-                    </div>
-                  ) : !isAvailable ? (
-                    <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm font-bold border border-red-200">
-                      ⚠️ Máy đã được đặt trong khung giờ này. Vui lòng chọn ngày
-                      khác.
-                    </div>
-                  ) : (
-                    <div className="text-center py-2 text-sm text-transparent select-none">
                       Đang kiểm tra tình trạng máy...
                     </div>
                   )}
@@ -521,9 +492,9 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
             {step === 2 && (
               <div className="space-y-4">
                 <div>
-                  <label className="flex items-center gap-2 text-sm font-black text-[#222] mb-2 uppercase tracking-wider">
-                    <User size={16} className="text-[#E85C9C]" />
-                    Họ tên
+                  <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-2 uppercase tracking-[0.2em] px-1">
+                    <User size={14} className="text-[#E85C9C]" />
+                    Họ và tên
                   </label>
                   <input
                     value={customer.fullName}
@@ -535,8 +506,8 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
                   />
                 </div>
                 <div>
-                  <label className="flex items-center gap-2 text-sm font-black text-[#222] mb-2 uppercase tracking-wider">
-                    <Phone size={16} className="text-[#E85C9C]" />
+                  <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-2 uppercase tracking-[0.2em] px-1">
+                    <Phone size={14} className="text-[#E85C9C]" />
                     Số điện thoại
                   </label>
                   <input
@@ -550,8 +521,8 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-black text-[#222] mb-2 block uppercase tracking-wider">
-                    Instagram (không bắt buộc)
+                  <label className="text-[11px] font-black text-[#666] mb-2 block uppercase tracking-[0.2em] px-1">
+                    Instagram / Facebook
                   </label>
                   <input
                     value={customer.ig}
@@ -575,22 +546,22 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
                     {device.displayName || device.name}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-white rounded-xl border border-[#eee]">
-                    <div className="text-xs text-[#999] font-bold mb-1">
-                      Ngày nhận
-                    </div>
-                    <div className="font-black text-sm text-[#222]">
-                      {t1 && format(t1, "dd/MM HH:mm", { locale: vi })}
-                    </div>
+                <div className="p-3 bg-white rounded-xl border border-[#eee]">
+                  <div className="text-xs text-[#999] font-bold mb-1">
+                    Thời gian
                   </div>
-                  <div className="p-3 bg-white rounded-xl border border-[#eee]">
-                    <div className="text-xs text-[#999] font-bold mb-1">
-                      Ngày trả
-                    </div>
-                    <div className="font-black text-sm text-[#222]">
-                      {t2 && format(t2, "dd/MM HH:mm", { locale: vi })}
-                    </div>
+                  <div className="text-sm text-[#222] space-y-0.5">
+                    {t1 && (
+                      <div>Nhận: {formatPickupReturnSummary(t1)}</div>
+                    )}
+                    {t2 && (
+                      <div>Trả: {formatPickupReturnSummary(t2)}</div>
+                    )}
+                    {chargeableDays > 0 && (
+                      <div className="font-bold text-[#E85C9C] mt-1">
+                        Tổng cộng: {chargeableDays < 1 ? "Gói 6h" : `${chargeableDays} ngày`}.
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="p-3 bg-white rounded-xl border border-[#eee]">
@@ -606,20 +577,69 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
                     Khách hàng
                   </div>
                   <div className="font-black text-sm text-[#222]">
-                    {customer.fullName}
+                    {customer.fullName?.trim() || "Chưa chọn khách hàng"}
                   </div>
-                  <div className="text-xs text-[#777]">
-                    {normalizePhone(customer.phone)}
-                  </div>
+                  {customer.phone && (
+                    <div className="text-xs text-[#777]">
+                      {normalizePhone(customer.phone)}
+                    </div>
+                  )}
                 </div>
-                <div className="p-4 bg-[#222] rounded-xl">
-                  <div className="flex justify-between items-center">
-                    <span className="font-black text-white uppercase tracking-wider">
-                      Tổng tiền
-                    </span>
-                    <span className="text-2xl font-black text-[#FF9FCA]">
-                      {discountedLabel}
-                    </span>
+                <div className="p-4 bg-[#222] rounded-xl space-y-2">
+                  <div className="text-[10px] text-[#FF9FCA]/80 font-bold uppercase tracking-wider mb-2">
+                    Tổng giá
+                  </div>
+                  {priceBreakdown && (
+                    <>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-[#ccc]">✨ Giá gốc</span>
+                        <span className="font-bold text-white">
+                          {(priceBreakdown.original || 0).toLocaleString("vi-VN")}đ
+                        </span>
+                      </div>
+                      {priceBreakdown.discount > 0 &&
+                        priceBreakdown.discountLabel && (
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-[#FF9FCA]">
+                              🔥 {priceBreakdown.discountLabel}
+                            </span>
+                            <span className="font-bold text-[#FF9FCA]">
+                              (-{(priceBreakdown.discount || 0).toLocaleString("vi-VN")}đ)
+                            </span>
+                          </div>
+                        )}
+                      <div className="border-t border-[#444] pt-2 mt-2 flex justify-between items-center">
+                        <span className="font-black text-white uppercase tracking-wider">
+                          ✅ Chỉ còn
+                        </span>
+                        <span className="text-2xl font-black text-[#FF9FCA]">
+                          {(priceBreakdown.discounted || 0).toLocaleString("vi-VN")}đ
+                        </span>
+                      </div>
+                      {priceBreakdown.discount > 0 && (
+                        <div className="text-center text-emerald-400 text-sm font-bold pt-1">
+                          💥 Tiết kiệm ngay {(priceBreakdown.discount || 0).toLocaleString("vi-VN")}đ!
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {!priceBreakdown && (
+                    <div className="flex justify-between items-center">
+                      <span className="font-black text-white uppercase tracking-wider">
+                        ✅ Chỉ còn
+                      </span>
+                      <span className="text-2xl font-black text-[#FF9FCA]">
+                        {(discountedTotal || 0).toLocaleString("vi-VN")}đ
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                  <div className="text-xs text-emerald-700 font-bold mb-0.5">
+                    🎁 Đặc biệt: Chương trình "Cọc 0 đồng"
+                  </div>
+                  <div className="text-xs text-emerald-800/90">
+                    ✅ Chỉ cần CCCD bản gốc (Shop chỉ chụp lại, không giữ máy) hoặc VNeID định danh mức 2.
                   </div>
                 </div>
                 {error && (
@@ -633,11 +653,15 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
 
           {/* Footer */}
           <div className="p-4 border-t border-[#FFE4F0] bg-white">
-            <div className="flex gap-3">
+            <div
+              className={`grid gap-3 ${
+                step > 1 ? "grid-cols-2" : "grid-cols-1"
+              }`}
+            >
               {step > 1 && (
                 <button
                   onClick={() => setStep(step - 1)}
-                  className="flex-1 py-3 rounded-xl border-2 border-[#222] text-[#222] font-black uppercase tracking-wider hover:bg-[#f5f5f5] transition-colors"
+                  className="min-w-0 py-3 rounded-xl border-2 border-[#222] text-[#222] font-black uppercase tracking-wider hover:bg-[#f5f5f5] transition-colors"
                 >
                   Quay lại
                 </button>
@@ -646,10 +670,13 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
                 <button
                   onClick={() => setStep(step + 1)}
                   disabled={
-                    (step === 1 && (!isAvailable || isCheckingAvailability)) ||
+                    (step === 1 &&
+                      (!isAvailable ||
+                        isCheckingAvailability ||
+                        !!timeSelectionError)) ||
                     (step === 2 && !isCustomerValid)
                   }
-                  className="flex-1 py-3 rounded-xl bg-[#222] text-[#FF9FCA] font-black uppercase tracking-wider hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999]"
+                  className="min-w-0 py-3 rounded-xl bg-[#222] text-[#FF9FCA] font-black uppercase tracking-wider hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999]"
                 >
                   Tiếp tục
                 </button>
@@ -657,16 +684,9 @@ export default function QuickBookModal({ device, isOpen, onClose }) {
                 <button
                   onClick={handleSubmit}
                   disabled={!isCustomerValid || isSubmitting}
-                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white font-black uppercase tracking-wider hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="min-w-0 py-3 rounded-xl bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white font-black uppercase tracking-wider hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {isSubmitting ? (
-                    "Đang xử lý..."
-                  ) : (
-                    <>
-                      <CreditCard size={18} />
-                      Thanh toán {discountedLabel}
-                    </>
-                  )}
+                  {isSubmitting ? "Đang xử lý..." : <>Thanh toán</>}
                 </button>
               )}
             </div>
