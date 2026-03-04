@@ -471,7 +471,7 @@ export default function PaymentStatusPage() {
 
           // Nếu đã xử lý xong (DONE) và có orderIdNew → fetch theo orderIdNew
           if (pending.orderIdNew && pending.status === "DONE") {
-            const bookingsRes = await api.get(`/v1/bookings/${pending.orderIdNew}`);
+            const bookingsRes = await api.get(`/v1/bookings/order/${pending.orderIdNew}`);
             const bookings = bookingsRes.data || [];
             if (bookings.length > 0) {
               const first = bookings[0];
