@@ -1186,8 +1186,9 @@ export default function BookingPage() {
       };
 
       const response = await api.post("/create-payment-link", payload);
-      if (response.data && response.data.checkoutUrl) {
-        window.location.href = response.data.checkoutUrl;
+      const paymentUrl = response.data?.deepLink || response.data?.checkoutUrl;
+      if (paymentUrl) {
+        window.location.href = paymentUrl;
       } else {
         throw new Error("Không nhận được link thanh toán từ server.");
       }
