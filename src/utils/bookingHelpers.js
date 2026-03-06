@@ -217,3 +217,101 @@ export function getPriceForDuration(device, durationId) {
       return 0;
   }
 }
+
+function toValidDate(value) {
+  if (!value) return null;
+  const parsed = value instanceof Date ? new Date(value) : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function rangesOverlap(startA, endA, startB, endB) {
+  return startA < endB && endA > startB;
+}
+
+/**
+ * Tìm khung giờ gần nhất có thể dời cả giờ nhận và giờ trả cho cùng một model.
+ * Dùng cho case user chọn 20:00 nhưng máy chỉ trống từ 20:30.
+ */
+export function findShiftedAvailabilitySuggestion(
+  devices,
+  fromDateTime,
+  toDateTime,
+  options = {}
+) {
+  const { keepSameReturnDate = false } = options;
+  if (
+    !Array.isArray(devices) ||
+    devices.length === 0 ||
+    !fromDateTime ||
+    !toDateTime ||
+    toDateTime <= fromDateTime
+  ) {
+    return null;
+  }
+
+  const schedules = devices.map((device) => ({
+    ...device,
+    bookings: Array.isArray(device?.bookingDtos)
+      ? device.bookingDtos
+          .map((booking) => {
+            const bookingFrom = toValidDate(booking?.bookingFrom);
+            const bookingTo = toValidDate(booking?.bookingTo);
+            if (!bookingFrom || !bookingTo || bookingTo <= bookingFrom) {
+              return null;
+            }
+            return { bookingFrom, bookingTo };
+          })
+          .filter(Boolean)
+      : [],
+  }));
+
+  const candidateStarts = Array.from(
+    new Set(
+      schedules.flatMap((device) =>
+        device.bookings
+          .map((booking) => booking.bookingTo)
+          .filter((bookingTo) => bookingTo > fromDateTime)
+          .map((bookingTo) => bookingTo.getTime())
+      )
+    )
+  )
+    .sort((a, b) => a - b)
+    .map((ts) => new Date(ts));
+
+  for (const candidateStart of candidateStarts) {
+    const shiftMs = candidateStart.getTime() - fromDateTime.getTime();
+    if (shiftMs <= 0) continue;
+
+    const candidateEnd = new Date(toDateTime.getTime() + shiftMs);
+    if (
+      keepSameReturnDate &&
+      normalizeDate(candidateEnd)?.getTime() !== normalizeDate(toDateTime)?.getTime()
+    ) {
+      continue;
+    }
+
+    const hasFreeDevice = schedules.some((device) =>
+      device.bookings.every(
+        (booking) =>
+          !rangesOverlap(
+            booking.bookingFrom,
+            booking.bookingTo,
+            candidateStart,
+            candidateEnd
+          )
+      )
+    );
+
+    if (hasFreeDevice) {
+      return {
+        fromDateTime: candidateStart,
+        toDateTime: candidateEnd,
+        timeFrom: format(candidateStart, "HH:mm"),
+        timeTo: format(candidateEnd, "HH:mm"),
+        shiftMinutes: Math.round(shiftMs / (1000 * 60)),
+      };
+    }
+  }
+
+  return null;
+}

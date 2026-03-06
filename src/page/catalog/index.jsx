@@ -27,7 +27,10 @@ import BookingPrefsForm, {
   getSixHourAutoReturnTime,
 } from "../../components/BookingPrefsForm";
 import { computeDiscountBreakdown, calculateRentalInfo } from "../../utils/pricing";
-import { formatPriceFormula, formatPriceK } from "../../utils/bookingHelpers";
+import {
+  formatPriceFormula,
+  formatPriceK,
+} from "../../utils/bookingHelpers";
 import { saveBookingPrefs } from "../../utils/storage";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -54,7 +57,7 @@ const DURATION_TYPES = [
 ];
 
 const BRANCHES = [
-  { id: "PHU_NHUAN", label: "FAO Phú Nhuận" },
+  { id: "PHU_NHUAN", label: "FAO Phú Nhuận", address: "475 Huỳnh Văn Bánh, Phú Nhuận", mapUrl: "https://maps.app.goo.gl/CSeEPhMGUNZsYCNZ7" },
   { id: "Q9", label: "FAO Q9 (Vinhomes)", disabled: true, comingSoon: true },
 ];
 
@@ -91,7 +94,7 @@ const PinkTapeMarquee = () => (
           <Zap size={14} fill="white" className="text-white shrink-0" />
           Giảm 20% từ thứ 2 tới thứ 6
           <span className="w-1.5 h-1.5 rounded-full bg-white mx-1 shrink-0" />
-          Sinh viên cọc đồng giá 500k
+          Thuê máy không cần cọc chỉ cần CCCD chính chủ hoặc VNID định danh mức 2
         </span>
       ))}
     </motion.div>
@@ -117,6 +120,21 @@ function inferBrand(name = "") {
 // Normalize device name
 function normalizeDeviceName(name = "") {
   return name.replace(/\s*\(\d+\)\s*$/, "").trim();
+}
+
+function parseSearchKeywords(query = "") {
+  return query
+    .split("+")
+    .map((keyword) => keyword.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function normalizeSearchText(text = "") {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function compactSearchText(text = "") {
+  return normalizeSearchText(text).replace(/\s+/g, "");
 }
 
 
@@ -196,14 +214,10 @@ const PRICE_RANGES = [
   { id: "above600", label: "Trên 600k", min: 600000, max: Infinity },
 ];
 
-// Category tabs (matching Menu style)
-const CATEGORIES = [
+// Built-in category tabs (always shown)
+const BUILTIN_CATEGORIES = [
   { key: "all", label: "TẤT CẢ" },
   { key: "available", label: "MÁY TRỐNG" },
-  { key: "fuji", label: "FUJI" },
-  { key: "canon", label: "CANON" },
-  { key: "sony", label: "SONY" },
-  { key: "pocket", label: "POCKET" },
 ];
 
 // Animation variants (optimized - less animation = less jitter)
@@ -232,7 +246,14 @@ const cardVariants = {
 };
 
 // Chic Card Component (matching Menu style)
-function ChicCard({ device, pricing, onQuickBook, isSelected, onToggleSelect }) {
+function ChicCard({
+  device,
+  pricing,
+  onQuickBook,
+  onSuggestedQuickBook,
+  isSelected,
+  onToggleSelect,
+}) {
   const originalLabel = formatPriceK(pricing?.original || 0);
   const discountedLabel = formatPriceK(pricing?.discounted || 0);
   const savingAmount = (pricing?.original || 0) - (pricing?.discounted || 0);
@@ -240,11 +261,19 @@ function ChicCard({ device, pricing, onQuickBook, isSelected, onToggleSelect }) 
   const priceFormula = formatPriceFormula(device);
   const isHot = device.bookingCount > 5 || device.priceOneDay >= 400000;
   const isAvailable = device.isAvailable !== false;
+  const suggestedSlot = device.availabilitySuggestion || null;
+  const hasSuggestedSlot = !isAvailable && !!suggestedSlot;
 
   const handleQuickBook = (e) => {
     e.stopPropagation();
     if (!isAvailable) return;
     onQuickBook(device);
+  };
+
+  const handleSuggestedQuickBook = (e) => {
+    e.stopPropagation();
+    if (!hasSuggestedSlot) return;
+    onSuggestedQuickBook?.(device);
   };
 
   const handleToggleSelect = (e) => {
@@ -257,7 +286,7 @@ function ChicCard({ device, pricing, onQuickBook, isSelected, onToggleSelect }) 
     <motion.div
       variants={cardVariants}
       className={`relative group select-none h-full z-10 ${
-        isAvailable ? "" : "cursor-not-allowed"
+        isAvailable || hasSuggestedSlot ? "" : "cursor-not-allowed"
       }`}
     >
       <div className="bg-[#FFFBF5] rounded-xl overflow-hidden relative border-2 border-transparent shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-all duration-200 flex flex-col h-full touch-manipulation">
@@ -277,7 +306,7 @@ function ChicCard({ device, pricing, onQuickBook, isSelected, onToggleSelect }) 
 
         {/* HOT BADGE */}
         {isHot && (
-          <div className="absolute top-2 left-2 z-20 flex flex-col items-center transform rotate-6">
+          <div className={`absolute top-2 ${isAvailable && onToggleSelect ? "left-11" : "left-2"} z-20 flex flex-col items-center transform rotate-6 transition-all`}>
             <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-1 rounded border border-white shadow-sm uppercase">
               <Sparkles size={10} className="inline" /> HOT
             </div>
@@ -285,7 +314,7 @@ function ChicCard({ device, pricing, onQuickBook, isSelected, onToggleSelect }) 
         )}
 
         {/* IMAGE - full bleed top, fixed height đồng bộ */}
-        <div className="w-full h-36 sm:h-40 relative shrink-0 bg-[#FFE4F0]/50 overflow-hidden">
+        <div className="w-full h-36 sm:h-40 lg:h-48 relative shrink-0 bg-[#FFE4F0]/50 overflow-hidden">
           {/* Checkbox chọn nhiều món - chỉ hiện khi máy available */}
           {isAvailable && onToggleSelect && (
             <button
@@ -313,21 +342,36 @@ function ChicCard({ device, pricing, onQuickBook, isSelected, onToggleSelect }) 
             decoding="async"
           />
           {!isAvailable && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40">
-              <div
-                className="flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg bg-black/50 border border-red-300/50"
-                style={{
-                  transform: "rotate(-12deg)",
-                  boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
-                }}
-              >
-                <span className="font-bold text-white text-xs md:text-sm uppercase tracking-tight text-center max-w-[110px] line-clamp-2" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
-                  {device.displayName}
-                </span>
-                <span className="text-red-500 font-bold text-[9px] uppercase tracking-wider" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>
-                  Đã hết chỗ
-                </span>
-              </div>
+            <div className={`absolute inset-0 z-10 flex items-center justify-center p-2 ${hasSuggestedSlot ? 'bg-emerald-900/20' : 'bg-black/40'}`}>
+              {hasSuggestedSlot ? (
+                <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3 shadow-xl transform -rotate-1 animate-in fade-in zoom-in duration-300">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wider">Gợi ý dời lịch</span>
+                  </div>
+                  <div className="text-[11px] font-bold text-emerald-900 leading-tight">
+                    Máy sẽ trống nếu bạn đổi thành:
+                    <div className="mt-1 text-[#E85C9C] bg-white px-2 py-1 rounded-md border border-emerald-100 shadow-sm inline-block">
+                      {format(suggestedSlot.fromDateTime, "HH:mm dd/MM")} - {format(suggestedSlot.toDateTime, "HH:mm dd/MM")}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg bg-black/50 border border-red-300/50"
+                  style={{
+                    transform: "rotate(-12deg)",
+                    boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
+                  }}
+                >
+                  <span className="font-bold text-white text-xs md:text-sm uppercase tracking-tight text-center max-w-[110px] line-clamp-2" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
+                    {device.displayName}
+                  </span>
+                  <span className="text-red-500 font-bold text-[9px] uppercase tracking-wider" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>
+                    Không trống
+                  </span>
+                </div>
+              )}
             </div>
           )}
           <div className="absolute bottom-1.5 right-1.5 text-amber-400/90 drop-shadow-md">
@@ -359,15 +403,21 @@ function ChicCard({ device, pricing, onQuickBook, isSelected, onToggleSelect }) 
           )}
 
           <button
-            onClick={handleQuickBook}
-            disabled={!isAvailable}
+            onClick={hasSuggestedSlot ? handleSuggestedQuickBook : handleQuickBook}
+            disabled={!isAvailable && !hasSuggestedSlot}
             className={`w-full mt-3 py-2.5 text-[11px] font-bold rounded-lg uppercase tracking-wider transition-all ${
               isAvailable
                 ? "bg-[#E85C9C] text-white hover:opacity-90 active:scale-[0.98] shadow-md"
+                : hasSuggestedSlot
+                ? "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] shadow-md"
                 : "bg-gray-300 text-gray-500 cursor-not-allowed"
             }`}
           >
-            Đặt ngay
+            {isAvailable
+              ? "Đặt ngay"
+              : hasSuggestedSlot
+              ? "Dời theo gợi ý & đặt"
+              : "Tạm hết máy"}
           </button>
         </div>
       </div>
@@ -375,37 +425,100 @@ function ChicCard({ device, pricing, onQuickBook, isSelected, onToggleSelect }) 
   );
 }
 
-// Stylish Tabs (from Menu)
-function StylishTabs({ activeTab, setActiveTab }) {
+// Stylish Tabs (from Menu) with scroll indicators
+function StylishTabs({ activeTab, setActiveTab, categories }) {
+  const scrollRef = React.useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(false);
+
+  const checkScroll = React.useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 8);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 8);
+  }, []);
+
+  React.useEffect(() => {
+    checkScroll();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    window.addEventListener("resize", checkScroll);
+    // Re-check when categories change
+    const timer = setTimeout(checkScroll, 100);
+    return () => {
+      el.removeEventListener("scroll", checkScroll);
+      window.removeEventListener("resize", checkScroll);
+      clearTimeout(timer);
+    };
+  }, [checkScroll, categories]);
+
+  const scrollBy = (dir) => {
+    scrollRef.current?.scrollBy({ left: dir * 200, behavior: "smooth" });
+  };
+
   return (
-    <div className="w-full px-2 mb-6 z-20 overflow-x-auto no-scrollbar pt-2 touch-pan-x">
-      <div className="flex justify-start md:justify-center gap-3 min-w-max pb-2 px-2">
-        {CATEGORIES.map((cat) => {
-          const isActive = activeTab === cat.key;
-          return (
-            <button
-              key={cat.key}
-              onClick={() => setActiveTab(cat.key)}
-              className={`relative px-5 py-2.5 rounded-lg uppercase text-xs md:text-sm font-black tracking-widest transition-all duration-200 active:scale-95 touch-manipulation group ${
-                isActive
-                  ? "text-[#FF9FCA] translate-y-[-1px]"
-                  : "text-[#555] bg-white border border-transparent"
-              }`}
-            >
-              {isActive && (
-                <div className="absolute inset-0 rounded-lg bg-[#222] border border-[#222] shadow-[3px_3px_0_#ddd] -z-10" />
-              )}
-              <span
-                className={`relative z-10 flex items-center gap-2 transition-all ${
-                  isActive ? "text-[#FF9FCA]" : ""
+    <div className="w-full mb-6 z-20 pt-2 relative">
+      {/* Left fade + arrow */}
+      {canScrollLeft && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-10 z-30 flex items-center justify-center cursor-pointer"
+          style={{
+            background: "linear-gradient(to right, #FEF5ED 60%, transparent)",
+          }}
+          onClick={() => scrollBy(-1)}
+        >
+          <span className="text-[#FF69B4] text-xl font-bold animate-pulse">‹</span>
+        </div>
+      )}
+
+      {/* Right fade + arrow */}
+      {canScrollRight && (
+        <div
+          className="absolute right-0 top-0 bottom-0 w-10 z-30 flex items-center justify-center cursor-pointer"
+          style={{
+            background: "linear-gradient(to left, #FEF5ED 60%, transparent)",
+          }}
+          onClick={() => scrollBy(1)}
+        >
+          <span className="text-[#FF69B4] text-xl font-bold animate-pulse">›</span>
+        </div>
+      )}
+
+      {/* Scrollable tabs */}
+      <div
+        ref={scrollRef}
+        className="overflow-x-auto no-scrollbar px-2 touch-pan-x"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
+        <div className="flex justify-start md:justify-center gap-3 min-w-max pb-2 px-2">
+          {categories.map((cat) => {
+            const isActive = activeTab === cat.key;
+            return (
+              <button
+                key={cat.key}
+                onClick={() => setActiveTab(cat.key)}
+                className={`relative px-5 py-2.5 rounded-lg uppercase text-xs md:text-sm font-black tracking-widest transition-all duration-200 active:scale-95 touch-manipulation group ${
+                  isActive
+                    ? "text-[#FF9FCA] translate-y-[-1px]"
+                    : "text-[#555] bg-white border border-transparent"
                 }`}
               >
-                {cat.label}
-                {isActive && <Sparkles size={12} fill="currentColor" />}
-              </span>
-            </button>
-          );
-        })}
+                {isActive && (
+                  <div className="absolute inset-0 rounded-lg bg-[#222] border border-[#222] shadow-[3px_3px_0_#ddd] -z-10" />
+                )}
+                <span
+                  className={`relative z-10 flex items-center gap-2 transition-all ${
+                    isActive ? "text-[#FF9FCA]" : ""
+                  }`}
+                >
+                  {cat.label}
+                  {isActive && <Sparkles size={12} fill="currentColor" />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -552,6 +665,7 @@ function AvailabilityGate({
   const isComplete = !rangeError;
 
   const handleBackdropClick = () => {
+    // Chỉ cho phép đóng nếu đã chọn đầy đủ thông tin
     if (isComplete) onConfirm();
   };
 
@@ -608,7 +722,12 @@ function AvailabilityGate({
           <div className="px-5 pt-3 pb-4 border-t border-[#FFE4F0] bg-[#FFFBF5]">
             <button
               onClick={onConfirm}
-              className="w-full py-3 bg-[#222] text-[#FF9FCA] rounded-xl font-black uppercase tracking-wider hover:bg-[#333] transition-all"
+              disabled={!isComplete}
+              className={`w-full py-3 rounded-xl font-black uppercase tracking-wider transition-all ${
+                isComplete 
+                  ? "bg-[#222] text-[#FF9FCA] hover:bg-[#333]" 
+                  : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-100"
+              }`}
             >
               Giữ ưu đãi & xem máy còn trống
             </button>
@@ -635,6 +754,9 @@ export default function DeviceCatalogPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+
+  // === API Categories state ===
+  const [apiCategories, setApiCategories] = useState([]);
   const [priceRange, setPriceRange] = useState("all");
   const [showFilterModal, setShowFilterModal] = useState(false);
 
@@ -645,12 +767,12 @@ export default function DeviceCatalogPage() {
   const [availabilityPrefs, setAvailabilityPrefs] = useState(() => {
     const p = typeof window !== "undefined" ? JSON.parse(localStorage.getItem("fao_booking_prefs") || "null") : null;
     return {
-      date: p?.date ? normalizeDate(new Date(p.date)) : normalizeDate(new Date()),
-      endDate: p?.endDate ? normalizeDate(new Date(p.endDate)) : normalizeDate(addDays(new Date(), 1)),
-      timeFrom: p?.timeFrom || DEFAULT_TIME_FROM,
-      timeTo: p?.timeTo || DEFAULT_TIME_FROM,
-      pickupType: p?.pickupType || "MORNING",
-      pickupSlot: p?.pickupSlot || DEFAULT_EVENING_SLOT,
+      date: null,
+      endDate: null,
+      timeFrom: null,
+      timeTo: null,
+      pickupType: null,
+      pickupSlot: null,
       branchId: p?.branchId || getDefaultBranchId(),
       durationType: p?.durationType || "ONE_DAY",
     };
@@ -660,12 +782,47 @@ export default function DeviceCatalogPage() {
   const [quickBookDevice, setQuickBookDevice] = useState(null);
   const [quickBookDevices, setQuickBookDevices] = useState([]); // Đơn nhiều món
   const [showQuickBookModal, setShowQuickBookModal] = useState(false);
+  const [deviceBookingsById, setDeviceBookingsById] = useState({});
 
   // Chọn nhiều món - Set of device ids đã chọn
   const [selectedDeviceIds, setSelectedDeviceIds] = useState(new Set());
 
   const handleQuickBook = (device) => {
     if (device?.isAvailable === false) return;
+    setQuickBookDevice(device);
+    setQuickBookDevices([device]);
+    setShowQuickBookModal(true);
+  };
+
+  const handleSuggestedQuickBook = (device) => {
+    const suggestion = device?.availabilitySuggestion;
+    if (!suggestion) return;
+
+    setAvailabilityPrefs((prev) => {
+      const nextDate = normalizeDate(suggestion.fromDateTime);
+      const nextEndDate = normalizeDate(suggestion.toDateTime);
+      const nextPickupType =
+        suggestion.timeFrom === MORNING_PICKUP_TIME
+          ? "MORNING"
+          : prev.durationType === "ONE_DAY" &&
+        suggestion.timeFrom !== MORNING_PICKUP_TIME
+          ? "EVENING"
+          : "MORNING";
+
+      return {
+        ...prev,
+        date: nextDate,
+        endDate: nextEndDate,
+        timeFrom: suggestion.timeFrom,
+        timeTo: suggestion.timeTo,
+        pickupType: nextPickupType,
+        pickupSlot:
+          prev.durationType === "ONE_DAY" && nextPickupType === "EVENING"
+            ? suggestion.timeFrom
+            : DEFAULT_EVENING_SLOT,
+      };
+    });
+
     setQuickBookDevice(device);
     setQuickBookDevices([device]);
     setShowQuickBookModal(true);
@@ -711,13 +868,17 @@ export default function DeviceCatalogPage() {
     saveBookingPrefs(data);
   }, [availabilityPrefs]);
 
-  // Fetch devices
+  // Fetch devices + categories in parallel for optimal load time
   const fetchDevices = useCallback(async () => {
     setIsLoading(true);
     setError("");
     try {
-      const response = await api.get("/v1/devices");
-      setDevices(response.data || []);
+      const [devicesRes, categoriesRes] = await Promise.all([
+        api.get("/v1/devices"),
+        api.get("/v1/device-categories/with-items").catch(() => ({ data: [] })),
+      ]);
+      setDevices(devicesRes.data || []);
+      setApiCategories(categoriesRes.data || []);
     } catch (err) {
       console.error("Failed to fetch devices:", err);
       setError("Không thể tải danh sách máy. Vui lòng thử lại.");
@@ -730,7 +891,7 @@ export default function DeviceCatalogPage() {
     fetchDevices();
   }, [fetchDevices]);
 
-  const [modelAvailability, setModelAvailability] = useState({});
+  const [modelAvailabilitySuggestions, setModelAvailabilitySuggestions] = useState({});
 
   const fetchAvailability = useCallback(async () => {
     if (!availabilityConfirmed) return;
@@ -749,13 +910,18 @@ export default function DeviceCatalogPage() {
     setAvailabilityError("");
     setAvailabilityLoading(true);
     const from = formatDateTimeLocalForAPI(fromDateTime);
-    const to = formatDateTimeLocalForAPI(toDateTime);
-    if (!from || !to) {
+    const exactTo = formatDateTimeLocalForAPI(toDateTime);
+    const lookupToDateTime =
+      availabilityPrefs.durationType === "ONE_DAY"
+        ? addDays(toDateTime, 1)
+        : toDateTime;
+    const to = formatDateTimeLocalForAPI(lookupToDateTime);
+    if (!from || !to || !exactTo) {
       setAvailabilityLoading(false);
       return;
     }
     try {
-      const [bookingResp, modelResp] = await Promise.all([
+      const [bookingResp, suggestionResp] = await Promise.all([
         api.get("v1/devices/booking", {
           params: {
             startDate: from?.slice(0, 10),
@@ -763,21 +929,27 @@ export default function DeviceCatalogPage() {
             branchId: availabilityPrefs.branchId,
           },
         }),
-        api.get("v1/devices/model-availability", { params: { from, to } }),
+        api.get("v1/devices/model-availability-suggestions", {
+          params: { from, to: exactTo },
+        }),
       ]);
       const data = bookingResp.data || [];
       const busySet = new Set();
+      const bookingMap = {};
       data.forEach((d) => {
+        bookingMap[d.id] = Array.isArray(d.bookingDtos) ? d.bookingDtos : [];
         if (Array.isArray(d.bookingDtos) && d.bookingDtos.length > 0) {
           busySet.add(d.id);
         }
       });
       setBusyDeviceIds(Array.from(busySet));
-      setModelAvailability(modelResp.data || {});
+      setDeviceBookingsById(bookingMap);
+      setModelAvailabilitySuggestions(suggestionResp.data || {});
     } catch (err) {
       console.error("Failed to fetch availability:", err);
       setBusyDeviceIds([]);
-      setModelAvailability({});
+      setDeviceBookingsById({});
+      setModelAvailabilitySuggestions({});
     } finally {
       setAvailabilityLoading(false);
     }
@@ -786,6 +958,11 @@ export default function DeviceCatalogPage() {
   useEffect(() => {
     fetchAvailability();
   }, [fetchAvailability]);
+
+  const availabilityRange = useMemo(
+    () => computeAvailabilityRange(availabilityPrefs),
+    [availabilityPrefs],
+  );
 
   // Process devices: group by modelKey, keep 1 representative per model
   // isAvailable = theo modelAvailability (model-level) nếu đã confirm, else true
@@ -799,8 +976,12 @@ export default function DeviceCatalogPage() {
       if (deviceType !== "DEVICE") continue;
       const modelKey = (device.modelKey || "").trim() || normalizeDeviceName(device.name);
       const isAvailable = !busySet.has(device.id);
+      const bookingDtos = deviceBookingsById[device.id] || [];
       if (!byModel.has(modelKey)) byModel.set(modelKey, []);
-      byModel.get(modelKey).push({ device, isAvailable });
+      byModel.get(modelKey).push({
+        device: { ...device, bookingDtos },
+        isAvailable,
+      });
     }
 
     const result = [];
@@ -810,15 +991,32 @@ export default function DeviceCatalogPage() {
         (sum, g) => sum + (g.device.bookingDtos?.length || 0),
         0,
       );
-      // modelAvailability (từ API) = nguồn chính xác theo khoảng thời gian user chọn
-      // Chỉ coi available khi API trả về true; undefined/thiếu key = false (an toàn)
-      const modelAvailable = modelAvailability[modelKey];
-      const hasModelAvailability = availabilityConfirmed && Object.keys(modelAvailability).length > 0;
+      const modelAvailabilityInfo = modelAvailabilitySuggestions[modelKey];
+      const hasModelAvailability =
+        availabilityConfirmed && Object.keys(modelAvailabilitySuggestions).length > 0;
       const isAvailable = hasModelAvailability
-        ? modelAvailable === true
+        ? modelAvailabilityInfo?.available === true
         : totalAvailable > 0;
+      const availabilitySuggestion =
+        availabilityConfirmed &&
+        availabilityPrefs.durationType !== "SIX_HOURS" &&
+        !isAvailable &&
+        modelAvailabilityInfo?.suggestedFrom &&
+        modelAvailabilityInfo?.suggestedTo
+          ? {
+              fromDateTime: new Date(modelAvailabilityInfo.suggestedFrom),
+              toDateTime: new Date(modelAvailabilityInfo.suggestedTo),
+              timeFrom: format(new Date(modelAvailabilityInfo.suggestedFrom), "HH:mm"),
+              timeTo: format(new Date(modelAvailabilityInfo.suggestedTo), "HH:mm"),
+              suggestedDeviceId: modelAvailabilityInfo.suggestedDeviceId,
+            }
+          : null;
 
-      const rep = group.find((g) => g.isAvailable) || group[0];
+      const preferredDeviceId = modelAvailabilityInfo?.suggestedDeviceId;
+      const rep =
+        group.find((g) => g.device.id === preferredDeviceId) ||
+        group.find((g) => g.isAvailable) ||
+        group[0];
       const { device } = rep;
       const normalizedName = normalizeDeviceName(device.name);
       const minOrderNumber = Math.min(
@@ -836,11 +1034,19 @@ export default function DeviceCatalogPage() {
         bookingCount: totalBookingCount,
         availableCount: totalAvailable,
         isAvailable,
+        availabilitySuggestion,
+        groupDeviceIds: new Set(group.map((g) => g.device.id)),
       });
     }
 
     return result;
-  }, [devices, busyDeviceIds, modelAvailability, availabilityConfirmed]);
+  }, [
+    devices,
+    busyDeviceIds,
+    modelAvailabilitySuggestions,
+    availabilityConfirmed,
+    deviceBookingsById,
+  ]);
 
   const pricingContext = useMemo(() => {
     const { fromDateTime: from, toDateTime: to } =
@@ -876,23 +1082,90 @@ export default function DeviceCatalogPage() {
     [pricingContext]
   );
 
+  // Build merged categories: builtin + API dynamic categories
+  const mergedCategories = useMemo(() => {
+    const dynamic = apiCategories.map((cat) => {
+      const items = cat.items || [];
+      // Collect device IDs from category items for matching
+      const deviceIds = new Set(items.map((item) => item.deviceId).filter(Boolean));
+      // Build deviceId → orderIndex map
+      const deviceIdOrder = new Map(
+        items.map((item) => [item.deviceId, item.orderIndex ?? 0])
+      );
+      return {
+        key: `cat_${cat.id}`,
+        label: (cat.name || "").toUpperCase(),
+        apiCategoryId: cat.id,
+        deviceIds,
+        deviceIdOrder,
+      };
+    });
+    return [...BUILTIN_CATEGORIES, ...dynamic];
+  }, [apiCategories]);
+
+  // Build global device order based on category priority + item priority
+  const globalDeviceOrder = useMemo(() => {
+    // Sort categories by their orderNumber (from backend)
+    const sortedCats = [...apiCategories].sort(
+      (a, b) => (a.orderNumber ?? 0) - (b.orderNumber ?? 0),
+    );
+    const orderMap = new Map(); // deviceId -> { catOrder, itemOrder }
+
+    sortedCats.forEach((cat, catIdx) => {
+      const items = cat.items || [];
+      // Sort items by orderIndex just in case
+      const sortedItems = [...items].sort(
+        (a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0),
+      );
+
+      sortedItems.forEach((item) => {
+        if (!item.deviceId) return;
+        // Only take the first appearance to define global order
+        if (!orderMap.has(item.deviceId)) {
+          orderMap.set(item.deviceId, {
+            catOrder: cat.orderNumber ?? catIdx,
+            itemOrder: item.orderIndex ?? 0,
+          });
+        }
+      });
+    });
+    return orderMap;
+  }, [apiCategories]);
+
   // Filter devices based on search, category, price
   const filteredDevices = useMemo(() => {
     let filtered = [...processedDevices];
 
     // Filter by search query
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter((d) =>
-        d.displayName.toLowerCase().includes(query),
-      );
+      const keywords = parseSearchKeywords(searchQuery);
+      filtered = filtered.filter((d) => {
+        const deviceName = normalizeSearchText(d.displayName);
+        const compactDeviceName = compactSearchText(d.displayName);
+        return keywords.some((keyword) => {
+          const normalizedKeyword = normalizeSearchText(keyword);
+          const compactKeyword = compactSearchText(keyword);
+          return (
+            deviceName.includes(normalizedKeyword) ||
+            compactDeviceName.includes(compactKeyword)
+          );
+        });
+      });
     }
 
     // Filter by category
+    const activeCat = mergedCategories.find((c) => c.key === selectedCategory);
     if (selectedCategory === "available") {
       filtered = filtered.filter((d) => d.isAvailable);
-    } else if (selectedCategory !== "all") {
-      filtered = filtered.filter((d) => d.brand === selectedCategory);
+    } else if (activeCat?.apiCategoryId) {
+      // API category → match if ANY device in the model group belongs to category
+      const catDeviceIds = activeCat.deviceIds;
+      filtered = filtered.filter((d) => {
+        for (const gid of d.groupDeviceIds) {
+          if (catDeviceIds.has(gid)) return true;
+        }
+        return false;
+      });
     }
 
     // Filter by price range
@@ -903,15 +1176,62 @@ export default function DeviceCatalogPage() {
       );
     }
 
-    // Sort: máy trống lên trên, máy không trống xuống dưới; trong mỗi nhóm sort theo orderNumber
+    // Sort priority: 0=máy trống, 1=có thể dời lịch, 2=không trống
+    const availPriority = (d) => {
+      if (d.isAvailable) return 0;
+      if (d.availabilitySuggestion) return 1;
+      return 2;
+    };
+
+    // Helper: get best (lowest) orderIndex for a model group
+    const getCatOrder = (d) => {
+      let bestCat = 999999;
+      let bestItem = 999999;
+
+      // If specific category selected, use its order
+      if (activeCat?.deviceIdOrder) {
+        for (const gid of d.groupDeviceIds) {
+          const idx = activeCat.deviceIdOrder.get(gid);
+          if (idx !== undefined && idx < bestItem) {
+            bestItem = idx;
+            bestCat = 0; // Priority within category
+          }
+        }
+      } else {
+        // Global view (All/Available) -> use precalculated global order
+        for (const gid of d.groupDeviceIds) {
+          const order = globalDeviceOrder.get(gid);
+          if (order) {
+            if (
+              order.catOrder < bestCat ||
+              (order.catOrder === bestCat && order.itemOrder < bestItem)
+            ) {
+              bestCat = order.catOrder;
+              bestItem = order.itemOrder;
+            }
+          }
+        }
+      }
+
+      return { cat: bestCat, item: bestItem };
+    };
+
+    // Always sort: availability first → then category order → then item order → then orderNumber
     filtered.sort((a, b) => {
-      const availDiff = (b.isAvailable ? 1 : 0) - (a.isAvailable ? 1 : 0);
+      const availDiff = availPriority(a) - availPriority(b);
       if (availDiff !== 0) return availDiff;
+
+      const orderA = getCatOrder(a);
+      const orderB = getCatOrder(b);
+
+      if (orderA.cat !== orderB.cat) return orderA.cat - orderB.cat;
+      if (orderA.item !== orderB.item) return orderA.item - orderB.item;
+
       return (a.orderNumber ?? 999999) - (b.orderNumber ?? 999999);
     });
 
     return filtered;
-  }, [processedDevices, searchQuery, selectedCategory, priceRange]);
+  }, [processedDevices, searchQuery, selectedCategory, priceRange, mergedCategories]);
 
   // Handle device selection
   const handleConfirmAvailability = () => {
@@ -930,11 +1250,6 @@ export default function DeviceCatalogPage() {
     setAvailabilityConfirmed(true);
   };
 
-  const availabilityRange = useMemo(
-    () => computeAvailabilityRange(availabilityPrefs),
-    [availabilityPrefs],
-  );
-
   const availabilityDisplay = useMemo(() => {
     const from = availabilityRange.fromDateTime;
     const to = availabilityRange.toDateTime;
@@ -952,7 +1267,7 @@ export default function DeviceCatalogPage() {
       <PageBackground />
       <PinkTapeMarquee />
 
-      <div className="w-full max-w-2xl mx-auto pt-16 px-4 z-20">
+      <div className="w-full max-w-2xl lg:max-w-5xl xl:max-w-6xl mx-auto pt-16 px-4 z-20">
         {/* Header */}
         <div className="text-center mb-8 relative">
           <Link
@@ -988,7 +1303,7 @@ export default function DeviceCatalogPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm máy ảnh..."
+              placeholder="Tìm máy ảnh... (vd: r50 + pocket 3)"
               className="w-full pl-11 pr-4 py-3 bg-white border-2 border-[#eee] rounded-xl text-sm text-[#333] placeholder:text-[#aaa] focus:outline-none focus:border-[#FF9FCA] transition-colors font-medium"
             />
           </div>
@@ -1039,16 +1354,30 @@ export default function DeviceCatalogPage() {
                 </p>
                 <p className="text-xs text-gray-500">{availabilityDisplay.toDate}</p>
               </div>
-              <div className="rounded-lg bg-[#FFF0F5] px-3 py-2.5 col-span-2 sm:col-span-1">
-                <p className="text-[10px] uppercase tracking-wider text-[#E85C9C]/80 font-semibold mb-0.5 flex items-center gap-1">
-                  <MapPin size={10} />
-                  Chi nhánh
-                </p>
-                <p className="text-sm font-black text-[#E85C9C]">
-                  {BRANCHES.find((b) => b.id === availabilityPrefs.branchId)
-                    ?.label ?? ""}
-                </p>
-              </div>
+              {(() => {
+                const branch = BRANCHES.find((b) => b.id === availabilityPrefs.branchId);
+                return (
+                  <div className="rounded-lg bg-[#FFF0F5] px-3 py-2.5 col-span-2 sm:col-span-1">
+                    <p className="text-[10px] uppercase tracking-wider text-[#E85C9C]/80 font-semibold mb-0.5 flex items-center gap-1">
+                      <MapPin size={10} />
+                      Chi nhánh
+                    </p>
+                    <p className="text-sm font-black text-[#E85C9C]">
+                      {branch?.label ?? ""}
+                    </p>
+                    {branch?.address && (
+                      <a
+                        href={branch.mapUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-[#777] hover:text-[#E85C9C] transition-colors mt-0.5 block leading-tight"
+                      >
+                        📍 {branch.address}
+                      </a>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -1057,6 +1386,7 @@ export default function DeviceCatalogPage() {
         <StylishTabs
           activeTab={selectedCategory}
           setActiveTab={setSelectedCategory}
+          categories={mergedCategories}
         />
 
         {/* Results Info */}
@@ -1078,8 +1408,8 @@ export default function DeviceCatalogPage() {
         {/* Device Grid */}
         <div className="min-h-[50vh]">
           {isLoading ? (
-            <div className="grid grid-cols-2 gap-4">
-              {[...Array(6)].map((_, i) => (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[...Array(8)].map((_, i) => (
                 <div
                   key={i}
                   className="bg-white rounded-xl overflow-hidden shadow animate-pulse"
@@ -1120,10 +1450,11 @@ export default function DeviceCatalogPage() {
             </div>
           ) : (
             <motion.div
+              key={selectedCategory}
               variants={gridVariants}
               initial="hidden"
               animate="visible"
-              className="grid grid-cols-2 gap-3 sm:gap-4"
+              className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
             >
               {filteredDevices.map((device) => (
                 <ChicCard
@@ -1131,6 +1462,7 @@ export default function DeviceCatalogPage() {
                   device={device}
                   pricing={getDevicePricing(device)}
                   onQuickBook={handleQuickBook}
+                  onSuggestedQuickBook={handleSuggestedQuickBook}
                   isSelected={selectedDeviceIds.has(device.id)}
                   onToggleSelect={handleToggleSelect}
                 />
@@ -1145,37 +1477,6 @@ export default function DeviceCatalogPage() {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="mt-auto px-4 text-center z-50 pt-8">
-        <div className="inline-block bg-[#FFFBF5]/95 border border-[#E85C9C]/20 px-4 py-3 md:px-8 md:py-4 rounded-full shadow-lg backdrop-blur-md w-full md:w-auto">
-          <div className="flex flex-wrap md:flex-nowrap gap-x-4 gap-y-2 items-center justify-center text-[10px] md:text-xs font-bold text-[#555] uppercase tracking-wide">
-            <a
-              href="https://maps.google.com"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 hover:text-[#E85C9C]"
-            >
-              <MapPin size={14} className="text-[#E85C9C]" /> PN, Phan Đình
-              Phùng
-            </a>
-            <div className="h-3 w-px bg-gray-300 hidden md:block" />
-            <a
-              href="https://maps.google.com"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 hover:text-[#E85C9C]"
-            >
-              <MapPin size={14} className="text-[#E85C9C]" /> Q9, Vinhome
-            </a>
-            <a
-              href="tel:0901355198"
-              className="flex items-center gap-2 bg-[#222] text-white px-5 py-2 rounded-full active:bg-[#E85C9C] ml-auto md:ml-2 w-full md:w-auto justify-center mt-2 md:mt-0 shadow-lg"
-            >
-              <Phone size={14} fill="currentColor" /> 0901 355 198
-            </a>
-          </div>
-        </div>
-      </div>
 
       {/* Filter Modal */}
       <FilterModal
@@ -1229,31 +1530,18 @@ export default function DeviceCatalogPage() {
           setAvailabilityPrefs((prev) => ({ ...prev, pickupSlot }))
         }
         setDurationType={(durationType) =>
-          setAvailabilityPrefs((prev) => {
-            const nextEndDate =
-              durationType === "ONE_DAY"
-                ? addDays(prev.date || new Date(), 1)
-                : prev.date;
-            return {
-              ...prev,
-              durationType,
-              endDate: nextEndDate,
-              pickupType:
-                durationType === "SIX_HOURS" ? prev.pickupType : "MORNING",
-              pickupSlot:
-                durationType === "SIX_HOURS"
-                  ? prev.pickupSlot
-                  : DEFAULT_EVENING_SLOT,
-              timeFrom:
-                durationType === "SIX_HOURS"
-                  ? MORNING_PICKUP_TIME
-                  : MORNING_PICKUP_TIME,
-              timeTo:
-                durationType === "SIX_HOURS"
-                  ? getSixHourAutoReturnTime(MORNING_PICKUP_TIME)
-                  : MORNING_PICKUP_TIME,
-            };
-          })
+          setAvailabilityPrefs((prev) => ({
+            ...prev,
+            durationType,
+            pickupType: null,
+            pickupSlot: null,
+            timeFrom: null,
+            timeTo: null,
+            // Re-calc endDate if ONE_DAY (at least have a date default if they already picked one)
+            endDate: (durationType === "ONE_DAY" && prev.date) 
+              ? addDays(prev.date, 1) 
+              : prev.date
+          }))
         }
         error={availabilityError}
       />
@@ -1265,7 +1553,7 @@ export default function DeviceCatalogPage() {
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-20 left-4 right-4 z-40 max-w-2xl mx-auto"
+            className="fixed bottom-20 left-4 right-4 z-40 max-w-2xl lg:max-w-5xl xl:max-w-6xl mx-auto"
           >
             <div className="bg-[#222] text-white rounded-xl shadow-xl border-2 border-[#E85C9C] p-4 flex items-center justify-between gap-4">
               <span className="font-bold text-[#FF9FCA] uppercase tracking-wide">

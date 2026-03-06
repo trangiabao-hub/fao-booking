@@ -397,9 +397,11 @@ export default function BookingPrefsForm({
               </div>
             ) : (
               <div className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-sm font-medium text-[#777]">
-                {pickupType === "EVENING"
-                  ? `Nhận Tối (${pickupSlot})`
-                  : `Nhận Sáng (${MORNING_PICKUP_TIME})`}
+                {!pickupType 
+                  ? "Chưa chọn giờ nhận" 
+                  : pickupType === "EVENING"
+                    ? `Nhận Tối (${pickupSlot})`
+                    : `Nhận Sáng (${MORNING_PICKUP_TIME})`}
               </div>
             )}
           </div>

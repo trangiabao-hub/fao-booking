@@ -9,7 +9,7 @@ export default function FloatingContactButton() {
   const [isExpanded, setIsExpanded] = React.useState(false);
 
   return (
-    <div className="fixed bottom-20 right-4 z-50 flex flex-col items-end gap-2">
+    <div className="fixed bottom-20 right-4 z-20 flex flex-col items-end gap-2">
       {/* Expanded Options */}
       {isExpanded && (
         <motion.div
@@ -18,7 +18,6 @@ export default function FloatingContactButton() {
           exit={{ opacity: 0, y: 20, scale: 0.8 }}
           className="flex flex-col gap-2"
         >
-          {/* Zalo Button */}
           <a
             href={ZALO_LINK}
             target="_blank"
@@ -29,7 +28,6 @@ export default function FloatingContactButton() {
             <span className="text-sm font-semibold">Chat Zalo</span>
           </a>
           
-          {/* Call Button */}
           <a
             href={`tel:${PHONE_NUMBER}`}
             className="flex items-center gap-2 bg-green-500 text-white px-4 py-3 rounded-full shadow-lg shadow-green-500/30 hover:bg-green-600 transition-all active:scale-95"
