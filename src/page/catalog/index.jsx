@@ -32,6 +32,7 @@ import {
   formatPriceK,
 } from "../../utils/bookingHelpers";
 import { saveBookingPrefs } from "../../utils/storage";
+import useBookingSocket from "../../lib/useBookingSocket";
 import "react-datepicker/dist/react-datepicker.css";
 
 registerLocale("vi", vi);
@@ -742,6 +743,76 @@ function AvailabilityGate({
   );
 }
 
+// Conflict Modal - shown when someone books a device the user is selecting
+function ConflictModal({ info, onDismiss }) {
+  if (!info) return null;
+  const { devices } = info;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="conflict-modal"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+        onClick={onDismiss}
+      >
+        <motion.div
+          initial={{ scale: 0.85, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.85, opacity: 0 }}
+          transition={{ type: "spring", damping: 22, stiffness: 300 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-[#FFFBF5] rounded-2xl max-w-sm w-full overflow-hidden shadow-2xl"
+        >
+          <div className="bg-gradient-to-br from-red-50 to-[#FFE4F0] px-6 pt-8 pb-5 text-center">
+            <div className="text-5xl mb-3">😔</div>
+            <h3 className="text-xl font-black text-[#222] mb-1.5">Rất tiếc!</h3>
+            <p className="text-sm text-[#666] leading-relaxed">
+              {devices.length === 1
+                ? "Máy bạn đang chọn vừa được người khác đặt trước rồi."
+                : `${devices.length} máy bạn chọn vừa được người khác đặt trước.`}
+            </p>
+          </div>
+
+          <div className="px-5 py-4 space-y-2">
+            {devices.map((d) => (
+              <div
+                key={d.id || d.modelKey}
+                className="flex items-center gap-3 bg-red-50/80 rounded-xl px-3.5 py-2.5 border border-red-100"
+              >
+                <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#FFE4F0] shrink-0">
+                  <img
+                    src={d.img || d.images?.[0] || FALLBACK_IMG}
+                    alt={d.displayName}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <span className="text-sm font-bold text-[#333] uppercase">
+                  {d.displayName || d.name}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="px-5 pb-6">
+            <p className="text-xs text-[#999] text-center mb-4">
+              Bạn có thể chọn máy khác hoặc thử lại với thời gian khác nhé!
+            </p>
+            <button
+              onClick={onDismiss}
+              className="w-full py-3 rounded-xl bg-[#222] text-[#FF9FCA] font-black uppercase tracking-wider hover:bg-[#333] transition-colors active:scale-[0.98]"
+            >
+              Đã hiểu, chọn máy khác
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 // Main Component
 export default function DeviceCatalogPage() {
   const [searchParams] = useSearchParams();
@@ -868,10 +939,11 @@ export default function DeviceCatalogPage() {
     saveBookingPrefs(data);
   }, [availabilityPrefs]);
 
-  // Fetch devices + categories in parallel for optimal load time
-  const fetchDevices = useCallback(async () => {
-    setIsLoading(true);
-    setError("");
+  const fetchDevices = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setIsLoading(true);
+      setError("");
+    }
     try {
       const [devicesRes, categoriesRes] = await Promise.all([
         api.get("/v1/devices"),
@@ -879,11 +951,12 @@ export default function DeviceCatalogPage() {
       ]);
       setDevices(devicesRes.data || []);
       setApiCategories(categoriesRes.data || []);
+      if (!silent) setError("");
     } catch (err) {
       console.error("Failed to fetch devices:", err);
-      setError("Không thể tải danh sách máy. Vui lòng thử lại.");
+      if (!silent) setError("Không thể tải danh sách máy. Vui lòng thử lại.");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, []);
 
@@ -893,7 +966,7 @@ export default function DeviceCatalogPage() {
 
   const [modelAvailabilitySuggestions, setModelAvailabilitySuggestions] = useState({});
 
-  const fetchAvailability = useCallback(async () => {
+  const fetchAvailability = useCallback(async ({ silent = false } = {}) => {
     if (!availabilityConfirmed) return;
     const { fromDateTime, toDateTime } =
       computeAvailabilityRange(availabilityPrefs);
@@ -903,12 +976,12 @@ export default function DeviceCatalogPage() {
       toDateTime,
     );
     if (rangeError) {
-      setAvailabilityError(rangeError);
+      if (!silent) setAvailabilityError(rangeError);
       return;
     }
 
-    setAvailabilityError("");
-    setAvailabilityLoading(true);
+    if (!silent) setAvailabilityError("");
+    if (!silent) setAvailabilityLoading(true);
     const from = formatDateTimeLocalForAPI(fromDateTime);
     const exactTo = formatDateTimeLocalForAPI(toDateTime);
     const lookupToDateTime =
@@ -917,7 +990,7 @@ export default function DeviceCatalogPage() {
         : toDateTime;
     const to = formatDateTimeLocalForAPI(lookupToDateTime);
     if (!from || !to || !exactTo) {
-      setAvailabilityLoading(false);
+      if (!silent) setAvailabilityLoading(false);
       return;
     }
     try {
@@ -947,17 +1020,94 @@ export default function DeviceCatalogPage() {
       setModelAvailabilitySuggestions(suggestionResp.data || {});
     } catch (err) {
       console.error("Failed to fetch availability:", err);
-      setBusyDeviceIds([]);
-      setDeviceBookingsById({});
-      setModelAvailabilitySuggestions({});
+      if (!silent) {
+        setBusyDeviceIds([]);
+        setDeviceBookingsById({});
+        setModelAvailabilitySuggestions({});
+      }
     } finally {
-      setAvailabilityLoading(false);
+      if (!silent) setAvailabilityLoading(false);
     }
   }, [availabilityConfirmed, availabilityPrefs]);
 
   useEffect(() => {
     fetchAvailability();
   }, [fetchAvailability]);
+
+  const handleRealtimeRefresh = useCallback(() => {
+    fetchDevices({ silent: true });
+    if (availabilityConfirmed) fetchAvailability({ silent: true });
+  }, [fetchDevices, fetchAvailability, availabilityConfirmed]);
+
+  const { isConnected: wsConnected, lastEvent: wsLastEvent } =
+    useBookingSocket({
+      onRefresh: handleRealtimeRefresh,
+      debounceMs: 1000,
+      refreshOnTabFocus: true,
+    });
+
+  // --- Conflict detection: detect when someone books a device the user is selecting ---
+  const [conflictInfo, setConflictInfo] = useState(null);
+
+  const quickBookDevicesRef = React.useRef(quickBookDevices);
+  quickBookDevicesRef.current = quickBookDevices;
+  const selectedDeviceIdsRef = React.useRef(selectedDeviceIds);
+  selectedDeviceIdsRef.current = selectedDeviceIds;
+  const showQuickBookModalRef = React.useRef(showQuickBookModal);
+  showQuickBookModalRef.current = showQuickBookModal;
+
+  useEffect(() => {
+    if (!wsLastEvent) return;
+    if (!["CREATE", "BATCH_CREATE"].includes(wsLastEvent.type)) return;
+
+    const eventDeviceName = wsLastEvent.deviceName || "";
+    if (!eventDeviceName) return;
+
+    const isModalOpen = showQuickBookModalRef.current;
+    const modalDevices = quickBookDevicesRef.current;
+    const selectedIds = selectedDeviceIdsRef.current;
+
+    if (!isModalOpen && selectedIds.size === 0) return;
+
+    const eventNames = eventDeviceName
+      .split(",")
+      .map((n) => normalizeDeviceName(n.trim()).toLowerCase())
+      .filter(Boolean);
+
+    if (eventNames.length === 0) return;
+
+    const activeDevices = [];
+    if (isModalOpen && modalDevices.length > 0) {
+      activeDevices.push(...modalDevices);
+    }
+    if (selectedIds.size > 0) {
+      devices
+        .filter((d) => selectedIds.has(d.id))
+        .forEach((d) => {
+          const normalized = normalizeDeviceName(d.name).toLowerCase();
+          if (!activeDevices.some((a) => (a.displayName || "").toLowerCase() === normalized)) {
+            activeDevices.push({ ...d, displayName: normalizeDeviceName(d.name) });
+          }
+        });
+    }
+
+    const conflicted = activeDevices.filter((d) => {
+      const display = (d.displayName || d.name || "").toLowerCase();
+      return eventNames.some((en) => en === display);
+    });
+
+    if (conflicted.length > 0) {
+      setConflictInfo({ devices: conflicted });
+    }
+  }, [wsLastEvent, devices]);
+
+  const handleConflictDismiss = useCallback(() => {
+    setConflictInfo(null);
+    setShowQuickBookModal(false);
+    setQuickBookDevice(null);
+    setQuickBookDevices([]);
+    setSelectedDeviceIds(new Set());
+  }, []);
 
   const availabilityRange = useMemo(
     () => computeAvailabilityRange(availabilityPrefs),
@@ -1390,7 +1540,7 @@ export default function DeviceCatalogPage() {
         />
 
         {/* Results Info */}
-        <div className="mb-4 px-1">
+        <div className="mb-4 px-1 flex items-center justify-between">
           <p className="text-sm text-[#777] font-medium">
             Tìm thấy{" "}
             <span className="font-black text-[#E85C9C]">
@@ -1403,6 +1553,22 @@ export default function DeviceCatalogPage() {
               </span>
             )}
           </p>
+          <div className="flex items-center gap-1.5" title={wsConnected ? "Đang cập nhật trực tiếp" : "Đang kết nối..."}>
+            {wsConnected ? (
+              <>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                <span className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">Live</span>
+              </>
+            ) : (
+              <>
+                <span className="h-2 w-2 rounded-full bg-gray-300" />
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Offline</span>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Device Grid */}
@@ -1605,6 +1771,9 @@ export default function DeviceCatalogPage() {
             : null
         }
       />
+
+      {/* Conflict Modal - someone booked the device you're looking at */}
+      <ConflictModal info={conflictInfo} onDismiss={handleConflictDismiss} />
 
       {/* Floating Contact Button */}
       <FloatingContactButton />

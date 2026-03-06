@@ -6,6 +6,9 @@ import path from "path";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    global: "globalThis",
+  },
   server: {
     fs: {
       allow: [path.resolve(__dirname), path.resolve(__dirname, "../fao")],

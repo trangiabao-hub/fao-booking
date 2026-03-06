@@ -17,6 +17,7 @@
     "@mui/material": "^7.3.2",
     "@mui/x-date-pickers-pro": "^8.12.0",
     "@tailwindcss/vite": "^4.1.13",
+    "@stomp/stompjs": "^7.1.1",
     "axios": "^1.12.2",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.18",
@@ -27,6 +28,7 @@
     "react-date-range": "^2.0.1",
     "react-datepicker": "^8.7.0",
     "react-dom": "^19.1.1",
+    "sockjs-client": "^1.6.1",
     "react-router-dom": "^6.30.1",
     "swiper": "^12.0.2",
     "tailwindcss": "^4.1.13"
