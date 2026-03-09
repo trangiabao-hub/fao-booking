@@ -8,6 +8,7 @@ import React, {
 import { format, addDays } from "date-fns";
 import vi from "date-fns/locale/vi";
 import { motion, AnimatePresence } from "framer-motion";
+import { signInWithPopup } from "firebase/auth";
 import {
   X,
   Calendar,
@@ -22,9 +23,14 @@ import api from "../config/axios";
 import {
   loadBookingPrefs,
   loadCustomerInfo,
+  loadCustomerSession,
+  saveRecentOrder,
+  saveCustomerSession,
+  clearCustomerSession,
   saveCustomerInfo,
   saveBookingPrefs,
 } from "../utils/storage";
+import { auth, googleProvider } from "../config/firebase";
 import {
   BRANCHES,
   DURATION_OPTIONS,
@@ -49,6 +55,47 @@ import BookingPrefsForm, {
   formatPickupReturnSummary,
 } from "./BookingPrefsForm";
 
+function isValidGmail(email) {
+  return /^[^\s@]+@gmail\.com$/i.test((email || "").trim());
+}
+
+function isValidInstagramOrFacebookUrl(link) {
+  const raw = (link || "").trim();
+  if (!raw) return true;
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    return (
+      host === "instagram.com" ||
+      host === "www.instagram.com" ||
+      host === "facebook.com" ||
+      host === "www.facebook.com" ||
+      host === "m.facebook.com" ||
+      host === "fb.com" ||
+      host === "www.fb.com"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeValidPhoneOrEmpty(rawPhone) {
+  const normalized = normalizePhone(rawPhone || "");
+  return /^0\d{9}$/.test(normalized) ? normalized : "";
+}
+
+function getOrderCodeFromPaymentResponse(data) {
+  if (data?.orderCode) return data.orderCode;
+  try {
+    const paymentUrl = data?.deepLink || data?.checkoutUrl;
+    if (!paymentUrl) return null;
+    const url = new URL(paymentUrl);
+    return url.searchParams.get("orderCode");
+  } catch {
+    return null;
+  }
+}
+
 export default function QuickBookModal({
   device,
   devices = [],
@@ -60,7 +107,7 @@ export default function QuickBookModal({
   const hasInitialPrefs = !!initialPrefs;
   const effectiveDevices = useMemo(
     () => (devices?.length ? devices : device ? [device] : []),
-    [devices, device]
+    [devices, device],
   );
   const isMulti = effectiveDevices.length > 1;
 
@@ -107,9 +154,22 @@ export default function QuickBookModal({
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
 
   const [isAvailable, setIsAvailable] = useState(true);
-  const [customer, setCustomer] = useState(
-    () => loadCustomerInfo() || { fullName: "", phone: "", ig: "" },
+  const [customer, setCustomer] = useState(() => {
+    const saved = loadCustomerInfo();
+    return {
+      fullName: saved?.fullName || "",
+      phone: normalizeValidPhoneOrEmpty(saved?.phone),
+      gmail: saved?.gmail || "",
+      ig: saved?.ig || saved?.fb || "",
+    };
+  });
+  const [checkoutMode, setCheckoutMode] = useState(() =>
+    loadCustomerSession()?.token ? "GOOGLE" : "GUEST",
   );
+  const [hasGoogleSession, setHasGoogleSession] = useState(
+    () => !!loadCustomerSession()?.token,
+  );
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -207,7 +267,10 @@ export default function QuickBookModal({
   }, [effectiveDevices, t1, t2]);
 
   const rentalInfo = rentalInfoPerDevice[0] || { price: 0, chargeableDays: 0 };
-  const price = rentalInfoPerDevice.reduce((sum, r) => sum + (r?.price || 0), 0);
+  const price = rentalInfoPerDevice.reduce(
+    (sum, r) => sum + (r?.price || 0),
+    0,
+  );
   const chargeableDays = rentalInfo.chargeableDays;
 
   const discountedTotal = useMemo(() => {
@@ -220,7 +283,15 @@ export default function QuickBookModal({
     if (hasInitialPrefs && pricing?.discounted != null)
       return pricing.discounted;
     return computeDiscountedPrice(price, t1, t2);
-  }, [isMulti, hasInitialPrefs, pricing?.discounted, price, t1, t2, rentalInfoPerDevice]);
+  }, [
+    isMulti,
+    hasInitialPrefs,
+    pricing?.discounted,
+    price,
+    t1,
+    t2,
+    rentalInfoPerDevice,
+  ]);
   const discountedLabel = formatPriceK(discountedTotal);
 
   // Chi tiết công thức giá để hiển thị ở bước XÁC NHẬN
@@ -231,8 +302,9 @@ export default function QuickBookModal({
     const daysForRetail = days >= 1 ? days : 1;
     const retailPrice = isMulti
       ? rentalInfoPerDevice.reduce(
-          (s, r) => s + Math.round((r?.device?.priceOneDay || 0) * daysForRetail),
-          0
+          (s, r) =>
+            s + Math.round((r?.device?.priceOneDay || 0) * daysForRetail),
+          0,
         )
       : Math.round(oneDayPrice * daysForRetail);
     const packagePrice = price;
@@ -285,7 +357,8 @@ export default function QuickBookModal({
 
   // Check availability
   const checkAvailability = useCallback(async () => {
-    if (effectiveDevices.length === 0 || !t1 || !t2 || timeSelectionError) return;
+    if (effectiveDevices.length === 0 || !t1 || !t2 || timeSelectionError)
+      return;
     setIsCheckingAvailability(true);
     try {
       if (isMulti) {
@@ -294,7 +367,7 @@ export default function QuickBookModal({
         });
         const apiModel = modelResp.data || {};
         const allAvailable = effectiveDevices.every(
-          (d) => apiModel[d.modelKey] === true
+          (d) => apiModel[d.modelKey] === true,
         );
         setIsAvailable(allAvailable);
       } else {
@@ -308,7 +381,7 @@ export default function QuickBookModal({
         });
         const data = resp.data || [];
         const busy = data.some(
-          (d) => d.id === device.id && d.bookingDtos?.length > 0
+          (d) => d.id === device.id && d.bookingDtos?.length > 0,
         );
         setIsAvailable(!busy);
       }
@@ -334,11 +407,78 @@ export default function QuickBookModal({
     checkAvailability,
   ]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const session = loadCustomerSession();
+    if (!session?.token) return;
+    let mounted = true;
+    api
+      .get("/account")
+      .then((res) => {
+        if (!mounted) return;
+        const account = res?.data || {};
+        setCheckoutMode("GOOGLE");
+        setHasGoogleSession(true);
+        setCustomer((c) => ({
+          ...c,
+          fullName: account.fullName || c.fullName,
+          phone: normalizeValidPhoneOrEmpty(account.phone) || c.phone,
+          gmail: account.email || c.gmail,
+          ig: account.ig || account.fb || c.ig,
+        }));
+      })
+      .catch(() => {
+        clearCustomerSession();
+        setHasGoogleSession(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [isOpen]);
+
   // Validate customer info
+  const socialLinkError = useMemo(() => {
+    if (!customer.ig?.trim()) return "";
+    return isValidInstagramOrFacebookUrl(customer.ig)
+      ? ""
+      : "Link phải là Instagram hoặc Facebook hợp lệ (https://...).";
+  }, [customer.ig]);
+  const fullNameError = useMemo(() => {
+    return customer.fullName?.trim().length >= 2
+      ? ""
+      : "Họ tên cần ít nhất 2 ký tự.";
+  }, [customer.fullName]);
+  const phoneError = useMemo(() => {
+    const normalized = normalizePhone(customer.phone);
+    return /^0\d{9}$/.test(normalized)
+      ? ""
+      : "SĐT cần đúng 10 số và bắt đầu bằng 0.";
+  }, [customer.phone]);
+  const gmailError = useMemo(() => {
+    if (checkoutMode !== "GOOGLE") return "";
+    if (!hasGoogleSession) return "Vui lòng đăng nhập Google để tiếp tục.";
+    return isValidGmail(customer.gmail)
+      ? ""
+      : "Vui lòng nhập Gmail hợp lệ (đuôi @gmail.com).";
+  }, [checkoutMode, customer.gmail, hasGoogleSession]);
   const isCustomerValid = useMemo(() => {
-    const phone = normalizePhone(customer.phone);
-    return customer.fullName?.trim().length >= 2 && /^0\d{9}$/.test(phone);
-  }, [customer]);
+    return (
+      !fullNameError &&
+      !phoneError &&
+      !socialLinkError &&
+      !gmailError
+    );
+  }, [fullNameError, phoneError, socialLinkError, gmailError]);
+  const savedCustomer = useMemo(() => loadCustomerInfo(), []);
+  const canUseSavedCustomer = useMemo(() => {
+    const phone = normalizePhone(savedCustomer?.phone || "");
+    return (
+      !!savedCustomer?.fullName &&
+      /^0\d{9}$/.test(phone) &&
+      isValidGmail(savedCustomer?.gmail || "") &&
+      isValidInstagramOrFacebookUrl(savedCustomer?.ig || savedCustomer?.fb || "")
+    );
+  }, [savedCustomer]);
 
   // Submit booking
   const handleSubmit = async () => {
@@ -348,15 +488,36 @@ export default function QuickBookModal({
     setError("");
 
     try {
-      saveCustomerInfo(customer);
+      if (checkoutMode === "GOOGLE") {
+        saveCustomerInfo(customer);
+      }
 
       const phone = normalizePhone(customer.phone);
-      const registerRes = await api.post("/accounts", {
-        fullName: customer.fullName.trim(),
-        phone,
-        ig: customer.ig?.trim() || null,
-      });
-      const customerId = registerRes.data?.id;
+      let customerId = null;
+      if (checkoutMode === "GOOGLE") {
+        const socialLink = (customer.ig || "").trim();
+        const isFacebook = /facebook\.com|fb\.com/i.test(socialLink);
+        const me = await api.get("/account");
+        const currentAccountId = me?.data?.id;
+        if (!currentAccountId) {
+          throw new Error("Không lấy được tài khoản Google hiện tại");
+        }
+        const profileRes = await api.put(`/accounts/${currentAccountId}`, {
+          fullName: customer.fullName.trim(),
+          phone,
+          email: (customer.gmail || "").trim() || me?.data?.email,
+          ig: isFacebook ? null : socialLink || null,
+          fb: isFacebook ? socialLink || null : null,
+        });
+        customerId = profileRes.data?.id;
+      } else {
+        const registerRes = await api.post("/accounts", {
+          fullName: customer.fullName.trim(),
+          phone,
+          ig: customer.ig?.trim() || null,
+        });
+        customerId = registerRes.data?.id;
+      }
       if (!customerId) throw new Error("Không lấy được customerId");
 
       const branchLabel =
@@ -391,7 +552,12 @@ export default function QuickBookModal({
         };
 
         const response = await api.post("/create-payment-link", payload);
-        const paymentUrl = response.data?.deepLink || response.data?.checkoutUrl;
+        const orderCode = getOrderCodeFromPaymentResponse(response.data);
+        if (orderCode) {
+          saveRecentOrder({ orderCode });
+        }
+        const paymentUrl =
+          response.data?.deepLink || response.data?.checkoutUrl;
         if (paymentUrl) {
           window.location.href = paymentUrl;
         } else {
@@ -420,7 +586,12 @@ export default function QuickBookModal({
         };
 
         const response = await api.post("/create-payment-link", payload);
-        const paymentUrl = response.data?.deepLink || response.data?.checkoutUrl;
+        const orderCode = getOrderCodeFromPaymentResponse(response.data);
+        if (orderCode) {
+          saveRecentOrder({ orderCode });
+        }
+        const paymentUrl =
+          response.data?.deepLink || response.data?.checkoutUrl;
         if (paymentUrl) {
           window.location.href = paymentUrl;
         } else {
@@ -435,6 +606,34 @@ export default function QuickBookModal({
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoading(true);
+    setError("");
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const googleUser = result.user;
+      const res = await api.post("/login-gg", {
+        email: googleUser?.email,
+        name: googleUser?.displayName,
+        avatar: googleUser?.photoURL,
+      });
+      const data = res?.data || {};
+      if (!data?.token) throw new Error("Đăng nhập Google thất bại");
+      saveCustomerSession({ token: data.token });
+      setCheckoutMode("GOOGLE");
+      setHasGoogleSession(true);
+      setCustomer((c) => ({
+        ...c,
+        fullName: data.fullName || c.fullName,
+        gmail: data.email || c.gmail,
+      }));
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || "Không thể đăng nhập Google");
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
   if (!isOpen || effectiveDevices.length === 0) return null;
 
   return (
@@ -443,7 +642,7 @@ export default function QuickBookModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center pb-24 md:pb-28 sm:pb-0"
         onClick={onClose}
       >
         <motion.div
@@ -452,15 +651,20 @@ export default function QuickBookModal({
           exit={{ y: "100%", opacity: 0 }}
           transition={{ type: "spring", damping: 25, stiffness: 300 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-[#FFFBF5] w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[90vh] overflow-hidden flex flex-col"
+          className="bg-[#FFFBF5] w-full max-w-md rounded-3xl mb-24 md:mb-28 sm:mb-0 max-h-[calc(100dvh-8.5rem)] sm:max-h-[90vh] overflow-hidden flex flex-col"
         >
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-[#FFE4F0]">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden bg-white shrink-0">
                 <img
-                  src={effectiveDevices[0]?.img || effectiveDevices[0]?.images?.[0]}
-                  alt={effectiveDevices[0]?.displayName || effectiveDevices[0]?.name}
+                  src={
+                    effectiveDevices[0]?.img || effectiveDevices[0]?.images?.[0]
+                  }
+                  alt={
+                    effectiveDevices[0]?.displayName ||
+                    effectiveDevices[0]?.name
+                  }
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -468,7 +672,8 @@ export default function QuickBookModal({
                 <div className="font-black text-[#222] text-sm line-clamp-1 uppercase">
                   {isMulti
                     ? `${effectiveDevices.length} máy`
-                    : (effectiveDevices[0]?.displayName || effectiveDevices[0]?.name)}
+                    : effectiveDevices[0]?.displayName ||
+                      effectiveDevices[0]?.name}
                 </div>
                 <div className="text-xs font-bold text-[#E85C9C]">
                   {discountedLabel}{" "}
@@ -568,6 +773,117 @@ export default function QuickBookModal({
 
             {step === 2 && (
               <div className="space-y-4">
+                <div className="rounded-xl border border-[#FFE4F0] bg-white p-3">
+                  <div className="text-[11px] font-black text-[#666] uppercase tracking-[0.2em] mb-2 px-1">
+                    Cách đặt nhanh
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCheckoutMode("GOOGLE");
+                        handleGoogleLogin();
+                      }}
+                      className={`rounded-xl border-2 px-3 py-2 text-left transition-all ${
+                        checkoutMode === "GOOGLE"
+                          ? "bg-[#222] border-[#222]"
+                          : "bg-white border-[#eee] hover:border-[#FF9FCA]"
+                      }`}
+                    >
+                      <div
+                        className={`text-xs font-black uppercase tracking-wide ${
+                          checkoutMode === "GOOGLE"
+                            ? "text-[#FF9FCA]"
+                            : "text-[#222]"
+                        }`}
+                      >
+                        Google đăng nhập
+                      </div>
+                      <div
+                        className={`text-[11px] mt-1 ${
+                          checkoutMode === "GOOGLE"
+                            ? "text-[#f3d7e6]"
+                            : "text-[#777]"
+                        }`}
+                      >
+                        Điền như vãng lai, tự lưu
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCheckoutMode("GUEST");
+                        clearCustomerSession();
+                        setHasGoogleSession(false);
+                      }}
+                      className={`rounded-xl border-2 px-3 py-2 text-left transition-all ${
+                        checkoutMode === "GUEST"
+                          ? "bg-[#222] border-[#222]"
+                          : "bg-white border-[#eee] hover:border-[#FF9FCA]"
+                      }`}
+                    >
+                      <div
+                        className={`text-xs font-black uppercase tracking-wide ${
+                          checkoutMode === "GUEST"
+                            ? "text-[#FF9FCA]"
+                            : "text-[#222]"
+                        }`}
+                      >
+                        Tiếp tục vãng lai
+                      </div>
+                      <div
+                        className={`text-[11px] mt-1 ${
+                          checkoutMode === "GUEST"
+                            ? "text-[#f3d7e6]"
+                            : "text-[#777]"
+                        }`}
+                      >
+                        Không cần tài khoản
+                      </div>
+                    </button>
+                  </div>
+
+                  {checkoutMode === "GOOGLE" && (
+                    <div className="mt-2 rounded-lg border border-[#FFD7EA] bg-[#FFF6FB] p-2.5 text-xs text-[#666]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>
+                          {isValidGmail(customer.gmail)
+                            ? `Đã đăng nhập: ${customer.gmail}`
+                            : "Đăng nhập Google để lưu thông tin vào tài khoản khách."}
+                        </span>
+                        {canUseSavedCustomer && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCustomer((c) => ({
+                                ...c,
+                                fullName: savedCustomer.fullName || "",
+                                phone: normalizeValidPhoneOrEmpty(
+                                  savedCustomer.phone,
+                                ),
+                                gmail: savedCustomer.gmail || "",
+                                ig: savedCustomer.ig || savedCustomer.fb || "",
+                              }))
+                            }
+                            className="shrink-0 rounded-md border border-[#FF9FCA]/40 bg-white px-2 py-1 font-bold text-[#E85C9C] hover:bg-[#fff0f7]"
+                          >
+                            Dùng thông tin đã lưu
+                          </button>
+                        )}
+                      </div>
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={handleGoogleLogin}
+                          disabled={isGoogleLoading}
+                          className="rounded-md border border-[#FF9FCA]/40 bg-white px-2.5 py-1 font-bold text-[#E85C9C] hover:bg-[#fff0f7] disabled:opacity-50"
+                        >
+                          {isGoogleLoading ? "Đang đăng nhập..." : "Đăng nhập Google"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div>
                   <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-2 uppercase tracking-[0.2em] px-1">
                     <User size={14} className="text-[#E85C9C]" />
@@ -579,8 +895,17 @@ export default function QuickBookModal({
                       setCustomer((c) => ({ ...c, fullName: e.target.value }))
                     }
                     placeholder="Nguyễn Thị Bông"
-                    className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] focus:border-[#FF9FCA] focus:outline-none bg-white font-medium text-[#333]"
+                    className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none bg-white font-medium text-[#333] ${
+                      fullNameError
+                        ? "border-red-300 focus:border-red-400"
+                        : "border-[#eee] focus:border-[#FF9FCA]"
+                    }`}
                   />
+                  {fullNameError && (
+                    <p className="mt-1 text-xs text-red-600 font-medium">
+                      {fullNameError}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-2 uppercase tracking-[0.2em] px-1">
@@ -594,21 +919,64 @@ export default function QuickBookModal({
                     }
                     placeholder="0901234567"
                     inputMode="tel"
-                    className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] focus:border-[#FF9FCA] focus:outline-none bg-white font-medium text-[#333]"
+                    className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none bg-white font-medium text-[#333] ${
+                      phoneError
+                        ? "border-red-300 focus:border-red-400"
+                        : "border-[#eee] focus:border-[#FF9FCA]"
+                    }`}
                   />
+                  {phoneError && (
+                    <p className="mt-1 text-xs text-red-600 font-medium">
+                      {phoneError}
+                    </p>
+                  )}
                 </div>
+                {checkoutMode === "GOOGLE" && (
+                  <div>
+                    <label className="text-[11px] font-black text-[#666] mb-2 block uppercase tracking-[0.2em] px-1">
+                      Gmail
+                    </label>
+                    <input
+                      value={customer.gmail || ""}
+                      onChange={(e) =>
+                        setCustomer((c) => ({ ...c, gmail: e.target.value }))
+                      }
+                      placeholder="yourname@gmail.com"
+                      inputMode="email"
+                      className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none bg-white font-medium text-[#333] ${
+                        gmailError
+                          ? "border-red-300 focus:border-red-400"
+                          : "border-[#eee] focus:border-[#FF9FCA]"
+                      }`}
+                    />
+                    {gmailError && (
+                      <p className="mt-1 text-xs text-red-600 font-medium">
+                        {gmailError}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div>
                   <label className="text-[11px] font-black text-[#666] mb-2 block uppercase tracking-[0.2em] px-1">
-                    Instagram / Facebook
+                    Link Instagram / Facebook
                   </label>
                   <input
                     value={customer.ig}
                     onChange={(e) =>
                       setCustomer((c) => ({ ...c, ig: e.target.value }))
                     }
-                    placeholder="@username"
-                    className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] focus:border-[#FF9FCA] focus:outline-none bg-white font-medium text-[#333]"
+                    placeholder="https://instagram.com/username hoặc https://facebook.com/username"
+                    className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none bg-white font-medium text-[#333] ${
+                      socialLinkError
+                        ? "border-red-300 focus:border-red-400"
+                        : "border-[#eee] focus:border-[#FF9FCA]"
+                    }`}
                   />
+                  {socialLinkError && (
+                    <p className="mt-1 text-xs text-red-600 font-medium">
+                      {socialLinkError}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -623,21 +991,33 @@ export default function QuickBookModal({
                     <div className="space-y-3">
                       {rentalInfoPerDevice.map((r) => {
                         const dev = r.device;
-                        const disc = computeDiscountedPrice(r.price || 0, t1, t2);
+                        const disc = computeDiscountedPrice(
+                          r.price || 0,
+                          t1,
+                          t2,
+                        );
                         const days = r.chargeableDays ?? chargeableDays;
                         const fullDays = Math.floor(days);
                         const basePrice = r.price || 0;
-                        const breakdown = fullDays > 3 ? formatPriceBreakdown(dev, fullDays) : null;
-                        const daysLabel = days >= 1 ? `${Math.round(days)} ngày` : "Gói 6h";
+                        const breakdown =
+                          fullDays > 3
+                            ? formatPriceBreakdown(dev, fullDays)
+                            : null;
+                        const daysLabel =
+                          days >= 1 ? `${Math.round(days)} ngày` : "Gói 6h";
                         return (
-                          <div key={dev.id} className="border-b border-[#FFE4F0] pb-2 last:border-0 last:pb-0">
+                          <div
+                            key={dev.id}
+                            className="border-b border-[#FFE4F0] pb-2 last:border-0 last:pb-0"
+                          >
                             <div className="flex justify-between items-start text-sm gap-3">
                               <div className="min-w-0 flex-1">
                                 <div className="font-bold text-[#222]">
                                   {dev.displayName || dev.name}
                                 </div>
                                 <p className="text-xs text-[#888] mt-0.5">
-                                  {breakdown || `${daysLabel} ${formatPriceK(basePrice)}`}
+                                  {breakdown ||
+                                    `${daysLabel} ${formatPriceK(basePrice)}`}
                                 </p>
                               </div>
                               <span className="font-black text-[#E85C9C] shrink-0 text-base">
@@ -652,17 +1032,25 @@ export default function QuickBookModal({
                     <div className="flex justify-between items-start gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="font-black text-[#222] uppercase">
-                          {effectiveDevices[0]?.displayName || effectiveDevices[0]?.name}
+                          {effectiveDevices[0]?.displayName ||
+                            effectiveDevices[0]?.name}
                         </div>
                         {(() => {
                           const r0 = rentalInfoPerDevice[0];
                           const fullDays = Math.floor(chargeableDays);
-                          const breakdown = fullDays > 3 && r0?.device ? formatPriceBreakdown(r0.device, fullDays) : null;
+                          const breakdown =
+                            fullDays > 3 && r0?.device
+                              ? formatPriceBreakdown(r0.device, fullDays)
+                              : null;
                           const base0 = r0?.price || 0;
-                          const daysLabel = chargeableDays >= 1 ? `${Math.round(chargeableDays)} ngày` : "Gói 6h";
+                          const daysLabel =
+                            chargeableDays >= 1
+                              ? `${Math.round(chargeableDays)} ngày`
+                              : "Gói 6h";
                           return (
                             <p className="text-xs text-[#888] mt-0.5">
-                              {breakdown || `${daysLabel} ${formatPriceK(base0)}`}
+                              {breakdown ||
+                                `${daysLabel} ${formatPriceK(base0)}`}
                             </p>
                           );
                         })()}
@@ -678,15 +1066,15 @@ export default function QuickBookModal({
                     Thời gian
                   </div>
                   <div className="text-sm text-[#222] space-y-0.5">
-                    {t1 && (
-                      <div>Nhận: {formatPickupReturnSummary(t1)}</div>
-                    )}
-                    {t2 && (
-                      <div>Trả: {formatPickupReturnSummary(t2)}</div>
-                    )}
+                    {t1 && <div>Nhận: {formatPickupReturnSummary(t1)}</div>}
+                    {t2 && <div>Trả: {formatPickupReturnSummary(t2)}</div>}
                     {chargeableDays > 0 && (
                       <div className="font-bold text-[#E85C9C] mt-1">
-                        Tổng cộng: {chargeableDays < 1 ? "Gói 6h" : `${chargeableDays} ngày`}.
+                        Tổng cộng:{" "}
+                        {chargeableDays < 1
+                          ? "Gói 6h"
+                          : `${chargeableDays} ngày`}
+                        .
                       </div>
                     )}
                   </div>
@@ -721,7 +1109,10 @@ export default function QuickBookModal({
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-[#ccc]">✨ Giá gốc</span>
                         <span className="font-bold text-white">
-                          {(priceBreakdown.original || 0).toLocaleString("vi-VN")}đ
+                          {(priceBreakdown.original || 0).toLocaleString(
+                            "vi-VN",
+                          )}
+                          đ
                         </span>
                       </div>
                       {priceBreakdown.discount > 0 &&
@@ -731,7 +1122,11 @@ export default function QuickBookModal({
                               🔥 {priceBreakdown.discountLabel}
                             </span>
                             <span className="font-bold text-[#FF9FCA]">
-                              (-{(priceBreakdown.discount || 0).toLocaleString("vi-VN")}đ)
+                              (-
+                              {(priceBreakdown.discount || 0).toLocaleString(
+                                "vi-VN",
+                              )}
+                              đ)
                             </span>
                           </div>
                         )}
@@ -740,12 +1135,19 @@ export default function QuickBookModal({
                           ✅ Chỉ còn
                         </span>
                         <span className="text-2xl font-black text-[#FF9FCA]">
-                          {(priceBreakdown.discounted || 0).toLocaleString("vi-VN")}đ
+                          {(priceBreakdown.discounted || 0).toLocaleString(
+                            "vi-VN",
+                          )}
+                          đ
                         </span>
                       </div>
                       {priceBreakdown.discount > 0 && (
                         <div className="text-center text-emerald-400 text-sm font-bold pt-1">
-                          💥 Tiết kiệm ngay {(priceBreakdown.discount || 0).toLocaleString("vi-VN")}đ!
+                          💥 Tiết kiệm ngay{" "}
+                          {(priceBreakdown.discount || 0).toLocaleString(
+                            "vi-VN",
+                          )}
+                          đ!
                         </div>
                       )}
                     </>
@@ -766,7 +1168,8 @@ export default function QuickBookModal({
                     🎁 Đặc biệt: Chương trình "Cọc 0 đồng"
                   </div>
                   <div className="text-xs text-emerald-800/90">
-                    ✅ Chỉ cần CCCD bản gốc (Shop chỉ chụp lại, không giữ máy) hoặc VNeID định danh mức 2.
+                    ✅ Chỉ cần CCCD bản gốc (Shop chỉ chụp lại, không giữ máy)
+                    hoặc VNeID định danh mức 2.
                   </div>
                 </div>
                 {error && (

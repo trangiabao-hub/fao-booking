@@ -18,6 +18,7 @@ const ONE_DAY_EVENING_SLOTS = [
   "20:15",
   "20:30",
 ];
+const QUICK_RETURN_DAY_OFFSETS = [1, 2, 3];
 const SIX_HOUR_MAX_HOURS = 12;
 
 const DURATION_TYPES = [
@@ -28,6 +29,16 @@ const DURATION_TYPES = [
 const BRANCHES = [
   { id: "PHU_NHUAN", label: "FAO Phú Nhuận" },
   { id: "Q9", label: "FAO Q9 (Vinhomes)", disabled: true, comingSoon: true },
+];
+
+const ONE_DAY_PICKUP_OPTIONS = [
+  { id: "MORNING_0900", pickupType: "MORNING", time: MORNING_PICKUP_TIME, label: "Sáng 09:00" },
+  ...ONE_DAY_EVENING_SLOTS.map((slot) => ({
+    id: `EVENING_${slot.replace(":", "")}`,
+    pickupType: "EVENING",
+    time: slot,
+    label: `Tối ${slot}`,
+  })),
 ];
 
 /* ── Helpers ── */
@@ -92,7 +103,7 @@ function formatTimeShort(date) {
 export function formatPickupReturnSummary(date) {
   if (!date) return "";
   return `${formatTimeShort(date)} • ${getDayPartLabel(date)} • ${formatWeekdayLabel(
-    date
+    date,
   )} (${format(date, "dd/MM")})`;
 }
 
@@ -247,6 +258,25 @@ export default function BookingPrefsForm({
     }
   }, [durationType, timeFrom, timeTo, setTimeTo]);
 
+  useEffect(() => {
+    if (durationType !== "ONE_DAY") return;
+    const isValidOneDayTime = ONE_DAY_PICKUP_OPTIONS.some(
+      (option) => option.time === timeFrom,
+    );
+    if (isValidOneDayTime) return;
+    setPickupType("MORNING");
+    setPickupSlot(MORNING_PICKUP_TIME);
+    setTimeFrom(MORNING_PICKUP_TIME);
+    setTimeTo(MORNING_PICKUP_TIME);
+  }, [
+    durationType,
+    timeFrom,
+    setPickupType,
+    setPickupSlot,
+    setTimeFrom,
+    setTimeTo,
+  ]);
+
   return (
     <div className="min-w-0 overflow-x-hidden">
       {/* Promo banner */}
@@ -261,9 +291,8 @@ export default function BookingPrefsForm({
           </span>
         </div>
         <div className="text-sm text-[#555] mt-1.5 font-medium leading-relaxed">
-          Giảm trực tiếp{" "}
-          <span className="text-[#E85C9C] font-black">20%</span> từ thứ 2 đến
-          thứ 6. Tự áp dụng khi đủ điều kiện, không cần nhập mã.
+          Giảm trực tiếp <span className="text-[#E85C9C] font-black">20%</span>{" "}
+          từ thứ 2 đến thứ 6. Tự áp dụng khi đủ điều kiện, không cần nhập mã.
         </div>
         <div className="text-sm text-[#555] mt-1.5 font-medium leading-relaxed">
           Thuê máy ảnh{" "}
@@ -345,21 +374,46 @@ export default function BookingPrefsForm({
                 className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-base font-medium text-[#777] cursor-not-allowed"
               />
             ) : (
-              <DatePicker
-                selected={endDate}
-                onChange={(nextDate) => setEndDate(normalizeDate(nextDate))}
-                dateFormat="dd/MM/yyyy"
-                locale="vi"
-                minDate={
-                  durationType === "ONE_DAY"
-                    ? date
-                      ? addDays(date, 1)
-                      : addDays(new Date(), 1)
-                    : date || normalizeDate(new Date())
-                }
-                placeholderText="Chọn ngày trả"
-                className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-base font-medium focus:border-[#FF9FCA] focus:outline-none"
-              />
+              <>
+                <DatePicker
+                  selected={endDate}
+                  onChange={(nextDate) => setEndDate(normalizeDate(nextDate))}
+                  dateFormat="dd/MM/yyyy"
+                  locale="vi"
+                  minDate={
+                    durationType === "ONE_DAY"
+                      ? date
+                        ? addDays(date, 1)
+                        : addDays(new Date(), 1)
+                      : date || normalizeDate(new Date())
+                  }
+                  placeholderText="Chọn ngày trả"
+                  className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-base font-medium focus:border-[#FF9FCA] focus:outline-none"
+                />
+                {durationType === "ONE_DAY" && date && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {QUICK_RETURN_DAY_OFFSETS.map((offset) => {
+                      const candidate = normalizeDate(addDays(date, offset));
+                      const active =
+                        endDate && candidate?.getTime() === normalizeDate(endDate)?.getTime();
+                      return (
+                        <button
+                          key={offset}
+                          type="button"
+                          onClick={() => setEndDate(candidate)}
+                          className={`px-2 py-1 rounded-lg border text-xs font-semibold transition-all ${
+                            active
+                              ? "bg-[#222] text-[#FF9FCA] border-[#222]"
+                              : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
+                          }`}
+                        >
+                          +{offset} ngày
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -397,8 +451,8 @@ export default function BookingPrefsForm({
               </div>
             ) : (
               <div className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-sm font-medium text-[#777]">
-                {!pickupType 
-                  ? "Chưa chọn giờ nhận" 
+                {!pickupType
+                  ? "Chưa chọn giờ nhận"
                   : pickupType === "EVENING"
                     ? `Nhận Tối (${pickupSlot})`
                     : `Nhận Sáng (${MORNING_PICKUP_TIME})`}
@@ -444,93 +498,32 @@ export default function BookingPrefsForm({
             >
               <div className="pt-2 space-y-3">
                 <div className="text-sm text-[#666] font-semibold">
-                  Chọn thời gian nhận máy
+                  Giờ nhận máy
                 </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPickupType("MORNING");
-                      setTimeFrom(MORNING_PICKUP_TIME);
-                      setTimeTo(MORNING_PICKUP_TIME);
-                    }}
-                    className={`px-3 py-2 rounded-xl border-2 text-sm font-bold uppercase tracking-wide transition-all ${
-                      pickupType === "MORNING"
-                        ? "bg-[#222] text-[#FF9FCA] border-[#222]"
-                        : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                    }`}
-                  >
-                    Nhận sáng
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const defaultNight = ONE_DAY_EVENING_SLOTS[0];
-                      setPickupType("EVENING");
-                      setPickupSlot(defaultNight);
-                      setTimeFrom(defaultNight);
-                      setTimeTo(defaultNight);
-                    }}
-                    className={`px-3 py-2 rounded-xl border-2 text-sm font-bold uppercase tracking-wide transition-all ${
-                      pickupType === "EVENING"
-                        ? "bg-[#222] text-[#FF9FCA] border-[#222]"
-                        : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                    }`}
-                  >
-                    Nhận tối
-                  </button>
+                <div className="grid grid-cols-3 gap-2 min-w-0">
+                  {ONE_DAY_PICKUP_OPTIONS.map((option) => {
+                    const active = timeFrom === option.time;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => {
+                          setPickupType(option.pickupType);
+                          setPickupSlot(option.time);
+                          setTimeFrom(option.time);
+                          setTimeTo(option.time);
+                        }}
+                        className={`px-2 py-2 rounded-xl border-2 text-xs font-bold transition-all ${
+                          active
+                            ? "bg-[#222] text-[#FF9FCA] border-[#222]"
+                            : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
                 </div>
-
-                {pickupType === "MORNING" ? (
-                  <div className="p-3 rounded-xl border border-[#eee] bg-white">
-                    <div className="text-base font-black text-[#222] mb-2">
-                      Khung giờ nhận sáng
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPickupType("MORNING");
-                        setTimeFrom(MORNING_PICKUP_TIME);
-                        setTimeTo(MORNING_PICKUP_TIME);
-                      }}
-                      className="px-3 py-2 rounded-xl border-2 text-sm font-black bg-[#222] text-[#FF9FCA] border-[#222]"
-                    >
-                      {MORNING_PICKUP_TIME}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-xl border border-[#eee] bg-white">
-                    <div className="text-base font-black text-[#222] mb-2">
-                      Khung giờ nhận tối
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 min-w-0">
-                      {ONE_DAY_EVENING_SLOTS.map((slot) => {
-                        const active =
-                          pickupType === "EVENING" && pickupSlot === slot;
-                        return (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => {
-                              setPickupType("EVENING");
-                              setPickupSlot(slot);
-                              setTimeFrom(slot);
-                              setTimeTo(slot);
-                            }}
-                            className={`px-2 py-2 rounded-xl border-2 text-sm font-black transition-all ${
-                              active
-                                ? "bg-[#222] text-[#FF9FCA] border-[#222]"
-                                : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                            }`}
-                          >
-                            {slot}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
             </MotionDiv>
           )}

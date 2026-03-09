@@ -19,6 +19,7 @@ import {
 import api from "../../config/axios";
 import FloatingContactButton from "../../components/FloatingContactButton";
 import QuickBookModal from "../../components/QuickBookModal";
+import SlideNav from "../../components/SlideNav";
 import BookingPrefsForm, {
   normalizeDate,
   getDefaultBranchId,
@@ -26,11 +27,11 @@ import BookingPrefsForm, {
   getAvailabilityRangeError,
   getSixHourAutoReturnTime,
 } from "../../components/BookingPrefsForm";
-import { computeDiscountBreakdown, calculateRentalInfo } from "../../utils/pricing";
 import {
-  formatPriceFormula,
-  formatPriceK,
-} from "../../utils/bookingHelpers";
+  computeDiscountBreakdown,
+  calculateRentalInfo,
+} from "../../utils/pricing";
+import { formatPriceFormula, formatPriceK } from "../../utils/bookingHelpers";
 import { saveBookingPrefs } from "../../utils/storage";
 import useBookingSocket from "../../lib/useBookingSocket";
 import "react-datepicker/dist/react-datepicker.css";
@@ -58,10 +59,14 @@ const DURATION_TYPES = [
 ];
 
 const BRANCHES = [
-  { id: "PHU_NHUAN", label: "FAO Phú Nhuận", address: "475 Huỳnh Văn Bánh, Phú Nhuận", mapUrl: "https://maps.app.goo.gl/CSeEPhMGUNZsYCNZ7" },
+  {
+    id: "PHU_NHUAN",
+    label: "FAO Phú Nhuận",
+    address: "475 Huỳnh Văn Bánh, Phú Nhuận",
+    mapUrl: "https://maps.app.goo.gl/CSeEPhMGUNZsYCNZ7",
+  },
   { id: "Q9", label: "FAO Q9 (Vinhomes)", disabled: true, comingSoon: true },
 ];
-
 
 // --- CSS NOISE TEXTURE (from Menu) ---
 const NoiseOverlay = () => (
@@ -95,7 +100,8 @@ const PinkTapeMarquee = () => (
           <Zap size={14} fill="white" className="text-white shrink-0" />
           Giảm 20% từ thứ 2 tới thứ 6
           <span className="w-1.5 h-1.5 rounded-full bg-white mx-1 shrink-0" />
-          Thuê máy không cần cọc chỉ cần CCCD chính chủ hoặc VNID định danh mức 2
+          Thuê máy không cần cọc chỉ cần CCCD chính chủ hoặc VNID định danh mức
+          2
         </span>
       ))}
     </motion.div>
@@ -138,7 +144,6 @@ function compactSearchText(text = "") {
   return normalizeSearchText(text).replace(/\s+/g, "");
 }
 
-
 function combineDateWithTimeString(dateOnly, timeStr) {
   if (!dateOnly || !timeStr) return null;
   const [hStr, mStr] = timeStr.split(":");
@@ -180,7 +185,7 @@ function formatTimeShort(date) {
 function formatPickupReturnSummary(date) {
   if (!date) return "";
   return `${formatTimeShort(date)} • ${getDayPartLabel(date)} • ${formatWeekdayLabel(
-    date
+    date,
   )} (${format(date, "dd/MM")})`;
 }
 
@@ -204,7 +209,6 @@ function countWeekdaysInRange(startDateTime, endDateTime) {
   }
   return { totalDays, weekdayDays };
 }
-
 
 // Price range definitions
 const PRICE_RANGES = [
@@ -307,7 +311,9 @@ function ChicCard({
 
         {/* HOT BADGE */}
         {isHot && (
-          <div className={`absolute top-2 ${isAvailable && onToggleSelect ? "left-11" : "left-2"} z-20 flex flex-col items-center transform rotate-6 transition-all`}>
+          <div
+            className={`absolute top-2 ${isAvailable && onToggleSelect ? "left-11" : "left-2"} z-20 flex flex-col items-center transform rotate-6 transition-all`}
+          >
             <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold px-2 py-1 rounded border border-white shadow-sm uppercase">
               <Sparkles size={10} className="inline" /> HOT
             </div>
@@ -343,17 +349,22 @@ function ChicCard({
             decoding="async"
           />
           {!isAvailable && (
-            <div className={`absolute inset-0 z-10 flex items-center justify-center p-2 ${hasSuggestedSlot ? 'bg-emerald-900/20' : 'bg-black/40'}`}>
+            <div
+              className={`absolute inset-0 z-10 flex items-center justify-center p-2 ${hasSuggestedSlot ? "bg-emerald-900/20" : "bg-black/40"}`}
+            >
               {hasSuggestedSlot ? (
                 <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3 shadow-xl transform -rotate-1 animate-in fade-in zoom-in duration-300">
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wider">Gợi ý dời lịch</span>
+                    <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wider">
+                      Gợi ý dời lịch
+                    </span>
                   </div>
                   <div className="text-[11px] font-bold text-emerald-900 leading-tight">
                     Máy sẽ trống nếu bạn đổi thành:
                     <div className="mt-1 text-[#E85C9C] bg-white px-2 py-1 rounded-md border border-emerald-100 shadow-sm inline-block">
-                      {format(suggestedSlot.fromDateTime, "HH:mm dd/MM")} - {format(suggestedSlot.toDateTime, "HH:mm dd/MM")}
+                      {format(suggestedSlot.fromDateTime, "HH:mm dd/MM")} -{" "}
+                      {format(suggestedSlot.toDateTime, "HH:mm dd/MM")}
                     </div>
                   </div>
                 </div>
@@ -365,10 +376,16 @@ function ChicCard({
                     boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
                   }}
                 >
-                  <span className="font-bold text-white text-xs md:text-sm uppercase tracking-tight text-center max-w-[110px] line-clamp-2" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
+                  <span
+                    className="font-bold text-white text-xs md:text-sm uppercase tracking-tight text-center max-w-[110px] line-clamp-2"
+                    style={{ textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}
+                  >
                     {device.displayName}
                   </span>
-                  <span className="text-red-500 font-bold text-[9px] uppercase tracking-wider" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>
+                  <span
+                    className="text-red-500 font-bold text-[9px] uppercase tracking-wider"
+                    style={{ textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}
+                  >
                     Không trống
                   </span>
                 </div>
@@ -404,21 +421,23 @@ function ChicCard({
           )}
 
           <button
-            onClick={hasSuggestedSlot ? handleSuggestedQuickBook : handleQuickBook}
+            onClick={
+              hasSuggestedSlot ? handleSuggestedQuickBook : handleQuickBook
+            }
             disabled={!isAvailable && !hasSuggestedSlot}
             className={`w-full mt-3 py-2.5 text-[11px] font-bold rounded-lg uppercase tracking-wider transition-all ${
               isAvailable
                 ? "bg-[#E85C9C] text-white hover:opacity-90 active:scale-[0.98] shadow-md"
                 : hasSuggestedSlot
-                ? "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] shadow-md"
-                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] shadow-md"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
             }`}
           >
             {isAvailable
               ? "Đặt ngay"
               : hasSuggestedSlot
-              ? "Dời theo gợi ý & đặt"
-              : "Tạm hết máy"}
+                ? "Dời theo gợi ý & đặt"
+                : "Tạm hết máy"}
           </button>
         </div>
       </div>
@@ -469,7 +488,9 @@ function StylishTabs({ activeTab, setActiveTab, categories }) {
           }}
           onClick={() => scrollBy(-1)}
         >
-          <span className="text-[#FF69B4] text-xl font-bold animate-pulse">‹</span>
+          <span className="text-[#FF69B4] text-xl font-bold animate-pulse">
+            ‹
+          </span>
         </div>
       )}
 
@@ -482,7 +503,9 @@ function StylishTabs({ activeTab, setActiveTab, categories }) {
           }}
           onClick={() => scrollBy(1)}
         >
-          <span className="text-[#FF69B4] text-xl font-bold animate-pulse">›</span>
+          <span className="text-[#FF69B4] text-xl font-bold animate-pulse">
+            ›
+          </span>
         </div>
       )}
 
@@ -536,7 +559,7 @@ function FilterModal({ isOpen, onClose, priceRange, setPriceRange }) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center"
+          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center pb-24 md:pb-28"
           onClick={onClose}
         >
           <motion.div
@@ -545,38 +568,38 @@ function FilterModal({ isOpen, onClose, priceRange, setPriceRange }) {
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 400 }}
             onClick={(e) => e.stopPropagation()}
-          className="bg-[#FFFBF5] w-full max-w-md rounded-t-3xl p-6"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-black text-[#222] uppercase tracking-wider">
-              Lọc theo giá
-            </h3>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-[#FF9FCA]/20 rounded-full transition-colors"
-            >
-              <X size={20} className="text-[#555]" />
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {PRICE_RANGES.map((range) => (
+            className="bg-[#FFFBF5] w-full max-w-md rounded-t-3xl p-6"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-black text-[#222] uppercase tracking-wider">
+                Lọc theo giá
+              </h3>
               <button
-                key={range.id}
-                onClick={() => {
-                  setPriceRange(range.id);
-                  onClose();
-                }}
-                className={`w-full text-left px-4 py-3 rounded-xl transition-all font-bold ${
-                  priceRange === range.id
-                    ? "bg-[#222] text-[#FF9FCA]"
-                    : "bg-white text-[#555] hover:bg-[#FF9FCA]/20 border border-[#eee]"
-                }`}
+                onClick={onClose}
+                className="p-2 hover:bg-[#FF9FCA]/20 rounded-full transition-colors"
               >
-                {range.label}
+                <X size={20} className="text-[#555]" />
               </button>
-            ))}
-          </div>
+            </div>
+
+            <div className="space-y-2">
+              {PRICE_RANGES.map((range) => (
+                <button
+                  key={range.id}
+                  onClick={() => {
+                    setPriceRange(range.id);
+                    onClose();
+                  }}
+                  className={`w-full text-left px-4 py-3 rounded-xl transition-all font-bold ${
+                    priceRange === range.id
+                      ? "bg-[#222] text-[#FF9FCA]"
+                      : "bg-white text-[#555] hover:bg-[#FF9FCA]/20 border border-[#eee]"
+                  }`}
+                >
+                  {range.label}
+                </button>
+              ))}
+            </div>
           </motion.div>
         </motion.div>
       )}
@@ -626,16 +649,18 @@ function AvailabilityGate({
     return Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
   }, [durationType, fromDateTime, toDateTime]);
 
-  const pickupLine = fromDateTime ? formatPickupReturnSummary(fromDateTime) : "";
+  const pickupLine = fromDateTime
+    ? formatPickupReturnSummary(fromDateTime)
+    : "";
   const returnLine = toDateTime ? formatPickupReturnSummary(toDateTime) : "";
   const { weekdayDays } = useMemo(
     () => countWeekdaysInRange(fromDateTime, toDateTime),
-    [fromDateTime, toDateTime]
+    [fromDateTime, toDateTime],
   );
   const teaserSaving = useMemo(() => weekdayDays * 90000, [weekdayDays]);
   const teaserSavingLabel = useMemo(
     () => `${teaserSaving.toLocaleString("vi-VN")} VND`,
-    [teaserSaving]
+    [teaserSaving],
   );
   const MotionDiv = motion.div;
 
@@ -688,54 +713,54 @@ function AvailabilityGate({
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 400 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#FFFBF5] w-full max-w-md rounded-t-3xl max-h-[90dvh] flex flex-col overflow-hidden min-w-0"
+            className="bg-[#FFFBF5] w-full max-w-md rounded-3xl mb-24 md:mb-28 max-h-[calc(100dvh-8.5rem)] md:max-h-[85vh] flex flex-col overflow-hidden min-w-0"
           >
-          <div className="px-5 pt-5 pb-3 border-b border-[#FFE4F0] bg-[#FFFBF5]">
-            <div className="mb-2">
-              <h3 className="text-xl font-black text-[#222] uppercase tracking-wider">
-                Chọn giờ nhận / trả
-              </h3>
+            <div className="px-5 pt-5 pb-3 border-b border-[#FFE4F0] bg-[#FFFBF5]">
+              <div className="mb-2">
+                <h3 className="text-xl font-black text-[#222] uppercase tracking-wider">
+                  Chọn giờ nhận / trả
+                </h3>
+              </div>
             </div>
-          </div>
 
-          <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-4 min-w-0">
-            <BookingPrefsForm
-              branchId={branchId}
-              date={date}
-              endDate={endDate}
-              timeFrom={timeFrom}
-              timeTo={timeTo}
-              durationType={durationType}
-              pickupType={pickupType}
-              pickupSlot={pickupSlot}
-              setBranchId={setBranchId}
-              setDate={setDate}
-              setEndDate={setEndDate}
-              setTimeFrom={setTimeFrom}
-              setTimeTo={setTimeTo}
-              setDurationType={setDurationType}
-              setPickupType={setPickupType}
-              setPickupSlot={setPickupSlot}
-              error={error}
-            />
-          </div>
-
-          <div className="px-5 pt-3 pb-4 border-t border-[#FFE4F0] bg-[#FFFBF5]">
-            <button
-              onClick={onConfirm}
-              disabled={!isComplete}
-              className={`w-full py-3 rounded-xl font-black uppercase tracking-wider transition-all ${
-                isComplete 
-                  ? "bg-[#222] text-[#FF9FCA] hover:bg-[#333]" 
-                  : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-100"
-              }`}
-            >
-              Giữ ưu đãi & xem máy còn trống
-            </button>
-            <div className="text-center text-sm text-[#888] mt-2">
-              Bạn có thể đổi lại thời gian bất cứ lúc nào.
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-4 min-w-0">
+              <BookingPrefsForm
+                branchId={branchId}
+                date={date}
+                endDate={endDate}
+                timeFrom={timeFrom}
+                timeTo={timeTo}
+                durationType={durationType}
+                pickupType={pickupType}
+                pickupSlot={pickupSlot}
+                setBranchId={setBranchId}
+                setDate={setDate}
+                setEndDate={setEndDate}
+                setTimeFrom={setTimeFrom}
+                setTimeTo={setTimeTo}
+                setDurationType={setDurationType}
+                setPickupType={setPickupType}
+                setPickupSlot={setPickupSlot}
+                error={error}
+              />
             </div>
-          </div>
+
+            <div className="px-5 pt-3 pb-4 border-t border-[#FFE4F0] bg-[#FFFBF5]">
+              <button
+                onClick={onConfirm}
+                disabled={!isComplete}
+                className={`w-full py-3 rounded-xl font-black uppercase tracking-wider transition-all ${
+                  isComplete
+                    ? "bg-[#222] text-[#FF9FCA] hover:bg-[#333]"
+                    : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-100"
+                }`}
+              >
+                Giữ ưu đãi & xem máy còn trống
+              </button>
+              <div className="text-center text-sm text-[#888] mt-2">
+                Bạn có thể đổi lại thời gian bất cứ lúc nào.
+              </div>
+            </div>
           </MotionDiv>
         </MotionDiv>
       )}
@@ -836,7 +861,10 @@ export default function DeviceCatalogPage() {
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [busyDeviceIds, setBusyDeviceIds] = useState([]);
   const [availabilityPrefs, setAvailabilityPrefs] = useState(() => {
-    const p = typeof window !== "undefined" ? JSON.parse(localStorage.getItem("fao_booking_prefs") || "null") : null;
+    const p =
+      typeof window !== "undefined"
+        ? JSON.parse(localStorage.getItem("fao_booking_prefs") || "null")
+        : null;
     return {
       date: null,
       endDate: null,
@@ -876,9 +904,9 @@ export default function DeviceCatalogPage() {
         suggestion.timeFrom === MORNING_PICKUP_TIME
           ? "MORNING"
           : prev.durationType === "ONE_DAY" &&
-        suggestion.timeFrom !== MORNING_PICKUP_TIME
-          ? "EVENING"
-          : "MORNING";
+              suggestion.timeFrom !== MORNING_PICKUP_TIME
+            ? "EVENING"
+            : "MORNING";
 
       return {
         ...prev,
@@ -964,71 +992,75 @@ export default function DeviceCatalogPage() {
     fetchDevices();
   }, [fetchDevices]);
 
-  const [modelAvailabilitySuggestions, setModelAvailabilitySuggestions] = useState({});
+  const [modelAvailabilitySuggestions, setModelAvailabilitySuggestions] =
+    useState({});
 
-  const fetchAvailability = useCallback(async ({ silent = false } = {}) => {
-    if (!availabilityConfirmed) return;
-    const { fromDateTime, toDateTime } =
-      computeAvailabilityRange(availabilityPrefs);
-    const rangeError = getAvailabilityRangeError(
-      availabilityPrefs,
-      fromDateTime,
-      toDateTime,
-    );
-    if (rangeError) {
-      if (!silent) setAvailabilityError(rangeError);
-      return;
-    }
-
-    if (!silent) setAvailabilityError("");
-    if (!silent) setAvailabilityLoading(true);
-    const from = formatDateTimeLocalForAPI(fromDateTime);
-    const exactTo = formatDateTimeLocalForAPI(toDateTime);
-    const lookupToDateTime =
-      availabilityPrefs.durationType === "ONE_DAY"
-        ? addDays(toDateTime, 1)
-        : toDateTime;
-    const to = formatDateTimeLocalForAPI(lookupToDateTime);
-    if (!from || !to || !exactTo) {
-      if (!silent) setAvailabilityLoading(false);
-      return;
-    }
-    try {
-      const [bookingResp, suggestionResp] = await Promise.all([
-        api.get("v1/devices/booking", {
-          params: {
-            startDate: from?.slice(0, 10),
-            endDate: to?.slice(0, 10),
-            branchId: availabilityPrefs.branchId,
-          },
-        }),
-        api.get("v1/devices/model-availability-suggestions", {
-          params: { from, to: exactTo },
-        }),
-      ]);
-      const data = bookingResp.data || [];
-      const busySet = new Set();
-      const bookingMap = {};
-      data.forEach((d) => {
-        bookingMap[d.id] = Array.isArray(d.bookingDtos) ? d.bookingDtos : [];
-        if (Array.isArray(d.bookingDtos) && d.bookingDtos.length > 0) {
-          busySet.add(d.id);
-        }
-      });
-      setBusyDeviceIds(Array.from(busySet));
-      setDeviceBookingsById(bookingMap);
-      setModelAvailabilitySuggestions(suggestionResp.data || {});
-    } catch (err) {
-      console.error("Failed to fetch availability:", err);
-      if (!silent) {
-        setBusyDeviceIds([]);
-        setDeviceBookingsById({});
-        setModelAvailabilitySuggestions({});
+  const fetchAvailability = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!availabilityConfirmed) return;
+      const { fromDateTime, toDateTime } =
+        computeAvailabilityRange(availabilityPrefs);
+      const rangeError = getAvailabilityRangeError(
+        availabilityPrefs,
+        fromDateTime,
+        toDateTime,
+      );
+      if (rangeError) {
+        if (!silent) setAvailabilityError(rangeError);
+        return;
       }
-    } finally {
-      if (!silent) setAvailabilityLoading(false);
-    }
-  }, [availabilityConfirmed, availabilityPrefs]);
+
+      if (!silent) setAvailabilityError("");
+      if (!silent) setAvailabilityLoading(true);
+      const from = formatDateTimeLocalForAPI(fromDateTime);
+      const exactTo = formatDateTimeLocalForAPI(toDateTime);
+      const lookupToDateTime =
+        availabilityPrefs.durationType === "ONE_DAY"
+          ? addDays(toDateTime, 1)
+          : toDateTime;
+      const to = formatDateTimeLocalForAPI(lookupToDateTime);
+      if (!from || !to || !exactTo) {
+        if (!silent) setAvailabilityLoading(false);
+        return;
+      }
+      try {
+        const [bookingResp, suggestionResp] = await Promise.all([
+          api.get("v1/devices/booking", {
+            params: {
+              startDate: from?.slice(0, 10),
+              endDate: to?.slice(0, 10),
+              branchId: availabilityPrefs.branchId,
+            },
+          }),
+          api.get("v1/devices/model-availability-suggestions", {
+            params: { from, to: exactTo },
+          }),
+        ]);
+        const data = bookingResp.data || [];
+        const busySet = new Set();
+        const bookingMap = {};
+        data.forEach((d) => {
+          bookingMap[d.id] = Array.isArray(d.bookingDtos) ? d.bookingDtos : [];
+          if (Array.isArray(d.bookingDtos) && d.bookingDtos.length > 0) {
+            busySet.add(d.id);
+          }
+        });
+        setBusyDeviceIds(Array.from(busySet));
+        setDeviceBookingsById(bookingMap);
+        setModelAvailabilitySuggestions(suggestionResp.data || {});
+      } catch (err) {
+        console.error("Failed to fetch availability:", err);
+        if (!silent) {
+          setBusyDeviceIds([]);
+          setDeviceBookingsById({});
+          setModelAvailabilitySuggestions({});
+        }
+      } finally {
+        if (!silent) setAvailabilityLoading(false);
+      }
+    },
+    [availabilityConfirmed, availabilityPrefs],
+  );
 
   useEffect(() => {
     fetchAvailability();
@@ -1039,12 +1071,13 @@ export default function DeviceCatalogPage() {
     if (availabilityConfirmed) fetchAvailability({ silent: true });
   }, [fetchDevices, fetchAvailability, availabilityConfirmed]);
 
-  const { isConnected: wsConnected, lastEvent: wsLastEvent } =
-    useBookingSocket({
+  const { isConnected: wsConnected, lastEvent: wsLastEvent } = useBookingSocket(
+    {
       onRefresh: handleRealtimeRefresh,
       debounceMs: 1000,
       refreshOnTabFocus: true,
-    });
+    },
+  );
 
   // --- Conflict detection: detect when someone books a device the user is selecting ---
   const [conflictInfo, setConflictInfo] = useState(null);
@@ -1085,8 +1118,15 @@ export default function DeviceCatalogPage() {
         .filter((d) => selectedIds.has(d.id))
         .forEach((d) => {
           const normalized = normalizeDeviceName(d.name).toLowerCase();
-          if (!activeDevices.some((a) => (a.displayName || "").toLowerCase() === normalized)) {
-            activeDevices.push({ ...d, displayName: normalizeDeviceName(d.name) });
+          if (
+            !activeDevices.some(
+              (a) => (a.displayName || "").toLowerCase() === normalized,
+            )
+          ) {
+            activeDevices.push({
+              ...d,
+              displayName: normalizeDeviceName(d.name),
+            });
           }
         });
     }
@@ -1124,7 +1164,8 @@ export default function DeviceCatalogPage() {
     for (const device of devices) {
       const deviceType = String(device.type || "").toUpperCase();
       if (deviceType !== "DEVICE") continue;
-      const modelKey = (device.modelKey || "").trim() || normalizeDeviceName(device.name);
+      const modelKey =
+        (device.modelKey || "").trim() || normalizeDeviceName(device.name);
       const isAvailable = !busySet.has(device.id);
       const bookingDtos = deviceBookingsById[device.id] || [];
       if (!byModel.has(modelKey)) byModel.set(modelKey, []);
@@ -1143,7 +1184,8 @@ export default function DeviceCatalogPage() {
       );
       const modelAvailabilityInfo = modelAvailabilitySuggestions[modelKey];
       const hasModelAvailability =
-        availabilityConfirmed && Object.keys(modelAvailabilitySuggestions).length > 0;
+        availabilityConfirmed &&
+        Object.keys(modelAvailabilitySuggestions).length > 0;
       const isAvailable = hasModelAvailability
         ? modelAvailabilityInfo?.available === true
         : totalAvailable > 0;
@@ -1156,8 +1198,14 @@ export default function DeviceCatalogPage() {
           ? {
               fromDateTime: new Date(modelAvailabilityInfo.suggestedFrom),
               toDateTime: new Date(modelAvailabilityInfo.suggestedTo),
-              timeFrom: format(new Date(modelAvailabilityInfo.suggestedFrom), "HH:mm"),
-              timeTo: format(new Date(modelAvailabilityInfo.suggestedTo), "HH:mm"),
+              timeFrom: format(
+                new Date(modelAvailabilityInfo.suggestedFrom),
+                "HH:mm",
+              ),
+              timeTo: format(
+                new Date(modelAvailabilityInfo.suggestedTo),
+                "HH:mm",
+              ),
               suggestedDeviceId: modelAvailabilityInfo.suggestedDeviceId,
             }
           : null;
@@ -1217,7 +1265,7 @@ export default function DeviceCatalogPage() {
 
       const { price: original } = calculateRentalInfo(
         fromDateTime && toDateTime ? [fromDateTime, toDateTime] : [],
-        device || {}
+        device || {},
       );
 
       if (original <= 0) {
@@ -1229,7 +1277,7 @@ export default function DeviceCatalogPage() {
       if (!b) return { original, discounted: original };
       return { original: b.original, discounted: b.discounted };
     },
-    [pricingContext]
+    [pricingContext],
   );
 
   // Build merged categories: builtin + API dynamic categories
@@ -1237,10 +1285,12 @@ export default function DeviceCatalogPage() {
     const dynamic = apiCategories.map((cat) => {
       const items = cat.items || [];
       // Collect device IDs from category items for matching
-      const deviceIds = new Set(items.map((item) => item.deviceId).filter(Boolean));
+      const deviceIds = new Set(
+        items.map((item) => item.deviceId).filter(Boolean),
+      );
       // Build deviceId → orderIndex map
       const deviceIdOrder = new Map(
-        items.map((item) => [item.deviceId, item.orderIndex ?? 0])
+        items.map((item) => [item.deviceId, item.orderIndex ?? 0]),
       );
       return {
         key: `cat_${cat.id}`,
@@ -1381,7 +1431,13 @@ export default function DeviceCatalogPage() {
     });
 
     return filtered;
-  }, [processedDevices, searchQuery, selectedCategory, priceRange, mergedCategories]);
+  }, [
+    processedDevices,
+    searchQuery,
+    selectedCategory,
+    priceRange,
+    mergedCategories,
+  ]);
 
   // Handle device selection
   const handleConfirmAvailability = () => {
@@ -1412,7 +1468,7 @@ export default function DeviceCatalogPage() {
   }, [availabilityRange, availabilityPrefs]);
 
   return (
-    <div className="min-h-screen font-sans relative text-[#333] overflow-x-hidden flex flex-col pb-10 selection:bg-[#FF9FCA] selection:text-white">
+    <div className="min-h-screen font-sans relative text-[#333] overflow-x-hidden flex flex-col pb-32 md:pb-36 selection:bg-[#FF9FCA] selection:text-white">
       <NoiseOverlay />
       <PageBackground />
       <PinkTapeMarquee />
@@ -1493,7 +1549,9 @@ export default function DeviceCatalogPage() {
                 <p className="text-sm font-black text-[#222]">
                   {availabilityDisplay.fromTime}
                 </p>
-                <p className="text-xs text-gray-500">{availabilityDisplay.fromDate}</p>
+                <p className="text-xs text-gray-500">
+                  {availabilityDisplay.fromDate}
+                </p>
               </div>
               <div className="rounded-lg bg-gray-50/80 px-3 py-2.5">
                 <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-0.5">
@@ -1502,10 +1560,14 @@ export default function DeviceCatalogPage() {
                 <p className="text-sm font-black text-[#222]">
                   {availabilityDisplay.toTime}
                 </p>
-                <p className="text-xs text-gray-500">{availabilityDisplay.toDate}</p>
+                <p className="text-xs text-gray-500">
+                  {availabilityDisplay.toDate}
+                </p>
               </div>
               {(() => {
-                const branch = BRANCHES.find((b) => b.id === availabilityPrefs.branchId);
+                const branch = BRANCHES.find(
+                  (b) => b.id === availabilityPrefs.branchId,
+                );
                 return (
                   <div className="rounded-lg bg-[#FFF0F5] px-3 py-2.5 col-span-2 sm:col-span-1">
                     <p className="text-[10px] uppercase tracking-wider text-[#E85C9C]/80 font-semibold mb-0.5 flex items-center gap-1">
@@ -1553,19 +1615,26 @@ export default function DeviceCatalogPage() {
               </span>
             )}
           </p>
-          <div className="flex items-center gap-1.5" title={wsConnected ? "Đang cập nhật trực tiếp" : "Đang kết nối..."}>
+          <div
+            className="flex items-center gap-1.5"
+            title={wsConnected ? "Đang cập nhật trực tiếp" : "Đang kết nối..."}
+          >
             {wsConnected ? (
               <>
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                 </span>
-                <span className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">Live</span>
+                <span className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">
+                  Live
+                </span>
               </>
             ) : (
               <>
                 <span className="h-2 w-2 rounded-full bg-gray-300" />
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Offline</span>
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                  Offline
+                </span>
               </>
             )}
           </div>
@@ -1643,7 +1712,6 @@ export default function DeviceCatalogPage() {
         )}
       </div>
 
-
       {/* Filter Modal */}
       <FilterModal
         isOpen={showFilterModal}
@@ -1704,9 +1772,10 @@ export default function DeviceCatalogPage() {
             timeFrom: null,
             timeTo: null,
             // Re-calc endDate if ONE_DAY (at least have a date default if they already picked one)
-            endDate: (durationType === "ONE_DAY" && prev.date) 
-              ? addDays(prev.date, 1) 
-              : prev.date
+            endDate:
+              durationType === "ONE_DAY" && prev.date
+                ? addDays(prev.date, 1)
+                : prev.date,
           }))
         }
         error={availabilityError}
@@ -1774,6 +1843,8 @@ export default function DeviceCatalogPage() {
 
       {/* Conflict Modal - someone booked the device you're looking at */}
       <ConflictModal info={conflictInfo} onDismiss={handleConflictDismiss} />
+
+      <SlideNav />
 
       {/* Floating Contact Button */}
       <FloatingContactButton />

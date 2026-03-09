@@ -32,6 +32,8 @@ import {
 import api from "../../config/axios";
 import { MESSENGER_LINK } from "../../data/contactConfig";
 import FloatingContactButton from "../../components/FloatingContactButton";
+import SlideNav from "../../components/SlideNav";
+import { saveRecentOrder } from "../../utils/storage";
 
 const FALLBACK_IMG = "https://placehold.co/640x360/fdf2f8/ec4899?text=No+Image";
 
@@ -421,7 +423,14 @@ function SuccessCard({ details }) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.6, duration: 0.5 }}
+        className="space-y-2"
       >
+        <Link
+          to="/my-bookings"
+          className="flex items-center justify-center gap-2 w-full px-4 py-3.5 rounded-xl bg-[#222] text-[#FF9FCA] font-semibold border border-[#222] hover:bg-[#333] transition-all active:scale-95"
+        >
+          Quản lý đơn của tôi
+        </Link>
         <Link
           to="/catalog"
           className="flex items-center justify-center gap-2 w-full px-4 py-3.5 rounded-xl bg-slate-100 text-slate-800 font-semibold border border-slate-200 hover:bg-slate-200 transition-all active:scale-95"
@@ -451,6 +460,12 @@ function FailureCard() {
       </p>
 
       <div className="mt-6 space-y-3">
+        <Link
+          to="/my-bookings"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#222] text-[#FF9FCA] font-semibold border border-[#222] hover:bg-[#333] transition-all"
+        >
+          Quản lý đơn của tôi
+        </Link>
         <Link
           to="/catalog"
           className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-pink-600 text-white font-semibold shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
@@ -531,6 +546,10 @@ export default function PaymentStatusPage() {
                 device: devices[0],
                 devices: devices.length > 1 ? devices : null,
               });
+              saveRecentOrder({
+                orderCode: pending.orderCode,
+                orderIdNew: pending.orderIdNew,
+              });
               setStatus("success");
               return;
             }
@@ -560,6 +579,7 @@ export default function PaymentStatusPage() {
               img: deviceData?.images?.[0] || FALLBACK_IMG,
             },
           });
+          saveRecentOrder({ orderCode: pending.orderCode, orderIdNew: null });
           setStatus("success");
         } catch (error) {
           console.error("Lỗi khi lấy chi tiết đơn hàng:", error);
@@ -574,7 +594,8 @@ export default function PaymentStatusPage() {
   }, [searchParams]);
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-white to-pink-100">
+    <div className="min-h-dvh bg-gradient-to-b from-white to-pink-100 pb-32 md:pb-36">
+      <SlideNav />
       <div className="max-w-md mx-auto px-4 py-8">
         {status === "checking" && (
           <LoadingState message="Đang kiểm tra trạng thái thanh toán..." />

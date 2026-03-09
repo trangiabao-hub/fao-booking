@@ -1,15 +1,19 @@
 // Customer Info Storage Utilities
 const STORAGE_KEY = "fao_customer_info";
+const CUSTOMER_SESSION_KEY = "fao_customer_session";
+const CUSTOMER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const RECENT_ORDER_KEY = "fao_recent_order";
 
 /**
  * Save customer info to localStorage
- * @param {Object} customer - { fullName, phone, ig, fb }
+ * @param {Object} customer - { fullName, phone, gmail, ig, fb }
  */
 export function saveCustomerInfo(customer) {
   try {
     const data = {
       fullName: customer.fullName || "",
       phone: customer.phone || "",
+      gmail: customer.gmail || "",
       ig: customer.ig || "",
       fb: customer.fb || "",
       savedAt: new Date().toISOString(),
@@ -22,7 +26,7 @@ export function saveCustomerInfo(customer) {
 
 /**
  * Load customer info from localStorage
- * @returns {Object|null} - { fullName, phone, ig, fb } or null
+ * @returns {Object|null} - { fullName, phone, gmail, ig, fb } or null
  */
 export function loadCustomerInfo() {
   try {
@@ -44,6 +48,7 @@ export function loadCustomerInfo() {
     return {
       fullName: data.fullName || "",
       phone: data.phone || "",
+      gmail: data.gmail || "",
       ig: data.ig || "",
       fb: data.fb || "",
     };
@@ -61,6 +66,75 @@ export function clearCustomerInfo() {
     localStorage.removeItem(STORAGE_KEY);
   } catch (e) {
     console.warn("Failed to clear customer info:", e);
+  }
+}
+
+export function saveCustomerSession(session) {
+  try {
+    const data = {
+      token: session?.token || "",
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(data));
+    if (data.token) {
+      localStorage.setItem("token", JSON.stringify(data.token));
+    }
+  } catch (e) {
+    console.warn("Failed to save customer session:", e);
+  }
+}
+
+export function loadCustomerSession() {
+  try {
+    const stored = localStorage.getItem(CUSTOMER_SESSION_KEY);
+    if (!stored) return null;
+    const data = JSON.parse(stored);
+    const savedAt = new Date(data.savedAt);
+    if (Number.isNaN(savedAt.getTime())) return null;
+    if (Date.now() - savedAt.getTime() > CUSTOMER_SESSION_TTL_MS) {
+      localStorage.removeItem(CUSTOMER_SESSION_KEY);
+      localStorage.removeItem("token");
+      return null;
+    }
+    return { token: data.token || "" };
+  } catch (e) {
+    console.warn("Failed to load customer session:", e);
+    return null;
+  }
+}
+
+export function clearCustomerSession() {
+  try {
+    localStorage.removeItem(CUSTOMER_SESSION_KEY);
+    localStorage.removeItem("token");
+  } catch (e) {
+    console.warn("Failed to clear customer session:", e);
+  }
+}
+
+export function saveRecentOrder(payload) {
+  try {
+    const data = {
+      orderCode: payload?.orderCode || null,
+      orderIdNew: payload?.orderIdNew || null,
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(RECENT_ORDER_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn("Failed to save recent order:", e);
+  }
+}
+
+export function loadRecentOrder() {
+  try {
+    const stored = localStorage.getItem(RECENT_ORDER_KEY);
+    if (!stored) return null;
+    const data = JSON.parse(stored);
+    if (!data?.orderCode && !data?.orderIdNew) return null;
+    return data;
+  } catch (e) {
+    console.warn("Failed to load recent order:", e);
+    return null;
   }
 }
 

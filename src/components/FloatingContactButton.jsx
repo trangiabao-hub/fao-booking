@@ -9,7 +9,7 @@ export default function FloatingContactButton() {
   const [isExpanded, setIsExpanded] = React.useState(false);
 
   return (
-    <div className="fixed bottom-20 right-4 z-20 flex flex-col items-end gap-2">
+    <div className="fixed bottom-28 md:bottom-32 right-4 z-20 flex flex-col items-end gap-2">
       {/* Expanded Options */}
       {isExpanded && (
         <motion.div

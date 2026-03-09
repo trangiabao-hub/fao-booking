@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import SlideNav from "../../components/SlideNav";
 import {
   CameraIcon,
   ShieldCheckIcon,
@@ -635,7 +636,7 @@ const Footer = () => (
 // ==== Component Gốc: HomePage ====
 export default function HomePage() {
   return (
-    <div className="bg-white text-slate-800">
+    <div className="bg-white text-slate-800 pb-32 md:pb-36">
       <style>{swiperStyles}</style>
       <Header />
       <main className="pt-20">
@@ -646,6 +647,7 @@ export default function HomePage() {
         <CallToActionSection />
       </main>
       <Footer />
+      <SlideNav />
     </div>
   );
 }

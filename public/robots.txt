@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://booking.faodigital.vn/sitemap.xml
