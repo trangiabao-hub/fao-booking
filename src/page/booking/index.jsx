@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { format, isWeekend, addDays } from "date-fns";
+import { format, addDays } from "date-fns";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import vi from "date-fns/locale/vi";
 
@@ -25,10 +25,10 @@ import {
   loadCustomerInfo,
   saveBookingPrefs,
   loadBookingPrefs,
+  loadCustomerSession,
 } from "../../utils/storage";
 import {
   BRANCHES,
-  DURATION_OPTIONS,
   MORNING_PICKUP_TIME,
   SIX_HOUR_SECOND_PICKUP_TIME,
   SIX_HOUR_RETURN_TIME,
@@ -43,9 +43,7 @@ import {
   getDurationDays,
   getDefaultBranchId,
   getTimeRange,
-  countWeekdaysBetweenAligned,
   getSlotButtonClasses,
-  getPriceForDuration,
   formatDateForAPIPayload,
 } from "../../utils/bookingHelpers";
 
@@ -55,11 +53,9 @@ const TET_BASE_DATE = new Date(2026, 1, 12); // Mùng 1 Tết
 const TET_START_OFFSET = -6; // 25 Tết
 const TET_END_OFFSET = 9; // Mùng 10
 
-// Vouchers
-const VOUCHERS = [
-  { id: "NONE", label: "Không áp dụng", rate: 0 },
-  { id: "WEEKDAY20", label: "Weekday -20%", rate: 0.2 },
-];
+const FIRST_ORDER_DISCOUNT_RATE = 0.3;
+const FIRST_ORDER_DISCOUNT_CAP = 200000;
+const POINT_TO_VND = 1000;
 
 const FALLBACK_IMG = "https://placehold.co/640x360/fdf2f8/ec4899?text=No+Image";
 
@@ -99,9 +95,37 @@ function safeDesc(s) {
   return t.length <= 25 ? t : t.slice(0, 24) + "…";
 }
 
+function extractApiErrorMessage(error, fallback) {
+  const data = error?.response?.data;
+  if (typeof data === "string" && data.trim()) return data;
+  if (data?.message) return data.message;
+  if (data?.error) return data.error;
+  return error?.message || fallback;
+}
+
+async function resolveGuestCustomerId(customer) {
+  const response = await api.post("/accounts/resolve", {
+    fullName: customer.fullName?.trim() || null,
+    phone: customer.phone || null,
+    ig: customer.ig?.trim() || null,
+    fb: customer.fb?.trim() || null,
+    email: null,
+  });
+  const customerId = response?.data?.id;
+  if (!customerId) {
+    throw new Error("Không lấy được customerId.");
+  }
+  return customerId;
+}
+
 function formatDateTimeLocalForAPI(date) {
   if (!date) return null;
   return format(date, "yyyy-MM-dd'T'HH:mm:ss");
+}
+
+function clampNumber(value, min = 0, max = Number.POSITIVE_INFINITY) {
+  const n = Number(value) || 0;
+  return Math.max(min, Math.min(max, n));
 }
 
 
@@ -221,8 +245,9 @@ function useBookingPricing(
   timeFrom,
   endDate,
   timeTo,
-  voucherId,
-  durationId
+  durationId,
+  firstOrderPromoEligible,
+  pointsToRedeem
 ) {
   return useMemo(() => {
     if (!device || !startDate || !endDate || !timeFrom || !timeTo)
@@ -230,6 +255,9 @@ function useBookingPricing(
         days: 0,
         subTotal: 0,
         discount: 0,
+        firstOrderDiscount: 0,
+        pointDiscount: 0,
+        totalAfterVoucher: 0,
         total: 0,
         t1: null,
         t2: null,
@@ -244,6 +272,9 @@ function useBookingPricing(
         days: 0,
         subTotal: 0,
         discount: 0,
+        firstOrderDiscount: 0,
+        pointDiscount: 0,
+        totalAfterVoucher: 0,
         total: 0,
         t1,
         t2,
@@ -281,25 +312,43 @@ function useBookingPricing(
       }
     }
 
-    const voucher = VOUCHERS.find((v) => v.id === voucherId);
-    let discount = 0;
-
-    if (voucher?.id === "WEEKDAY20") {
-      if (isSixHours && sameDay) {
-        if (!isWeekend(t1)) {
-          discount = Math.round(subTotal * voucher.rate);
-        }
-      } else {
-        const { days: dCount, weekdays } = countWeekdaysBetweenAligned(t1, t2);
-        const ratio = dCount > 0 ? weekdays / dCount : 0;
-        discount = Math.round(subTotal * voucher.rate * ratio);
-      }
+    let firstOrderDiscount = 0;
+    if (firstOrderPromoEligible) {
+      firstOrderDiscount = Math.min(
+        Math.round(subTotal * FIRST_ORDER_DISCOUNT_RATE),
+        FIRST_ORDER_DISCOUNT_CAP
+      );
     }
 
-    const total = Math.max(0, subTotal - discount);
+    const totalAfterVoucher = Math.max(0, subTotal - firstOrderDiscount);
+    const pointDiscount = Math.min(
+      clampNumber(pointsToRedeem, 0) * POINT_TO_VND,
+      totalAfterVoucher
+    );
+    const total = Math.max(0, totalAfterVoucher - pointDiscount);
 
-    return { days, subTotal, discount, total, t1, t2, isSixHours };
-  }, [device, startDate, timeFrom, endDate, timeTo, voucherId, durationId]);
+    return {
+      days,
+      subTotal,
+      discount: firstOrderDiscount + pointDiscount,
+      firstOrderDiscount,
+      pointDiscount,
+      totalAfterVoucher,
+      total,
+      t1,
+      t2,
+      isSixHours,
+    };
+  }, [
+    device,
+    startDate,
+    timeFrom,
+    endDate,
+    timeTo,
+    durationId,
+    firstOrderPromoEligible,
+    pointsToRedeem,
+  ]);
 }
 
 /* ===================== UI Components ===================== */
@@ -345,10 +394,20 @@ function Summary({
   t2,
   days,
   subTotal,
-  discount,
+  firstOrderDiscount,
+  pointDiscount,
+  totalAfterVoucher,
   total,
   customer,
   isSixHours,
+  hasSession,
+  availablePoints,
+  maxRedeemablePoints,
+  pointsToRedeem,
+  setPointsToRedeem,
+  firstOrderPromoEligible,
+  isMemberLoading,
+  earnedPoints,
 }) {
   if (!device || !t1 || !t2) return null;
 
@@ -430,13 +489,56 @@ function Summary({
             {Math.round(subTotal / 1000)}k
           </span>
         </div>
-        {discount > 0 && (
+        {firstOrderDiscount > 0 && (
           <div className="flex justify-between items-center text-sm mb-2">
             <span className="text-green-600 font-bold">
-              🎉 Giảm giá Weekday
+              🎉 Voucher đơn đầu -30% (tối đa 200k)
             </span>
             <span className="font-bold text-green-600">
-              -{Math.round(discount / 1000)}k
+              -{Math.round(firstOrderDiscount / 1000)}k
+            </span>
+          </div>
+        )}
+        {hasSession && (
+          <div className="mb-2 rounded-lg border border-[#F5D9E7] bg-white p-2.5">
+            <div className="flex items-center justify-between text-xs text-[#7C5A69]">
+              <span className="font-semibold">Điểm thành viên</span>
+              <span>
+                Có sẵn: <b>{availablePoints}</b> điểm
+              </span>
+            </div>
+            <div className="mt-2">
+              <input
+                type="range"
+                min={0}
+                max={maxRedeemablePoints}
+                step={1}
+                value={pointsToRedeem}
+                onChange={(e) =>
+                  setPointsToRedeem(
+                    clampNumber(e.target.value, 0, maxRedeemablePoints)
+                  )
+                }
+                className="w-full accent-[#E85C9C]"
+                disabled={isMemberLoading || totalAfterVoucher <= 0}
+              />
+            </div>
+            <div className="mt-1.5 flex items-center justify-between text-xs text-[#7C5A69]">
+              <span>Đang dùng: {pointsToRedeem} điểm</span>
+              <span>Quy đổi: {Math.round((pointsToRedeem * POINT_TO_VND) / 1000)}k</span>
+            </div>
+          </div>
+        )}
+        {!hasSession && (
+          <div className="mb-2 rounded-lg border border-dashed border-[#F5D9E7] bg-white px-3 py-2 text-xs text-[#7C5A69]">
+            Đăng nhập thành viên để dùng điểm và nhận voucher đơn đầu.
+          </div>
+        )}
+        {pointDiscount > 0 && (
+          <div className="flex justify-between items-center text-sm mb-2">
+            <span className="text-[#D45A92] font-bold">⭐ Trừ điểm thành viên</span>
+            <span className="font-bold text-[#D45A92]">
+              -{Math.round(pointDiscount / 1000)}k
             </span>
           </div>
         )}
@@ -448,6 +550,14 @@ function Summary({
           <span className="text-2xl font-black text-[#E85C9C]">
             {Math.round(total / 1000)}k
           </span>
+        </div>
+        <div className="mt-2 text-xs text-[#7C5A69]">
+          <div>
+            Tích điểm sau đơn: <b>{earnedPoints}</b> điểm (mỗi 50k = 3 điểm)
+          </div>
+          {firstOrderPromoEligible && (
+            <div className="mt-1">Ưu đãi voucher đơn đầu đang được áp dụng tự động.</div>
+          )}
         </div>
       </div>
 
@@ -534,6 +644,7 @@ function AlternativeDevices({ currentDevice, allDevices, onSelect }) {
 export default function BookingPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const hasSession = !!loadCustomerSession()?.token;
 
   const initialPrefs = useMemo(() => {
     const prefs = loadBookingPrefs();
@@ -593,6 +704,10 @@ export default function BookingPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState("");
+  const [memberAccount, setMemberAccount] = useState(null);
+  const [memberBookingsCount, setMemberBookingsCount] = useState(0);
+  const [isMemberLoading, setIsMemberLoading] = useState(false);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
 
   // Calculate current step for progress indicator
   const currentStep = useMemo(() => {
@@ -636,6 +751,44 @@ export default function BookingPage() {
     pickupType,
     pickupSlot,
   ]);
+
+  useEffect(() => {
+    if (!hasSession) {
+      setMemberAccount(null);
+      setMemberBookingsCount(0);
+      setIsMemberLoading(false);
+      setPointsToRedeem(0);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchMemberData = async () => {
+      setIsMemberLoading(true);
+      try {
+        const [accountRes, bookingsRes] = await Promise.all([
+          api.get("/account"),
+          api.get("/v1/bookings/me"),
+        ]);
+        if (cancelled) return;
+        setMemberAccount(accountRes?.data || null);
+        setMemberBookingsCount(
+          Array.isArray(bookingsRes?.data) ? bookingsRes.data.length : 0
+        );
+      } catch (err) {
+        if (cancelled) return;
+        console.warn("Không thể tải thông tin thành viên:", err);
+        setMemberAccount(null);
+        setMemberBookingsCount(0);
+      } finally {
+        if (!cancelled) setIsMemberLoading(false);
+      }
+    };
+
+    fetchMemberData();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasSession]);
 
   useEffect(() => {
     if (durationOptionId === "SIX_HOURS") {
@@ -737,16 +890,37 @@ export default function BookingPage() {
   }, [prefsForRange, t1, t2]);
 
   /* ==== Pricing ==== */
-  const { days, subTotal, discount, total, isSixHours } =
-    useBookingPricing(
-      selectedDevice,
-      startDate,
-      timeFrom,
-      endDate,
-      timeTo,
-      voucherId,
-      durationOptionId
-    );
+  const isFirstOrderPromoEligible =
+    hasSession && !isMemberLoading && memberBookingsCount === 0;
+  const availablePoints = Math.max(0, Number(memberAccount?.point || 0));
+
+  const {
+    days,
+    subTotal,
+    firstOrderDiscount,
+    pointDiscount,
+    totalAfterVoucher,
+    total,
+    isSixHours,
+  } = useBookingPricing(
+    selectedDevice,
+    startDate,
+    timeFrom,
+    endDate,
+    timeTo,
+    durationOptionId,
+    isFirstOrderPromoEligible,
+    pointsToRedeem
+  );
+  const maxRedeemablePoints = Math.min(
+    availablePoints,
+    Math.floor(totalAfterVoucher / POINT_TO_VND)
+  );
+  const earnedPoints = Math.floor(total / 50000) * 3;
+
+  useEffect(() => {
+    setPointsToRedeem((prev) => clampNumber(prev, 0, maxRedeemablePoints));
+  }, [maxRedeemablePoints]);
 
   const durationDays = useMemo(() => {
     if (durationOptionId === "SIX_HOURS") return 0.5;
@@ -876,14 +1050,35 @@ export default function BookingPage() {
     setPaymentError("");
     try {
       const phone = normalizePhone(customer.phone);
-      const registerRes = await api.post("/accounts", {
-        fullName: customer.fullName?.trim(),
-        phone,
-        ig: customer.ig?.trim() || null,
-        fb: customer.fb?.trim() || null,
-      });
-      const account = registerRes.data;
-      const customerId = account?.id;
+      let customerId = null;
+
+      if (hasSession) {
+        const currentAccount =
+          memberAccount?.id ? memberAccount : (await api.get("/account"))?.data;
+        customerId = currentAccount?.id || null;
+        if (!customerId) {
+          throw new Error("Không lấy được tài khoản thành viên hiện tại.");
+        }
+
+        try {
+          await api.put("/customer/profile", {
+            fullName: customer.fullName?.trim(),
+            phone,
+            ig: customer.ig?.trim() || null,
+            fb: customer.fb?.trim() || null,
+            email: currentAccount?.email || null,
+          });
+        } catch (profileErr) {
+          // Profile sync is best-effort; do not block payment flow.
+          console.warn("Không thể cập nhật hồ sơ customer, tiếp tục thanh toán.", profileErr);
+        }
+      } else {
+        customerId = await resolveGuestCustomerId({
+          ...customer,
+          phone,
+        });
+      }
+
       if (!customerId) throw new Error("Không lấy được customerId.");
 
       const branchLabel =
@@ -901,7 +1096,12 @@ export default function BookingPage() {
         note,
         dayOfRent: days,
         originalPrice: subTotal,
-        noteVoucher: voucherId || "NONE",
+        noteVoucher: [
+          firstOrderDiscount > 0 ? "FIRST_ORDER_30_MAX200K" : null,
+          pointDiscount > 0 ? `POINT_${pointsToRedeem}` : null,
+        ]
+          .filter(Boolean)
+          .join(" | ") || "NONE",
       };
 
       const rawDesc = `Thue ${selectedDevice.displayName}`;
@@ -923,11 +1123,10 @@ export default function BookingPage() {
       }
     } catch (error) {
       console.error("Failed to create payment link:", error);
-      const errorMessage =
-        error.response?.data?.error ||
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể tạo yêu cầu thanh toán. Vui lòng thử lại.";
+      const errorMessage = extractApiErrorMessage(
+        error,
+        "Không thể tạo yêu cầu thanh toán. Vui lòng thử lại.",
+      );
       setPaymentError(errorMessage);
     } finally {
       setIsSubmitting(false);
@@ -1141,10 +1340,20 @@ export default function BookingPage() {
                     t2={t2}
                     days={days}
                     subTotal={subTotal}
-                    discount={discount}
+                    firstOrderDiscount={firstOrderDiscount}
+                    pointDiscount={pointDiscount}
+                    totalAfterVoucher={totalAfterVoucher}
                     total={total}
                     customer={customer}
                     isSixHours={isSixHours}
+                    hasSession={hasSession}
+                    availablePoints={availablePoints}
+                    maxRedeemablePoints={maxRedeemablePoints}
+                    pointsToRedeem={pointsToRedeem}
+                    setPointsToRedeem={setPointsToRedeem}
+                    firstOrderPromoEligible={isFirstOrderPromoEligible}
+                    isMemberLoading={isMemberLoading}
+                    earnedPoints={earnedPoints}
                   />
                   {selectedDevice && t1 && t2 && total > 0 && (
                     <button

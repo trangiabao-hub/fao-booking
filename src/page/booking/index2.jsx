@@ -24,6 +24,7 @@ import {
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
 import { formatDateForAPIPayload } from "../../utils/bookingHelpers";
+import { loadCustomerSession } from "../../utils/storage";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
 
@@ -158,6 +159,29 @@ function safeDesc(s) {
   if (!s) return "Thanh toan don hang";
   const t = s.trim().replace(/\s+/g, " ");
   return t.length <= 25 ? t : t.slice(0, 24) + "…";
+}
+
+function extractApiErrorMessage(error, fallback) {
+  const data = error?.response?.data;
+  if (typeof data === "string" && data.trim()) return data;
+  if (data?.message) return data.message;
+  if (data?.error) return data.error;
+  return error?.message || fallback;
+}
+
+async function resolveGuestCustomerId(customer) {
+  const response = await api.post("/accounts/resolve", {
+    fullName: customer.fullName?.trim() || null,
+    phone: customer.phone || null,
+    ig: customer.ig?.trim() || null,
+    fb: customer.fb?.trim() || null,
+    email: null,
+  });
+  const customerId = response?.data?.id;
+  if (!customerId) {
+    throw new Error("Không lấy được customerId.");
+  }
+  return customerId;
 }
 
 function normalizePhone(p) {
@@ -807,6 +831,7 @@ function Summary({
 /* ===================== BOOKING PAGE ===================== */
 
 export default function BookingPage() {
+  const hasSession = !!loadCustomerSession()?.token;
   const [allDevices, setAllDevices] = useState([]);
   const [isLoadingDevices, setIsLoadingDevices] = useState(true);
   const [devicesError, setDevicesError] = useState("");
@@ -1142,14 +1167,32 @@ export default function BookingPage() {
     setPaymentError("");
     try {
       const phone = normalizePhone(customer.phone);
-      const registerRes = await api.post("/accounts", {
-        fullName: customer.fullName?.trim(),
-        phone,
-        ig: customer.ig?.trim() || null,
-        fb: customer.fb?.trim() || null,
-      });
-      const account = registerRes.data;
-      const customerId = account?.id;
+      let customerId = null;
+      if (hasSession) {
+        const accountRes = await api.get("/account");
+        const currentAccount = accountRes?.data || null;
+        customerId = currentAccount?.id || null;
+        if (!customerId) {
+          throw new Error("Không lấy được tài khoản thành viên hiện tại.");
+        }
+        try {
+          await api.put("/customer/profile", {
+            fullName: customer.fullName?.trim(),
+            phone,
+            ig: customer.ig?.trim() || null,
+            fb: customer.fb?.trim() || null,
+            email: currentAccount?.email || null,
+          });
+        } catch (profileErr) {
+          // Profile sync is best-effort; do not block payment flow.
+          console.warn("Không thể cập nhật hồ sơ customer, tiếp tục thanh toán.", profileErr);
+        }
+      } else {
+        customerId = await resolveGuestCustomerId({
+          ...customer,
+          phone,
+        });
+      }
       if (!customerId) throw new Error("Không lấy được customerId.");
 
       const branchLabel =
@@ -1194,11 +1237,10 @@ export default function BookingPage() {
       }
     } catch (error) {
       console.error("Failed to create payment link:", error);
-      const errorMessage =
-        error.response?.data?.error ||
-        error.response?.data?.message ||
-        error.message ||
-        "Không thể tạo yêu cầu thanh toán. Vui lòng thử lại.";
+      const errorMessage = extractApiErrorMessage(
+        error,
+        "Không thể tạo yêu cầu thanh toán. Vui lòng thử lại.",
+      );
       setPaymentError(errorMessage);
     } finally {
       setIsSubmitting(false);

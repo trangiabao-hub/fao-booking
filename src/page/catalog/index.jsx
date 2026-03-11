@@ -129,6 +129,12 @@ function normalizeDeviceName(name = "") {
   return name.replace(/\s*\(\d+\)\s*$/, "").trim();
 }
 
+function getDeviceNameIndex(name = "") {
+  const match = String(name).match(/\((\d+)\)\s*$/);
+  if (!match) return Number.POSITIVE_INFINITY;
+  return Number(match[1]);
+}
+
 function parseSearchKeywords(query = "") {
   return query
     .split("+")
@@ -158,6 +164,29 @@ function combineDateWithTimeString(dateOnly, timeStr) {
 function formatDateTimeLocalForAPI(date) {
   if (!date) return null;
   return format(date, "yyyy-MM-dd'T'HH:mm:ss");
+}
+
+function parseLocalDateParam(value) {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsedDate = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(parsedDate.getTime()) ||
+    parsedDate.getFullYear() !== year ||
+    parsedDate.getMonth() !== month - 1 ||
+    parsedDate.getDate() !== day
+  ) {
+    return null;
+  }
+  return parsedDate;
+}
+
+function isValidTimeParam(value) {
+  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || ""));
 }
 
 function getDayPartLabel(date) {
@@ -225,30 +254,7 @@ const BUILTIN_CATEGORIES = [
   { key: "available", label: "MÁY TRỐNG" },
 ];
 
-// Animation variants (optimized - less animation = less jitter)
-const gridVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.03,
-      when: "beforeChildren",
-    },
-  },
-  exit: {
-    opacity: 0,
-    transition: { duration: 0.1 },
-  },
-};
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 10 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.2, ease: "easeOut" },
-  },
-};
+// removed variants to use inline animations to prevent Framer Motion opacity bugs
 
 // Chic Card Component (matching Menu style)
 function ChicCard({
@@ -258,6 +264,7 @@ function ChicCard({
   onSuggestedQuickBook,
   isSelected,
   onToggleSelect,
+  index = 0,
 }) {
   const originalLabel = formatPriceK(pricing?.original || 0);
   const discountedLabel = formatPriceK(pricing?.discounted || 0);
@@ -289,7 +296,9 @@ function ChicCard({
 
   return (
     <motion.div
-      variants={cardVariants}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(index * 0.03, 0.3) }}
       className={`relative group select-none h-full z-10 ${
         isAvailable || hasSuggestedSlot ? "" : "cursor-not-allowed"
       }`}
@@ -840,23 +849,54 @@ function ConflictModal({ info, onDismiss }) {
 
 // Main Component
 export default function DeviceCatalogPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const initialCategory = searchParams.get("category") || "all";
+  const initialSearchQuery = searchParams.get("q") || "";
+  const initialPriceRange = PRICE_RANGES.some(
+    (range) => range.id === searchParams.get("price"),
+  )
+    ? searchParams.get("price")
+    : "all";
+  const initialDurationType = ["SIX_HOURS", "ONE_DAY"].includes(
+    searchParams.get("durationType"),
+  )
+    ? searchParams.get("durationType")
+    : null;
+  const initialBranchId = searchParams.get("branchId");
+  const initialDate = parseLocalDateParam(searchParams.get("date"));
+  const initialEndDate = parseLocalDateParam(searchParams.get("endDate"));
+  const initialTimeFrom = isValidTimeParam(searchParams.get("timeFrom"))
+    ? searchParams.get("timeFrom")
+    : null;
+  const initialTimeTo = isValidTimeParam(searchParams.get("timeTo"))
+    ? searchParams.get("timeTo")
+    : null;
+  const initialPickupType = ["MORNING", "EVENING"].includes(
+    searchParams.get("pickupType"),
+  )
+    ? searchParams.get("pickupType")
+    : null;
+  const initialPickupSlot = isValidTimeParam(searchParams.get("pickupSlot"))
+    ? searchParams.get("pickupSlot")
+    : null;
+  const initialAvailabilityConfirmed = searchParams.get("availability") === "1";
 
   const [devices, setDevices] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
 
   // === API Categories state ===
   const [apiCategories, setApiCategories] = useState([]);
-  const [priceRange, setPriceRange] = useState("all");
+  const [priceRange, setPriceRange] = useState(initialPriceRange);
   const [showFilterModal, setShowFilterModal] = useState(false);
 
-  const [availabilityConfirmed, setAvailabilityConfirmed] = useState(false);
+  const [availabilityConfirmed, setAvailabilityConfirmed] = useState(
+    initialAvailabilityConfirmed,
+  );
   const [availabilityError, setAvailabilityError] = useState("");
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [busyDeviceIds, setBusyDeviceIds] = useState([]);
@@ -866,14 +906,14 @@ export default function DeviceCatalogPage() {
         ? JSON.parse(localStorage.getItem("fao_booking_prefs") || "null")
         : null;
     return {
-      date: null,
-      endDate: null,
-      timeFrom: null,
-      timeTo: null,
-      pickupType: null,
-      pickupSlot: null,
-      branchId: p?.branchId || getDefaultBranchId(),
-      durationType: p?.durationType || "ONE_DAY",
+      date: initialDate,
+      endDate: initialEndDate,
+      timeFrom: initialTimeFrom,
+      timeTo: initialTimeTo,
+      pickupType: initialPickupType,
+      pickupSlot: initialPickupSlot,
+      branchId: initialBranchId || p?.branchId || getDefaultBranchId(),
+      durationType: initialDurationType || p?.durationType || "ONE_DAY",
     };
   });
 
@@ -1210,11 +1250,23 @@ export default function DeviceCatalogPage() {
             }
           : null;
 
+      const sortedGroup = [...group].sort((a, b) => {
+        const indexA = getDeviceNameIndex(a.device.name);
+        const indexB = getDeviceNameIndex(b.device.name);
+        if (indexA !== indexB) return indexA - indexB;
+
+        const orderA = a.device.orderNumber ?? Number.POSITIVE_INFINITY;
+        const orderB = b.device.orderNumber ?? Number.POSITIVE_INFINITY;
+        if (orderA !== orderB) return orderA - orderB;
+
+        return String(a.device.id).localeCompare(String(b.device.id));
+      });
+
       const preferredDeviceId = modelAvailabilityInfo?.suggestedDeviceId;
       const rep =
-        group.find((g) => g.device.id === preferredDeviceId) ||
-        group.find((g) => g.isAvailable) ||
-        group[0];
+        sortedGroup.find((g) => g.device.id === preferredDeviceId) ||
+        sortedGroup.find((g) => g.isAvailable) ||
+        sortedGroup[0];
       const { device } = rep;
       const normalizedName = normalizeDeviceName(device.name);
       const minOrderNumber = Math.min(
@@ -1437,6 +1489,184 @@ export default function DeviceCatalogPage() {
     selectedCategory,
     priceRange,
     mergedCategories,
+  ]);
+
+  // Sync filters from URL -> state (support opening shared links with pre-filled filters)
+  useEffect(() => {
+    const nextCategory = searchParams.get("category") || "all";
+    const nextSearchQuery = searchParams.get("q") || "";
+    const nextPrice = searchParams.get("price");
+    const nextPriceRange = PRICE_RANGES.some((range) => range.id === nextPrice)
+      ? nextPrice
+      : "all";
+
+    setSelectedCategory((prev) => (prev === nextCategory ? prev : nextCategory));
+    setSearchQuery((prev) =>
+      prev === nextSearchQuery ? prev : nextSearchQuery,
+    );
+    setPriceRange((prev) => (prev === nextPriceRange ? prev : nextPriceRange));
+
+    const nextDurationType = ["SIX_HOURS", "ONE_DAY"].includes(
+      searchParams.get("durationType"),
+    )
+      ? searchParams.get("durationType")
+      : null;
+    const nextBranchId = searchParams.get("branchId");
+    const nextDate = parseLocalDateParam(searchParams.get("date"));
+    const nextEndDate = parseLocalDateParam(searchParams.get("endDate"));
+    const nextTimeFrom = isValidTimeParam(searchParams.get("timeFrom"))
+      ? searchParams.get("timeFrom")
+      : null;
+    const nextTimeTo = isValidTimeParam(searchParams.get("timeTo"))
+      ? searchParams.get("timeTo")
+      : null;
+    const nextPickupType = ["MORNING", "EVENING"].includes(
+      searchParams.get("pickupType"),
+    )
+      ? searchParams.get("pickupType")
+      : null;
+    const nextPickupSlot = isValidTimeParam(searchParams.get("pickupSlot"))
+      ? searchParams.get("pickupSlot")
+      : null;
+    const hasAvailabilityFlag = searchParams.has("availability");
+
+    setAvailabilityPrefs((prev) => {
+      const nextPrefs = { ...prev };
+      let changed = false;
+
+      if (nextDurationType && prev.durationType !== nextDurationType) {
+        nextPrefs.durationType = nextDurationType;
+        changed = true;
+      }
+      if (nextBranchId && prev.branchId !== nextBranchId) {
+        nextPrefs.branchId = nextBranchId;
+        changed = true;
+      }
+      if (nextDate) {
+        const prevDateMs = prev.date?.getTime() || 0;
+        const nextDateMs = nextDate.getTime();
+        if (prevDateMs !== nextDateMs) {
+          nextPrefs.date = nextDate;
+          changed = true;
+        }
+      }
+      if (nextEndDate) {
+        const prevEndDateMs = prev.endDate?.getTime() || 0;
+        const nextEndDateMs = nextEndDate.getTime();
+        if (prevEndDateMs !== nextEndDateMs) {
+          nextPrefs.endDate = nextEndDate;
+          changed = true;
+        }
+      }
+      if (nextTimeFrom && prev.timeFrom !== nextTimeFrom) {
+        nextPrefs.timeFrom = nextTimeFrom;
+        changed = true;
+      }
+      if (nextTimeTo && prev.timeTo !== nextTimeTo) {
+        nextPrefs.timeTo = nextTimeTo;
+        changed = true;
+      }
+      if (nextPickupType && prev.pickupType !== nextPickupType) {
+        nextPrefs.pickupType = nextPickupType;
+        changed = true;
+      }
+      if (nextPickupSlot && prev.pickupSlot !== nextPickupSlot) {
+        nextPrefs.pickupSlot = nextPickupSlot;
+        changed = true;
+      }
+
+      return changed ? nextPrefs : prev;
+    });
+
+    if (hasAvailabilityFlag) {
+      setAvailabilityConfirmed(searchParams.get("availability") === "1");
+    }
+  }, [searchParams]);
+
+  // Sync state -> URL params whenever filters change
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (selectedCategory && selectedCategory !== "all") {
+      nextParams.set("category", selectedCategory);
+    } else {
+      nextParams.delete("category");
+    }
+
+    if (priceRange && priceRange !== "all") {
+      nextParams.set("price", priceRange);
+    } else {
+      nextParams.delete("price");
+    }
+
+    const keyword = searchQuery.trim();
+    if (keyword) {
+      nextParams.set("q", keyword);
+    } else {
+      nextParams.delete("q");
+    }
+
+    if (availabilityPrefs.branchId) {
+      nextParams.set("branchId", availabilityPrefs.branchId);
+    } else {
+      nextParams.delete("branchId");
+    }
+
+    if (availabilityPrefs.durationType) {
+      nextParams.set("durationType", availabilityPrefs.durationType);
+    } else {
+      nextParams.delete("durationType");
+    }
+
+    if (availabilityPrefs.date) {
+      nextParams.set("date", format(availabilityPrefs.date, "yyyy-MM-dd"));
+    } else {
+      nextParams.delete("date");
+    }
+
+    if (availabilityPrefs.endDate) {
+      nextParams.set("endDate", format(availabilityPrefs.endDate, "yyyy-MM-dd"));
+    } else {
+      nextParams.delete("endDate");
+    }
+
+    if (availabilityPrefs.timeFrom) {
+      nextParams.set("timeFrom", availabilityPrefs.timeFrom);
+    } else {
+      nextParams.delete("timeFrom");
+    }
+
+    if (availabilityPrefs.timeTo) {
+      nextParams.set("timeTo", availabilityPrefs.timeTo);
+    } else {
+      nextParams.delete("timeTo");
+    }
+
+    if (availabilityPrefs.pickupType) {
+      nextParams.set("pickupType", availabilityPrefs.pickupType);
+    } else {
+      nextParams.delete("pickupType");
+    }
+
+    if (availabilityPrefs.pickupSlot) {
+      nextParams.set("pickupSlot", availabilityPrefs.pickupSlot);
+    } else {
+      nextParams.delete("pickupSlot");
+    }
+
+    nextParams.set("availability", availabilityConfirmed ? "1" : "0");
+
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [
+    selectedCategory,
+    priceRange,
+    searchQuery,
+    availabilityPrefs,
+    availabilityConfirmed,
+    searchParams,
+    setSearchParams,
   ]);
 
   // Handle device selection
@@ -1686,20 +1916,20 @@ export default function DeviceCatalogPage() {
           ) : (
             <motion.div
               key={selectedCategory}
-              variants={gridVariants}
-              initial="hidden"
-              animate="visible"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
             >
-              {filteredDevices.map((device) => (
+              {filteredDevices.map((device, idx) => (
                 <ChicCard
-                  key={device.id}
+                  key={device.modelKey ? `model-${device.modelKey}` : `dev-${device.id}`}
                   device={device}
                   pricing={getDevicePricing(device)}
                   onQuickBook={handleQuickBook}
                   onSuggestedQuickBook={handleSuggestedQuickBook}
                   isSelected={selectedDeviceIds.has(device.id)}
                   onToggleSelect={handleToggleSelect}
+                  index={idx}
                 />
               ))}
             </motion.div>

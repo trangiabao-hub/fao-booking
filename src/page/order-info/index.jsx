@@ -41,13 +41,13 @@ function LoadingState({ message }) {
   );
 }
 
-function ErrorState({ message, onRetry }) {
+function ErrorState({ message }) {
   return (
     <div className="text-center py-16">
       <p className="text-slate-600 mb-6">{message}</p>
       <Link
         to="/"
-        className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-pink-600 text-white font-semibold hover:bg-pink-700 transition-colors"
+        className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#E85C9C] text-white font-semibold hover:opacity-90 transition-colors"
       >
         <ArrowLeftIcon className="w-5 h-5" />
         Về trang chủ
@@ -161,8 +161,8 @@ export default function OrderInfoPage() {
 
   if (loading) {
     return (
-      <div className="min-h-dvh bg-gradient-to-b from-white to-pink-100">
-        <div className="max-w-md mx-auto px-4 py-8">
+      <div className="min-h-dvh bg-[#FEF5ED]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <LoadingState message="Đang tải thông tin đơn hàng..." />
         </div>
         <FloatingContactButton />
@@ -172,8 +172,8 @@ export default function OrderInfoPage() {
 
   if (error || !orderDetails) {
     return (
-      <div className="min-h-dvh bg-gradient-to-b from-white to-pink-100">
-        <div className="max-w-md mx-auto px-4 py-8">
+      <div className="min-h-dvh bg-[#FEF5ED]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <ErrorState message={error} />
         </div>
         <FloatingContactButton />
@@ -182,113 +182,124 @@ export default function OrderInfoPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-white to-pink-100">
-      <div className="max-w-md mx-auto px-4 py-8">
+    <div className="min-h-dvh bg-[#FEF5ED]">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <Link
             to="/"
-            className="flex items-center gap-2 text-slate-600 hover:text-pink-600 font-medium transition-colors"
+            className="flex items-center gap-2 text-slate-600 hover:text-[#E85C9C] font-medium transition-colors"
           >
             <ArrowLeftIcon className="w-5 h-5" />
             Trang chủ
           </Link>
         </div>
 
-        {/* Order Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="bg-white rounded-2xl border border-pink-100 shadow-lg shadow-pink-500/10 overflow-hidden"
-        >
-          {/* Brand header */}
-          <div className="bg-gradient-to-r from-pink-500 to-rose-500 px-6 py-5 text-center">
-            <CameraIcon className="w-12 h-12 text-white/90 mx-auto mb-2" />
-            <h1 className="text-xl font-bold text-white">
-              Thông tin đơn hàng
-            </h1>
-            <p className="text-white/90 text-sm mt-1">Fao Sài Gòn - Thuê máy ảnh</p>
-          </div>
-
-          <div className="p-6 space-y-5">
-            {/* Devices */}
-            <div>
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-                Thiết bị
-              </h3>
-              {orderDetails.devices && orderDetails.devices.length > 1 ? (
-                <div className="space-y-3">
-                  {orderDetails.devices.map((d, i) => (
-                    <div key={i} className="flex items-center gap-4 p-3 bg-pink-50 rounded-xl">
-                      <img src={d.img} alt={d.name} className="w-14 h-14 rounded-lg object-cover" />
-                      <p className="font-semibold text-pink-900">{d.name}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center gap-4 p-4 bg-pink-50 rounded-xl">
-                  <img
-                    src={orderDetails.device.img}
-                    alt={orderDetails.device.name}
-                    className="w-16 h-16 rounded-xl object-cover"
-                  />
-                  <p className="font-bold text-pink-900 text-lg">{orderDetails.device.name}</p>
-                </div>
-              )}
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Order Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="lg:col-span-2 bg-[#FFFBF5] rounded-2xl border border-[#FFE4F0] shadow-md overflow-hidden"
+          >
+            {/* Brand header */}
+            <div className="bg-[#E85C9C] px-6 py-5 text-center">
+              <CameraIcon className="w-12 h-12 text-white/95 mx-auto mb-2" />
+              <h1 className="text-xl sm:text-2xl font-bold text-white">
+                Thông tin đơn hàng
+              </h1>
+              <p className="text-white/90 text-sm mt-1">FAO Booking</p>
             </div>
 
-            {/* Date & time */}
-            <div className="space-y-2">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Thời gian
-              </h3>
-              <div className="p-4 bg-slate-50 rounded-xl space-y-2">
-                <p>
-                  <span className="text-slate-500 text-sm">Nhận máy:</span>
-                  <br />
-                  <span className="font-semibold text-slate-800">
-                    {formatVNDateTime(orderDetails.bookingFrom)}
-                  </span>
+            <div className="p-5 sm:p-6 space-y-5">
+              <div className="rounded-xl border border-[#FFE4F0] bg-white px-4 py-3">
+                <p className="text-xs uppercase tracking-wider text-slate-500">Mã đơn</p>
+                <p className="font-bold text-[#E85C9C] break-all">
+                  {orderDetails.orderCode || orderDetails.orderIdNew}
                 </p>
-                <p>
-                  <span className="text-slate-500 text-sm">Trả máy:</span>
-                  <br />
-                  <span className="font-semibold text-slate-800">
-                    {formatVNDateTime(orderDetails.bookingTo)}
-                  </span>
+              </div>
+
+              {/* Devices */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                  Thiết bị
+                </h3>
+                {orderDetails.devices && orderDetails.devices.length > 1 ? (
+                  <div className="space-y-3">
+                    {orderDetails.devices.map((d, i) => (
+                      <div key={i} className="flex items-center gap-4 p-3 bg-white border border-[#FFE4F0] rounded-xl">
+                        <img src={d.img} alt={d.name} className="w-14 h-14 rounded-lg object-cover" />
+                        <p className="font-semibold text-slate-800">{d.name}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-4 p-4 bg-white border border-[#FFE4F0] rounded-xl">
+                    <img
+                      src={orderDetails.device.img}
+                      alt={orderDetails.device.name}
+                      className="w-16 h-16 rounded-xl object-cover"
+                    />
+                    <p className="font-bold text-slate-800 text-lg">{orderDetails.device.name}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Date & time */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Thời gian
+                </h3>
+                <div className="p-4 bg-white border border-[#FFE4F0] rounded-xl space-y-2">
+                  <p>
+                    <span className="text-slate-500 text-sm">Nhận máy:</span>
+                    <br />
+                    <span className="font-semibold text-slate-800">
+                      {formatVNDateTime(orderDetails.bookingFrom)}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="text-slate-500 text-sm">Trả máy:</span>
+                    <br />
+                    <span className="font-semibold text-slate-800">
+                      {formatVNDateTime(orderDetails.bookingTo)}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Total */}
+              <div className="p-4 bg-[#FFF1F7] rounded-xl border border-[#FFCDE1]">
+                <p className="text-sm text-slate-700 font-medium">Tổng tiền</p>
+                <p className="text-2xl sm:text-3xl font-black text-[#E85C9C]">
+                  {orderDetails.total?.toLocaleString("vi-VN")} đ
                 </p>
               </div>
             </div>
+          </motion.div>
 
-            {/* Total */}
-            <div className="p-4 bg-pink-100 rounded-xl border border-pink-200">
-              <p className="text-sm text-pink-800 font-medium">Tổng tiền</p>
-              <p className="text-2xl font-black text-pink-600">
-                {orderDetails.total?.toLocaleString("vi-VN")} đ
-              </p>
-            </div>
-
-            {/* Share section */}
-            <div className="pt-4 border-t border-pink-100">
+          {/* Right Panel */}
+          <div className="space-y-4">
+            <div className="bg-[#FFFBF5] border border-[#FFE4F0] rounded-2xl p-4">
               <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-                <ShareIcon className="w-5 h-5 text-pink-500" />
-                Chia sẻ với bạn bè
+                <ShareIcon className="w-5 h-5 text-[#E85C9C]" />
+                Chia sẻ đơn hàng
               </h3>
               <p className="text-slate-600 text-sm mb-4">
                 Gửi link này cho bạn bè để họ xem đơn hàng của bạn.
               </p>
-              <div className="flex gap-3">
+              <div className="space-y-2">
                 <button
                   onClick={handleNativeShare}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold hover:opacity-90 transition-opacity active:scale-[0.98]"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#E85C9C] text-white font-semibold hover:opacity-90 transition-opacity active:scale-[0.98]"
                 >
                   <ShareIcon className="w-5 h-5" />
                   Chia sẻ
                 </button>
                 <button
                   onClick={handleCopyLink}
-                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200 hover:bg-slate-200 transition-colors active:scale-[0.98]"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200 hover:bg-slate-200 transition-colors active:scale-[0.98]"
                   title="Copy link"
                 >
                   <ClipboardDocumentIcon className="w-5 h-5" />
@@ -306,25 +317,25 @@ export default function OrderInfoPage() {
                 </motion.p>
               )}
             </div>
-          </div>
-        </motion.div>
 
-        {/* CTA */}
-        <div className="mt-6 space-y-3">
-          <Link
-            to="/catalog"
-            className="block w-full text-center py-3.5 rounded-xl bg-slate-100 text-slate-800 font-semibold border border-slate-200 hover:bg-slate-200 transition-colors"
-          >
-            Thuê thêm máy khác
-          </Link>
-          <a
-            href={MESSENGER_LINK}
-            target="_blank"
-            rel="noreferrer"
-            className="block w-full text-center py-3.5 rounded-xl bg-[#0084FF] text-white font-semibold hover:bg-[#0066CC] transition-colors"
-          >
-            Liên hệ shop qua Messenger
-          </a>
+            {/* CTA */}
+            <div className="space-y-3">
+              <Link
+                to="/catalog"
+                className="block w-full text-center py-3.5 rounded-xl bg-slate-100 text-slate-800 font-semibold border border-slate-200 hover:bg-slate-200 transition-colors"
+              >
+                Thuê thêm máy khác
+              </Link>
+              <a
+                href={MESSENGER_LINK}
+                target="_blank"
+                rel="noreferrer"
+                className="block w-full text-center py-3.5 rounded-xl bg-[#0084FF] text-white font-semibold hover:bg-[#0066CC] transition-colors"
+              >
+                Liên hệ shop qua Messenger
+              </a>
+            </div>
+          </div>
         </div>
       </div>
 

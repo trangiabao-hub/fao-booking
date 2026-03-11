@@ -21,9 +21,6 @@ import {
   CalendarIcon,
   ArrowUturnLeftIcon,
   ShareIcon,
-  GiftIcon,
-  SparklesIcon,
-  BookOpenIcon,
   CameraIcon,
   ChatBubbleLeftRightIcon,
   ClipboardDocumentIcon,
@@ -37,27 +34,10 @@ import { saveRecentOrder } from "../../utils/storage";
 
 const FALLBACK_IMG = "https://placehold.co/640x360/fdf2f8/ec4899?text=No+Image";
 
-// Cross-sell accessories data
-const ACCESSORIES = [
-  { id: 1, name: "Pin dự phòng", price: 50000, img: "🔋" },
-  { id: 2, name: "Thẻ nhớ 64GB", price: 30000, img: "💾" },
-  { id: 3, name: "Túi máy ảnh", price: 40000, img: "👜" },
-];
-
-// Camera usage tips
-const USAGE_TIPS = [
-  "Giữ máy bằng 2 tay để ảnh không bị rung",
-  "Chụp ngoài trời nên để ISO thấp (100-400)",
-  "Ánh sáng tự nhiên luôn là đẹp nhất",
-  "Thử chế độ Film Simulation với máy Fuji",
-];
-
 function SuccessCard({ details }) {
   const [showShare, setShowShare] = useState(false);
   const [showMessengerToast, setShowMessengerToast] = useState(false);
   const [showCopyOrderToast, setShowCopyOrderToast] = useState(false);
-  const [email, setEmail] = useState("");
-  const [emailSubmitted, setEmailSubmitted] = useState(false);
 
   const handleAddToCalendar = () => {
     if (!details) return;
@@ -107,15 +87,6 @@ function SuccessCard({ details }) {
       navigator.clipboard.writeText(shareText);
       setShowShare(true);
       setTimeout(() => setShowShare(false), 2000);
-    }
-  };
-
-  const handleEmailSubmit = (e) => {
-    e.preventDefault();
-    if (email && email.includes("@")) {
-      setEmailSubmitted(true);
-      // In real app, send to backend
-      console.log("Email submitted:", email);
     }
   };
 
@@ -174,7 +145,7 @@ function SuccessCard({ details }) {
         initial={{ opacity: 0, y: 20, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="bg-white rounded-2xl border border-pink-100 shadow-lg shadow-pink-500/10 p-6 text-center"
+        className="bg-white rounded-2xl border border-pink-100 shadow-lg shadow-pink-500/10 p-5 sm:p-6 lg:p-8 text-center"
       >
         <motion.div
           initial={{ scale: 0 }}
@@ -183,239 +154,152 @@ function SuccessCard({ details }) {
         >
           <CheckCircleIcon className="w-16 h-16 text-green-500 mx-auto" />
         </motion.div>
-        <h2 className="text-2xl font-bold text-pink-800 mt-4">
+        <h2 className="text-2xl sm:text-3xl font-bold text-pink-800 mt-4">
           Thanh toán thành công! 🎉
         </h2>
-        <p className="text-slate-600 mt-2">
+        <p className="text-slate-600 mt-2 text-sm sm:text-base">
           Cảm ơn bạn đã tin tưởng. Tụi mình đã nhận được lịch đặt của bạn.
         </p>
 
-        {/* Lưu ý hoàn tất đơn - ưu tiên đầu */}
-        <div className="mt-6 p-5 bg-blue-50 rounded-xl border border-blue-200 text-left">
-          <h3 className="font-bold text-blue-800 text-lg mb-3 flex items-center gap-2">
-            <ChatBubbleLeftRightIcon className="w-6 h-6 text-blue-600" />
-            Lưu ý: Nhắn cho page để hoàn tất đơn hàng
-          </h3>
-          <p className="text-base text-blue-700 mb-3">
-            Để shop xác nhận đơn, vui lòng gửi thông tin đơn cho page Facebook:
-          </p>
-          <ol className="text-base text-blue-800 space-y-2 list-decimal list-inside">
-            <li>Ấn <strong>"Copy đơn hàng"</strong> để copy thông tin</li>
-            <li>Ấn <strong>"Nhắn shop qua Messenger"</strong></li>
-            <li>Dán nội dung (Ctrl+V hoặc giữ → Dán) vào ô chat và gửi</li>
-          </ol>
-        </div>
-
-        <div className="text-left bg-pink-50 rounded-xl p-4 mt-6 space-y-3">
-          <h3 className="font-semibold text-pink-900 border-b border-pink-200 pb-2 mb-2">
-            Chi tiết đơn hàng
-          </h3>
-          {details.devices && details.devices.length > 1 ? (
-            <div className="space-y-2">
-              {details.devices.map((d, i) => (
-                <div key={i} className="flex items-center gap-4">
-                  <img src={d.img} alt={d.name} className="w-12 h-12 rounded-lg object-cover" />
-                  <p className="font-semibold text-pink-800">{d.name}</p>
-                </div>
-              ))}
-              <p className="text-sm text-slate-500 pt-1">Mã đơn: {details.orderCode}</p>
+        <div className="mt-6 grid gap-4 lg:grid-cols-2 lg:gap-5">
+          <div className="space-y-4">
+            {/* Lưu ý hoàn tất đơn - ưu tiên đầu */}
+            <div className="p-4 sm:p-5 bg-blue-50 rounded-xl border border-blue-200 text-left">
+              <h3 className="font-bold text-blue-800 text-base sm:text-lg mb-3 flex items-center gap-2">
+                <ChatBubbleLeftRightIcon className="w-6 h-6 text-blue-600" />
+                Lưu ý: Nhắn cho page để hoàn tất đơn hàng
+              </h3>
+              <p className="text-sm sm:text-base text-blue-700 mb-3">
+                Để shop xác nhận đơn, vui lòng gửi thông tin đơn cho page Facebook:
+              </p>
+              <ol className="text-sm sm:text-base text-blue-800 space-y-2 list-decimal list-inside">
+                <li>Ấn <strong>"Copy đơn hàng"</strong> để copy thông tin</li>
+                <li>Ấn <strong>"Nhắn shop qua Messenger"</strong></li>
+                <li>Dán nội dung (Ctrl+V hoặc giữ → Dán) vào ô chat và gửi</li>
+              </ol>
             </div>
-          ) : (
-            <div className="flex items-center gap-4">
-              <img
-                src={details.device.img}
-                alt={details.device.name}
-                className="w-16 h-16 rounded-lg object-cover"
-              />
-              <div>
-                <p className="font-semibold text-pink-800">{details.device.name}</p>
-                <p className="text-sm text-slate-500">Mã đơn: {details.orderCode}</p>
+
+            <div className="text-left bg-pink-50 rounded-xl p-4 space-y-3">
+              <h3 className="font-semibold text-pink-900 border-b border-pink-200 pb-2 mb-2">
+                Chi tiết đơn hàng
+              </h3>
+              {details.devices && details.devices.length > 1 ? (
+                <div className="space-y-2">
+                  {details.devices.map((d, i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <img src={d.img} alt={d.name} className="w-12 h-12 rounded-lg object-cover" />
+                      <p className="font-semibold text-pink-800">{d.name}</p>
+                    </div>
+                  ))}
+                  <p className="text-sm text-slate-500 pt-1">Mã đơn: {details.orderCode}</p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-4">
+                  <img
+                    src={details.device.img}
+                    alt={details.device.name}
+                    className="w-16 h-16 rounded-lg object-cover"
+                  />
+                  <div>
+                    <p className="font-semibold text-pink-800">{details.device.name}</p>
+                    <p className="text-sm text-slate-500">Mã đơn: {details.orderCode}</p>
+                  </div>
+                </div>
+              )}
+              <div className="text-sm space-y-1 pt-2">
+                <p>
+                  <b>Nhận máy:</b>{" "}
+                  {formatVNDateTime(details.bookingFrom)}
+                </p>
+                <p>
+                  <b>Trả máy:</b>{" "}
+                  {formatVNDateTime(details.bookingTo)}
+                </p>
+                <p>
+                  <b>Tổng tiền:</b>{" "}
+                  <span className="font-bold text-pink-600">
+                    {details.total.toLocaleString("vi-VN")} đ
+                  </span>
+                </p>
               </div>
             </div>
-          )}
-          <div className="text-sm space-y-1 pt-2">
-            <p>
-              <b>Nhận máy:</b>{" "}
-              {formatVNDateTime(details.bookingFrom)}
-            </p>
-            <p>
-              <b>Trả máy:</b>{" "}
-              {formatVNDateTime(details.bookingTo)}
-            </p>
-            <p>
-              <b>Tổng tiền:</b>{" "}
-              <span className="font-bold text-pink-600">
-                {details.total.toLocaleString("vi-VN")} đ
-              </span>
-            </p>
           </div>
-          <div className="mt-3 space-y-2">
-            <button
-              onClick={handleCopyOrder}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200 hover:bg-slate-200 transition-all active:scale-95"
-            >
-              <ClipboardDocumentIcon className="w-5 h-5" />
-              Copy đơn hàng
-            </button>
-            {(details.orderIdNew || details.orderCode) && (
-              <Link
-                to={details.orderIdNew ? `/order/${details.orderIdNew}` : `/order/code/${details.orderCode}`}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-pink-100 text-pink-700 font-semibold border border-pink-200 hover:bg-pink-200 transition-all active:scale-95"
+          {/* Action Buttons */}
+          <div className="space-y-3 text-left">
+            <div className="space-y-2">
+              <button
+                onClick={handleCopyOrder}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200 hover:bg-slate-200 transition-all active:scale-95"
               >
-                <LinkIcon className="w-5 h-5" />
-                Xem / Chia sẻ link đơn hàng
-              </Link>
+                <ClipboardDocumentIcon className="w-5 h-5" />
+                Copy đơn hàng
+              </button>
+              {(details.orderIdNew || details.orderCode) && (
+                <Link
+                  to={details.orderIdNew ? `/order/${details.orderIdNew}` : `/order/code/${details.orderCode}`}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-pink-100 text-pink-700 font-semibold border border-pink-200 hover:bg-pink-200 transition-all active:scale-95"
+                >
+                  <LinkIcon className="w-5 h-5" />
+                  Xem / Chia sẻ link đơn hàng
+                </Link>
+              )}
+            </div>
+
+            <button
+              onClick={handleAddToCalendar}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-pink-600 text-white font-semibold shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
+            >
+              <CalendarIcon className="w-5 h-5" />
+              Thêm vào Lịch Google
+            </button>
+
+            <button
+              onClick={handleMessengerClick}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#0084FF] text-white font-semibold shadow-lg shadow-blue-500/30 hover:bg-[#0066CC] transition-all active:scale-95"
+            >
+              <ChatBubbleLeftRightIcon className="w-5 h-5" />
+              Nhắn shop qua Messenger
+            </button>
+
+            <button
+              onClick={handleShare}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold shadow-lg shadow-purple-500/30 hover:opacity-90 transition-all active:scale-95"
+            >
+              <ShareIcon className="w-5 h-5" />
+              Chia sẻ với bạn bè
+            </button>
+
+            {showShare && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-sm text-green-600 bg-green-50 rounded-lg py-2 text-center"
+              >
+                ✓ Đã copy link!
+              </motion.div>
+            )}
+
+            {showMessengerToast && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-sm text-green-600 bg-green-50 rounded-lg py-2 text-center"
+              >
+                Đã copy tin nhắn! Mở Messenger và dán (Ctrl+V) để gửi nhé.
+              </motion.div>
+            )}
+
+            {showCopyOrderToast && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-sm text-green-600 bg-green-50 rounded-lg py-2 text-center"
+              >
+                ✓ Đã copy tóm tắt đơn hàng!
+              </motion.div>
             )}
           </div>
         </div>
-
-        {/* Action Buttons */}
-        <div className="mt-6 space-y-3">
-          <button
-            onClick={handleAddToCalendar}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-pink-600 text-white font-semibold shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
-          >
-            <CalendarIcon className="w-5 h-5" />
-            Thêm vào Lịch Google
-          </button>
-
-          <button
-            onClick={handleMessengerClick}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#0084FF] text-white font-semibold shadow-lg shadow-blue-500/30 hover:bg-[#0066CC] transition-all active:scale-95"
-          >
-            <ChatBubbleLeftRightIcon className="w-5 h-5" />
-            Nhắn shop qua Messenger
-          </button>
-
-          <button
-            onClick={handleShare}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold shadow-lg shadow-purple-500/30 hover:opacity-90 transition-all active:scale-95"
-          >
-            <ShareIcon className="w-5 h-5" />
-            Chia sẻ với bạn bè
-          </button>
-
-          {showShare && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-sm text-green-600 bg-green-50 rounded-lg py-2"
-            >
-              ✓ Đã copy link!
-            </motion.div>
-          )}
-
-          {showMessengerToast && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-sm text-green-600 bg-green-50 rounded-lg py-2"
-            >
-              Đã copy tin nhắn! Mở Messenger và dán (Ctrl+V) để gửi nhé.
-            </motion.div>
-          )}
-
-          {showCopyOrderToast && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-sm text-green-600 bg-green-50 rounded-lg py-2"
-            >
-              ✓ Đã copy tóm tắt đơn hàng!
-            </motion.div>
-          )}
-        </div>
-      </motion.div>
-
-      {/* Usage Tips Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.5 }}
-        className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200 p-5"
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <BookOpenIcon className="w-5 h-5 text-amber-600" />
-          <h3 className="font-semibold text-amber-800">Mẹo chụp ảnh đẹp</h3>
-        </div>
-        <ul className="space-y-2">
-          {USAGE_TIPS.map((tip, index) => (
-            <li key={index} className="text-sm text-amber-700 flex items-start gap-2">
-              <span className="text-amber-500">•</span>
-              {tip}
-            </li>
-          ))}
-        </ul>
-      </motion.div>
-
-      {/* Cross-sell Accessories */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4, duration: 0.5 }}
-        className="bg-white rounded-2xl border border-pink-100 shadow-md p-5"
-      >
-        <div className="flex items-center gap-2 mb-4">
-          <SparklesIcon className="w-5 h-5 text-pink-500" />
-          <h3 className="font-semibold text-pink-800">Thuê thêm phụ kiện?</h3>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {ACCESSORIES.map((acc) => (
-            <div
-              key={acc.id}
-              className="text-center bg-pink-50 rounded-xl p-3 hover:bg-pink-100 transition-colors cursor-pointer"
-            >
-              <div className="text-2xl mb-1">{acc.img}</div>
-              <div className="text-xs font-medium text-slate-700">{acc.name}</div>
-              <div className="text-xs text-pink-600 font-semibold">
-                +{acc.price.toLocaleString("vi-VN")}đ
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="text-xs text-slate-500 text-center mt-3">
-          Liên hệ shop để thêm phụ kiện vào đơn hàng
-        </p>
-      </motion.div>
-
-      {/* Voucher for Next Time */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5, duration: 0.5 }}
-        className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-5 text-white"
-      >
-        <div className="flex items-center gap-2 mb-2">
-          <GiftIcon className="w-5 h-5" />
-          <h3 className="font-bold">Voucher -10% cho lần sau!</h3>
-        </div>
-        {!emailSubmitted ? (
-          <>
-            <p className="text-sm text-green-100 mb-3">
-              Nhập email để nhận mã giảm giá 10% cho lần thuê tiếp theo
-            </p>
-            <form onSubmit={handleEmailSubmit} className="flex gap-2">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="email@example.com"
-                className="flex-1 px-4 py-2.5 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-white/50"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2.5 bg-white text-green-600 font-semibold rounded-xl hover:bg-green-50 transition-colors"
-              >
-                Nhận
-              </button>
-            </form>
-          </>
-        ) : (
-          <div className="bg-white/20 rounded-xl p-3 text-center">
-            <CheckCircleIcon className="w-8 h-8 mx-auto mb-1" />
-            <p className="font-semibold">Đã gửi voucher đến email của bạn!</p>
-          </div>
-        )}
       </motion.div>
 
       {/* Book Again CTA */}
@@ -423,7 +307,7 @@ function SuccessCard({ details }) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.6, duration: 0.5 }}
-        className="space-y-2"
+        className="grid gap-2 md:grid-cols-2"
       >
         <Link
           to="/my-bookings"
@@ -596,7 +480,7 @@ export default function PaymentStatusPage() {
   return (
     <div className="min-h-dvh bg-gradient-to-b from-white to-pink-100 pb-32 md:pb-36">
       <SlideNav />
-      <div className="max-w-md mx-auto px-4 py-8">
+      <div className="max-w-5xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         {status === "checking" && (
           <LoadingState message="Đang kiểm tra trạng thái thanh toán..." />
         )}

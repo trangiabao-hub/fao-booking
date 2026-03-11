@@ -4,6 +4,7 @@ import React, {
   useEffect,
   useCallback,
   useLayoutEffect,
+  useRef,
 } from "react";
 import { format, addDays } from "date-fns";
 import vi from "date-fns/locale/vi";
@@ -55,6 +56,9 @@ import BookingPrefsForm, {
   formatPickupReturnSummary,
 } from "./BookingPrefsForm";
 
+const FIRST_ORDER_DISCOUNT_RATE = 0.3;
+const FIRST_ORDER_DISCOUNT_CAP = 200000;
+
 function isValidGmail(email) {
   return /^[^\s@]+@gmail\.com$/i.test((email || "").trim());
 }
@@ -94,6 +98,65 @@ function getOrderCodeFromPaymentResponse(data) {
   } catch {
     return null;
   }
+}
+
+function extractApiErrorMessage(error, fallback = "Có lỗi xảy ra") {
+  const data = error?.response?.data;
+  if (typeof data === "string" && data.trim()) return data;
+  if (data?.message) return data.message;
+  if (data?.error) return data.error;
+  return error?.message || fallback;
+}
+
+async function resolveGuestCustomerId(customer) {
+  const payload = {
+    fullName: customer.fullName || null,
+    phone: customer.phone || null,
+    email: customer.gmail || null,
+    ig: customer.ig || null,
+    fb: null,
+  };
+  const response = await api.post("/accounts/resolve", payload);
+  const customerId = response?.data?.id;
+  if (!customerId) {
+    throw new Error("Không lấy được customerId");
+  }
+  return customerId;
+}
+
+function allocateDiscountByRatio(amounts, discount) {
+  const safeAmounts = Array.isArray(amounts)
+    ? amounts.map((v) => Math.max(0, Math.round(Number(v) || 0)))
+    : [];
+  const total = safeAmounts.reduce((sum, value) => sum + value, 0);
+  const targetDiscount = Math.max(
+    0,
+    Math.min(Math.round(discount || 0), total),
+  );
+  if (!safeAmounts.length || targetDiscount <= 0 || total <= 0) {
+    return safeAmounts.map(() => 0);
+  }
+
+  const distributed = safeAmounts.map((amount) =>
+    Math.floor((targetDiscount * amount) / total),
+  );
+  let remaining =
+    targetDiscount - distributed.reduce((sum, value) => sum + value, 0);
+
+  const order = safeAmounts
+    .map((amount, idx) => ({ idx, amount }))
+    .sort((a, b) => b.amount - a.amount);
+
+  let pointer = 0;
+  while (remaining > 0 && order.length > 0) {
+    const i = order[pointer % order.length].idx;
+    if (distributed[i] < safeAmounts[i]) {
+      distributed[i] += 1;
+      remaining -= 1;
+    }
+    pointer += 1;
+  }
+  return distributed;
 }
 
 export default function QuickBookModal({
@@ -163,20 +226,39 @@ export default function QuickBookModal({
       ig: saved?.ig || saved?.fb || "",
     };
   });
-  const [checkoutMode, setCheckoutMode] = useState(() =>
-    loadCustomerSession()?.token ? "GOOGLE" : "GUEST",
-  );
+  const [checkoutMode, setCheckoutMode] = useState("GOOGLE");
   const [hasGoogleSession, setHasGoogleSession] = useState(
     () => !!loadCustomerSession()?.token,
   );
+  const [memberBookingsCount, setMemberBookingsCount] = useState(0);
+  const [memberPoint, setMemberPoint] = useState(0);
+  const [pointToUse, setPointToUse] = useState(0);
+  const [isMemberDataLoading, setIsMemberDataLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [agreeNoResellOrPawn, setAgreeNoResellOrPawn] = useState(false);
+  const [agreeConfirmPickupReturnTime, setAgreeConfirmPickupReturnTime] =
+    useState(false);
+  const [agreementErrors, setAgreementErrors] = useState({
+    noResellOrPawn: false,
+    confirmPickupReturnTime: false,
+  });
+  const agreementSectionRef = useRef(null);
+  // showGuestCheckout removed — both options always visible now
 
   // Sync state when modal opens
   useLayoutEffect(() => {
     if (isOpen) {
       setError("");
+      setCheckoutMode("GOOGLE");
+      setPointToUse(0);
+      setAgreeNoResellOrPawn(false);
+      setAgreeConfirmPickupReturnTime(false);
+      setAgreementErrors({
+        noResellOrPawn: false,
+        confirmPickupReturnTime: false,
+      });
       if (hasInitialPrefs && initialPrefs) {
         const p = initialPrefs;
         setStep(p.step || 1);
@@ -292,7 +374,6 @@ export default function QuickBookModal({
     t2,
     rentalInfoPerDevice,
   ]);
-  const discountedLabel = formatPriceK(discountedTotal);
 
   // Chi tiết công thức giá để hiển thị ở bước XÁC NHẬN
   const priceBreakdown = useMemo(() => {
@@ -410,31 +491,84 @@ export default function QuickBookModal({
   useEffect(() => {
     if (!isOpen) return;
     const session = loadCustomerSession();
-    if (!session?.token) return;
+    if (!session?.token) {
+      setHasGoogleSession(false);
+      setMemberBookingsCount(0);
+      setMemberPoint(0);
+      setIsMemberDataLoading(false);
+      return;
+    }
     let mounted = true;
-    api
-      .get("/account")
-      .then((res) => {
+    setIsMemberDataLoading(true);
+    Promise.all([api.get("/account"), api.get("/v1/bookings/me")])
+      .then(([accountRes, bookingsRes]) => {
         if (!mounted) return;
-        const account = res?.data || {};
+        const account = accountRes?.data || {};
+        const saved = loadCustomerInfo() || {};
+        const bookings = Array.isArray(bookingsRes?.data)
+          ? bookingsRes.data
+          : [];
         setCheckoutMode("GOOGLE");
         setHasGoogleSession(true);
-        setCustomer((c) => ({
-          ...c,
-          fullName: account.fullName || c.fullName,
-          phone: normalizeValidPhoneOrEmpty(account.phone) || c.phone,
-          gmail: account.email || c.gmail,
-          ig: account.ig || account.fb || c.ig,
-        }));
+        setMemberBookingsCount(bookings.length);
+        setMemberPoint(Math.max(0, Number(account.point) || 0));
+        const nextCustomer = {
+          fullName: account.fullName || saved.fullName || "",
+          phone:
+            normalizeValidPhoneOrEmpty(account.phone) ||
+            normalizeValidPhoneOrEmpty(saved.phone) ||
+            "",
+          gmail: account.email || saved.gmail || "",
+          ig: account.ig || account.fb || saved.ig || saved.fb || "",
+        };
+        setCustomer((c) => ({ ...c, ...nextCustomer }));
+        saveCustomerInfo(nextCustomer);
       })
       .catch(() => {
         clearCustomerSession();
         setHasGoogleSession(false);
+        setMemberBookingsCount(0);
+        setMemberPoint(0);
+      })
+      .finally(() => {
+        if (mounted) setIsMemberDataLoading(false);
       });
     return () => {
       mounted = false;
     };
   }, [isOpen]);
+
+  // Refresh voucher eligibility when user reaches step 2/3
+  useEffect(() => {
+    if (!isOpen || !hasGoogleSession || (step !== 2 && step !== 3)) return;
+    let mounted = true;
+    setIsMemberDataLoading(true);
+    Promise.all([api.get("/account"), api.get("/v1/bookings/me")])
+      .then(([accountRes, bookingsRes]) => {
+        if (!mounted) return;
+        const account = accountRes?.data || {};
+        const bookings = Array.isArray(bookingsRes?.data) ? bookingsRes.data : [];
+        setMemberBookingsCount(bookings.length);
+        setMemberPoint(Math.max(0, Number(account.point) || 0));
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setIsMemberDataLoading(false);
+      })
+      .finally(() => {
+        if (mounted) setIsMemberDataLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isOpen, hasGoogleSession, step]);
+
+  useEffect(() => {
+    if (hasGoogleSession && checkoutMode !== "GOOGLE") {
+      setCheckoutMode("GOOGLE");
+    }
+  }, [hasGoogleSession, checkoutMode]);
 
   // Validate customer info
   const socialLinkError = useMemo(() => {
@@ -462,13 +596,95 @@ export default function QuickBookModal({
       : "Vui lòng nhập Gmail hợp lệ (đuôi @gmail.com).";
   }, [checkoutMode, customer.gmail, hasGoogleSession]);
   const isCustomerValid = useMemo(() => {
+    return !fullNameError && !phoneError && !gmailError;
+  }, [fullNameError, phoneError, gmailError]);
+  const isFirstOrderPromoEligible = useMemo(() => {
     return (
-      !fullNameError &&
-      !phoneError &&
-      !socialLinkError &&
-      !gmailError
+      checkoutMode === "GOOGLE" &&
+      hasGoogleSession &&
+      !isMemberDataLoading &&
+      memberBookingsCount === 0
     );
-  }, [fullNameError, phoneError, socialLinkError, gmailError]);
+  }, [
+    checkoutMode,
+    hasGoogleSession,
+    isMemberDataLoading,
+    memberBookingsCount,
+  ]);
+  const firstOrderDiscount = useMemo(() => {
+    if (!isFirstOrderPromoEligible) return 0;
+    return Math.min(
+      Math.round((price || 0) * FIRST_ORDER_DISCOUNT_RATE),
+      FIRST_ORDER_DISCOUNT_CAP,
+    );
+  }, [isFirstOrderPromoEligible, price]);
+  const firstOrderPreviewDiscount = useMemo(
+    () =>
+      Math.min(
+        Math.round((price || 0) * FIRST_ORDER_DISCOUNT_RATE),
+        FIRST_ORDER_DISCOUNT_CAP,
+      ),
+    [price],
+  );
+  const basePromotionDiscount = useMemo(
+    () => Math.max(0, Math.round((price || 0) - (discountedTotal || 0))),
+    [price, discountedTotal],
+  );
+  const isFirstOrderVoucherSelected = useMemo(
+    () => firstOrderDiscount > basePromotionDiscount,
+    [firstOrderDiscount, basePromotionDiscount],
+  );
+  const firstOrderAdditionalDiscount = useMemo(
+    () =>
+      isFirstOrderVoucherSelected
+        ? Math.max(0, firstOrderDiscount - basePromotionDiscount)
+        : 0,
+    [isFirstOrderVoucherSelected, firstOrderDiscount, basePromotionDiscount],
+  );
+  const payableBeforePoint = useMemo(() => {
+    const totalAfterSingleDiscount = isFirstOrderVoucherSelected
+      ? (price || 0) - firstOrderDiscount
+      : (price || 0) - basePromotionDiscount;
+    return Math.max(0, Math.round(totalAfterSingleDiscount));
+  }, [
+    isFirstOrderVoucherSelected,
+    price,
+    firstOrderDiscount,
+    basePromotionDiscount,
+  ]);
+  const maxPointToUse = useMemo(() => {
+    if (!hasGoogleSession) return 0;
+    return Math.max(
+      0,
+      Math.min(Math.floor(payableBeforePoint / 1000), Math.floor(memberPoint)),
+    );
+  }, [hasGoogleSession, payableBeforePoint, memberPoint]);
+  useEffect(() => {
+    setPointToUse((prev) => Math.max(0, Math.min(prev, maxPointToUse)));
+  }, [maxPointToUse]);
+  const pointDiscountAmount = useMemo(
+    () => Math.max(0, Math.min(pointToUse, maxPointToUse)) * 1000,
+    [pointToUse, maxPointToUse],
+  );
+  const payableTotal = useMemo(
+    () => Math.max(0, payableBeforePoint - pointDiscountAmount),
+    [payableBeforePoint, pointDiscountAmount],
+  );
+  const earnedPointPreview = useMemo(
+    () => Math.floor(Math.max(0, payableTotal) / 50000) * 3,
+    [payableTotal],
+  );
+  const discountedLabel = formatPriceK(payableTotal);
+  const selectedDiscountAmount = isFirstOrderVoucherSelected
+    ? firstOrderDiscount
+    : basePromotionDiscount;
+  const selectedDiscountLabel =
+    isFirstOrderVoucherSelected && selectedDiscountAmount > 0
+      ? "Voucher đơn đầu -30% (tối đa 200k)"
+      : priceBreakdown?.discountLabel || "Khuyến mãi";
+  const isLoggedInUser = hasGoogleSession;
+  const shouldShowContactForm =
+    checkoutMode === "GUEST" || (checkoutMode === "GOOGLE" && hasGoogleSession);
   const savedCustomer = useMemo(() => loadCustomerInfo(), []);
   const canUseSavedCustomer = useMemo(() => {
     const phone = normalizePhone(savedCustomer?.phone || "");
@@ -476,7 +692,9 @@ export default function QuickBookModal({
       !!savedCustomer?.fullName &&
       /^0\d{9}$/.test(phone) &&
       isValidGmail(savedCustomer?.gmail || "") &&
-      isValidInstagramOrFacebookUrl(savedCustomer?.ig || savedCustomer?.fb || "")
+      isValidInstagramOrFacebookUrl(
+        savedCustomer?.ig || savedCustomer?.fb || "",
+      )
     );
   }, [savedCustomer]);
 
@@ -484,67 +702,130 @@ export default function QuickBookModal({
   const handleSubmit = async () => {
     if (effectiveDevices.length === 0 || !t1 || !t2 || !isCustomerValid) return;
 
+    const nextAgreementErrors = {
+      noResellOrPawn: !agreeNoResellOrPawn,
+      confirmPickupReturnTime: !agreeConfirmPickupReturnTime,
+    };
+    if (
+      nextAgreementErrors.noResellOrPawn ||
+      nextAgreementErrors.confirmPickupReturnTime
+    ) {
+      setAgreementErrors(nextAgreementErrors);
+      setError("Vui lòng xác nhận đủ 2 cam kết trước khi thanh toán.");
+      window.requestAnimationFrame(() => {
+        agreementSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      });
+      return;
+    }
+
+    setAgreementErrors({
+      noResellOrPawn: false,
+      confirmPickupReturnTime: false,
+    });
     setIsSubmitting(true);
     setError("");
 
     try {
-      if (checkoutMode === "GOOGLE") {
-        saveCustomerInfo(customer);
-      }
+      const normalizedCustomer = {
+        fullName: (customer.fullName || "").trim(),
+        phone: normalizePhone(customer.phone),
+        gmail: (customer.gmail || "").trim(),
+        ig: (customer.ig || "").trim(),
+      };
+      saveCustomerInfo(normalizedCustomer);
 
-      const phone = normalizePhone(customer.phone);
+      const phone = normalizedCustomer.phone;
       let customerId = null;
       if (checkoutMode === "GOOGLE") {
-        const socialLink = (customer.ig || "").trim();
+        const socialLink = normalizedCustomer.ig;
         const isFacebook = /facebook\.com|fb\.com/i.test(socialLink);
         const me = await api.get("/account");
         const currentAccountId = me?.data?.id;
         if (!currentAccountId) {
           throw new Error("Không lấy được tài khoản Google hiện tại");
         }
-        const profileRes = await api.put(`/accounts/${currentAccountId}`, {
-          fullName: customer.fullName.trim(),
-          phone,
-          email: (customer.gmail || "").trim() || me?.data?.email,
-          ig: isFacebook ? null : socialLink || null,
-          fb: isFacebook ? socialLink || null : null,
-        });
-        customerId = profileRes.data?.id;
+        try {
+          await api.put("/customer/profile", {
+            fullName: normalizedCustomer.fullName,
+            phone,
+            email: normalizedCustomer.gmail || me?.data?.email,
+            ig: isFacebook ? null : socialLink || null,
+            fb: isFacebook ? socialLink || null : null,
+          });
+        } catch (profileErr) {
+          // Profile sync is best-effort; do not block payment flow.
+          console.warn(
+            "Không thể cập nhật hồ sơ customer, tiếp tục thanh toán.",
+            profileErr,
+          );
+        }
+        customerId = currentAccountId;
       } else {
-        const registerRes = await api.post("/accounts", {
-          fullName: customer.fullName.trim(),
+        customerId = await resolveGuestCustomerId({
+          ...normalizedCustomer,
           phone,
-          ig: customer.ig?.trim() || null,
         });
-        customerId = registerRes.data?.id;
       }
       if (!customerId) throw new Error("Không lấy được customerId");
 
       const branchLabel =
         BRANCHES.find((b) => b.id === selectedBranch)?.label || selectedBranch;
       const fmt = (d) => formatDateForAPIPayload(d);
-      const note = `${customer.fullName} ${phone} ${branchLabel}`.slice(0, 80);
+      const note = `${normalizedCustomer.fullName} ${phone} ${branchLabel}`.slice(
+        0,
+        80,
+      );
 
       if (isMulti) {
-        const bookingRequests = rentalInfoPerDevice.map((r) => {
+        const perDeviceAmounts = rentalInfoPerDevice.map((r) =>
+          Math.round(computeDiscountedPrice(r?.price || 0, t1, t2)),
+        );
+        const distributedVoucher = isFirstOrderVoucherSelected
+          ? allocateDiscountByRatio(
+              perDeviceAmounts,
+              firstOrderAdditionalDiscount,
+            )
+          : perDeviceAmounts.map(() => 0);
+        const perDeviceAfterVoucher = perDeviceAmounts.map((baseAmount, idx) =>
+          Math.max(0, baseAmount - (distributedVoucher[idx] || 0)),
+        );
+        const distributedPointDiscount =
+          pointDiscountAmount > 0
+            ? allocateDiscountByRatio(perDeviceAfterVoucher, pointDiscountAmount)
+            : perDeviceAfterVoucher.map(() => 0);
+        const bookingRequests = rentalInfoPerDevice.map((r, idx) => {
           const dev = r.device;
-          const devPrice = r.price || 0;
-          const devDiscounted = computeDiscountedPrice(devPrice, t1, t2);
+          const devPrice = Math.round(r?.price || 0);
+          const baseDiscounted = Math.round(
+            computeDiscountedPrice(devPrice, t1, t2),
+          );
+          const voucherDiscount = distributedVoucher[idx] || 0;
+          const pointDiscount = distributedPointDiscount[idx] || 0;
+          const finalAmount = Math.max(
+            0,
+            baseDiscounted - voucherDiscount - pointDiscount,
+          );
           return {
             customerId,
             deviceId: dev.id,
             bookingFrom: fmt(t1),
             bookingTo: fmt(t2),
-            total: Math.round(devDiscounted),
+            total: finalAmount,
             note,
             dayOfRent: chargeableDays,
             originalPrice: devPrice,
-            noteVoucher: "NONE",
+            noteVoucher: isFirstOrderVoucherSelected
+              ? "FIRST_ORDER_30_MAX200K"
+              : "NONE",
+            usedPoint: pointToUse,
           };
         });
 
         const payload = {
-          amount: Math.round(discountedTotal),
+          amount: payableTotal,
           description: `Thue ${effectiveDevices.length} may`,
           bookingRequests,
           returnSuccessUrl: `${window.location.origin}/payment-status`,
@@ -570,15 +851,18 @@ export default function QuickBookModal({
           deviceId: dev.id,
           bookingFrom: fmt(t1),
           bookingTo: fmt(t2),
-          total: Math.round(discountedTotal),
+          total: payableTotal,
           note,
           dayOfRent: chargeableDays,
           originalPrice: price,
-          noteVoucher: "NONE",
+          noteVoucher: isFirstOrderVoucherSelected
+            ? "FIRST_ORDER_30_MAX200K"
+            : "NONE",
+          usedPoint: pointToUse,
         };
 
         const payload = {
-          amount: Math.round(discountedTotal),
+          amount: payableTotal,
           description: `Thue ${(dev.name || dev.displayName || "").slice(0, 15)}`,
           bookingRequest,
           returnSuccessUrl: `${window.location.origin}/payment-status`,
@@ -600,7 +884,7 @@ export default function QuickBookModal({
       }
     } catch (err) {
       console.error("Quick book failed:", err);
-      setError(err.response?.data?.message || err.message || "Có lỗi xảy ra");
+      setError(extractApiErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -608,6 +892,7 @@ export default function QuickBookModal({
 
   const handleGoogleLogin = async () => {
     setIsGoogleLoading(true);
+    setIsMemberDataLoading(true);
     setError("");
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -622,15 +907,26 @@ export default function QuickBookModal({
       saveCustomerSession({ token: data.token });
       setCheckoutMode("GOOGLE");
       setHasGoogleSession(true);
+      const [accountRes, bookingsRes] = await Promise.all([
+        api.get("/account"),
+        api.get("/v1/bookings/me"),
+      ]);
+      const account = accountRes?.data || {};
+      const bookings = Array.isArray(bookingsRes?.data) ? bookingsRes.data : [];
+      setMemberBookingsCount(bookings.length);
+      setMemberPoint(Math.max(0, Number(account.point) || 0));
       setCustomer((c) => ({
         ...c,
-        fullName: data.fullName || c.fullName,
-        gmail: data.email || c.gmail,
+        fullName: account.fullName || data.fullName || c.fullName,
+        phone: normalizeValidPhoneOrEmpty(account.phone) || c.phone,
+        gmail: account.email || data.email || c.gmail,
+        ig: account.ig || account.fb || c.ig,
       }));
     } catch (err) {
-      setError(err?.response?.data?.message || err.message || "Không thể đăng nhập Google");
+      setError(extractApiErrorMessage(err, "Không thể đăng nhập Google"));
     } finally {
       setIsGoogleLoading(false);
+      setIsMemberDataLoading(false);
     }
   };
 
@@ -642,7 +938,7 @@ export default function QuickBookModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center pb-24 md:pb-28 sm:pb-0"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-end sm:items-center justify-center p-3 sm:p-4"
         onClick={onClose}
       >
         <motion.div
@@ -651,10 +947,10 @@ export default function QuickBookModal({
           exit={{ y: "100%", opacity: 0 }}
           transition={{ type: "spring", damping: 25, stiffness: 300 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-[#FFFBF5] w-full max-w-md rounded-3xl mb-24 md:mb-28 sm:mb-0 max-h-[calc(100dvh-8.5rem)] sm:max-h-[90vh] overflow-hidden flex flex-col"
+          className="bg-[#FFFBF5] w-full max-w-md md:max-w-2xl rounded-3xl max-h-[94dvh] sm:max-h-[90vh] overflow-hidden flex flex-col"
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-[#FFE4F0]">
+          <div className="flex items-center justify-between p-3 sm:p-4 border-b border-[#FFE4F0]">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden bg-white shrink-0">
                 <img
@@ -732,7 +1028,7 @@ export default function QuickBookModal({
           </div>
 
           {/* Content */}
-          <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4">
+          <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-5">
             {step === 1 && (
               <div>
                 <BookingPrefsForm
@@ -772,337 +1068,415 @@ export default function QuickBookModal({
             )}
 
             {step === 2 && (
-              <div className="space-y-4">
-                <div className="rounded-xl border border-[#FFE4F0] bg-white p-3">
-                  <div className="text-[11px] font-black text-[#666] uppercase tracking-[0.2em] mb-2 px-1">
-                    Cách đặt nhanh
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCheckoutMode("GOOGLE");
-                        handleGoogleLogin();
-                      }}
-                      className={`rounded-xl border-2 px-3 py-2 text-left transition-all ${
-                        checkoutMode === "GOOGLE"
-                          ? "bg-[#222] border-[#222]"
-                          : "bg-white border-[#eee] hover:border-[#FF9FCA]"
-                      }`}
-                    >
-                      <div
-                        className={`text-xs font-black uppercase tracking-wide ${
-                          checkoutMode === "GOOGLE"
-                            ? "text-[#FF9FCA]"
-                            : "text-[#222]"
-                        }`}
-                      >
-                        Google đăng nhập
-                      </div>
-                      <div
-                        className={`text-[11px] mt-1 ${
-                          checkoutMode === "GOOGLE"
-                            ? "text-[#f3d7e6]"
-                            : "text-[#777]"
-                        }`}
-                      >
-                        Điền như vãng lai, tự lưu
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCheckoutMode("GUEST");
-                        clearCustomerSession();
-                        setHasGoogleSession(false);
-                      }}
-                      className={`rounded-xl border-2 px-3 py-2 text-left transition-all ${
-                        checkoutMode === "GUEST"
-                          ? "bg-[#222] border-[#222]"
-                          : "bg-white border-[#eee] hover:border-[#FF9FCA]"
-                      }`}
-                    >
-                      <div
-                        className={`text-xs font-black uppercase tracking-wide ${
-                          checkoutMode === "GUEST"
-                            ? "text-[#FF9FCA]"
-                            : "text-[#222]"
-                        }`}
-                      >
-                        Tiếp tục vãng lai
-                      </div>
-                      <div
-                        className={`text-[11px] mt-1 ${
-                          checkoutMode === "GUEST"
-                            ? "text-[#f3d7e6]"
-                            : "text-[#777]"
-                        }`}
-                      >
-                        Không cần tài khoản
-                      </div>
-                    </button>
-                  </div>
-
-                  {checkoutMode === "GOOGLE" && (
-                    <div className="mt-2 rounded-lg border border-[#FFD7EA] bg-[#FFF6FB] p-2.5 text-xs text-[#666]">
-                      <div className="flex items-center justify-between gap-2">
-                        <span>
-                          {isValidGmail(customer.gmail)
-                            ? `Đã đăng nhập: ${customer.gmail}`
-                            : "Đăng nhập Google để lưu thông tin vào tài khoản khách."}
-                        </span>
-                        {canUseSavedCustomer && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setCustomer((c) => ({
-                                ...c,
-                                fullName: savedCustomer.fullName || "",
-                                phone: normalizeValidPhoneOrEmpty(
-                                  savedCustomer.phone,
-                                ),
-                                gmail: savedCustomer.gmail || "",
-                                ig: savedCustomer.ig || savedCustomer.fb || "",
-                              }))
-                            }
-                            className="shrink-0 rounded-md border border-[#FF9FCA]/40 bg-white px-2 py-1 font-bold text-[#E85C9C] hover:bg-[#fff0f7]"
-                          >
-                            Dùng thông tin đã lưu
-                          </button>
-                        )}
-                      </div>
-                      <div className="mt-2">
-                        <button
-                          type="button"
-                          onClick={handleGoogleLogin}
-                          disabled={isGoogleLoading}
-                          className="rounded-md border border-[#FF9FCA]/40 bg-white px-2.5 py-1 font-bold text-[#E85C9C] hover:bg-[#fff0f7] disabled:opacity-50"
-                        >
-                          {isGoogleLoading ? "Đang đăng nhập..." : "Đăng nhập Google"}
-                        </button>
-                      </div>
+              <div className="space-y-3 sm:space-y-4">
+                {isLoggedInUser ? (
+                  <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-emerald-50/50 p-3 sm:p-4">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                      Tài khoản đã đăng nhập
                     </div>
-                  )}
-                </div>
-                <div>
-                  <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-2 uppercase tracking-[0.2em] px-1">
-                    <User size={14} className="text-[#E85C9C]" />
-                    Họ và tên
-                  </label>
-                  <input
-                    value={customer.fullName}
-                    onChange={(e) =>
-                      setCustomer((c) => ({ ...c, fullName: e.target.value }))
-                    }
-                    placeholder="Nguyễn Thị Bông"
-                    className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none bg-white font-medium text-[#333] ${
-                      fullNameError
-                        ? "border-red-300 focus:border-red-400"
-                        : "border-[#eee] focus:border-[#FF9FCA]"
-                    }`}
-                  />
-                  {fullNameError && (
-                    <p className="mt-1 text-xs text-red-600 font-medium">
-                      {fullNameError}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-2 uppercase tracking-[0.2em] px-1">
-                    <Phone size={14} className="text-[#E85C9C]" />
-                    Số điện thoại
-                  </label>
-                  <input
-                    value={customer.phone}
-                    onChange={(e) =>
-                      setCustomer((c) => ({ ...c, phone: e.target.value }))
-                    }
-                    placeholder="0901234567"
-                    inputMode="tel"
-                    className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none bg-white font-medium text-[#333] ${
-                      phoneError
-                        ? "border-red-300 focus:border-red-400"
-                        : "border-[#eee] focus:border-[#FF9FCA]"
-                    }`}
-                  />
-                  {phoneError && (
-                    <p className="mt-1 text-xs text-red-600 font-medium">
-                      {phoneError}
-                    </p>
-                  )}
-                </div>
-                {checkoutMode === "GOOGLE" && (
-                  <div>
-                    <label className="text-[11px] font-black text-[#666] mb-2 block uppercase tracking-[0.2em] px-1">
-                      Gmail
-                    </label>
-                    <input
-                      value={customer.gmail || ""}
-                      onChange={(e) =>
-                        setCustomer((c) => ({ ...c, gmail: e.target.value }))
-                      }
-                      placeholder="yourname@gmail.com"
-                      inputMode="email"
-                      className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none bg-white font-medium text-[#333] ${
-                        gmailError
-                          ? "border-red-300 focus:border-red-400"
-                          : "border-[#eee] focus:border-[#FF9FCA]"
-                      }`}
-                    />
-                    {gmailError && (
-                      <p className="mt-1 text-xs text-red-600 font-medium">
-                        {gmailError}
-                      </p>
-                    )}
+                    <div className="mt-1 text-base font-black text-[#222]">
+                      Đặt đơn bằng tài khoản của bạn
+                    </div>
+                    <div className="mt-1 text-xs text-[#5f7c6f] font-medium">
+                      Thông tin đã được điền tự động. Bạn có thể chỉnh sửa và hệ
+                      thống sẽ cập nhật khi tạo đơn.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-[#FFD7EA] bg-gradient-to-r from-[#FFF7FB] via-white to-[#FFFDFE] p-3 sm:p-4">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#E85C9C]">
+                      Chọn hình thức đặt
+                    </div>
+                    <div className="mt-1 text-base font-black text-[#222]">
+                      Chọn cách đặt phù hợp
+                    </div>
+                    <div className="mt-1 text-xs text-[#8a6a79] font-medium">
+                      Mỗi hình thức có mức giảm khác nhau, xem trực tiếp trên từng
+                      tab
+                    </div>
                   </div>
                 )}
-                <div>
-                  <label className="text-[11px] font-black text-[#666] mb-2 block uppercase tracking-[0.2em] px-1">
-                    Link Instagram / Facebook
-                  </label>
-                  <input
-                    value={customer.ig}
-                    onChange={(e) =>
-                      setCustomer((c) => ({ ...c, ig: e.target.value }))
-                    }
-                    placeholder="https://instagram.com/username hoặc https://facebook.com/username"
-                    className={`w-full px-4 py-3 rounded-xl border-2 focus:outline-none bg-white font-medium text-[#333] ${
-                      socialLinkError
-                        ? "border-red-300 focus:border-red-400"
-                        : "border-[#eee] focus:border-[#FF9FCA]"
+
+                {/* 2 big tabs */}
+                {!isLoggedInUser && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutMode("GOOGLE")}
+                    className={`rounded-2xl border-2 px-3 py-3 sm:px-4 sm:py-4 text-left transition-all ${
+                      checkoutMode === "GOOGLE"
+                        ? "border-[#E85C9C] bg-gradient-to-br from-[#2B1D26] to-[#1D1D1F] shadow-[0_10px_28px_rgba(232,92,156,0.22)]"
+                        : "border-[#eee] bg-white hover:border-[#FF9FCA] hover:shadow-[0_8px_20px_rgba(255,159,202,0.14)]"
                     }`}
-                  />
-                  {socialLinkError && (
-                    <p className="mt-1 text-xs text-red-600 font-medium">
-                      {socialLinkError}
-                    </p>
-                  )}
-                </div>
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                          checkoutMode === "GOOGLE"
+                            ? "bg-[#FF9FCA]/20 text-[#FFD9EA]"
+                            : "bg-[#FFF0F7] text-[#E85C9C]"
+                        }`}
+                      >
+                        Google
+                      </span>
+
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        <span
+                          className={`rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-black ring-2 ${
+                            checkoutMode === "GOOGLE"
+                              ? "bg-gradient-to-r from-[#FF77B8] to-[#FFB6D9] text-[#1f1f1f] ring-[#FFD3E8]"
+                              : "bg-[#FFEAF4] text-[#C93B82] ring-[#FFD7EA]"
+                          }`}
+                        >
+                          Giảm ngay
+                          <span className="ml-1 text-sm sm:text-base font-extrabold">
+                            {formatPriceK(firstOrderPreviewDiscount)}
+                          </span>
+                        </span>
+                        <div
+                          className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                            checkoutMode === "GOOGLE"
+                              ? "border-[#FF9FCA] bg-[#FF9FCA]"
+                              : "border-[#d7d7d7]"
+                          }`}
+                        >
+                          {checkoutMode === "GOOGLE" && (
+                            <Check
+                              size={11}
+                              className="text-[#222]"
+                              strokeWidth={3}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`mt-3 sm:mt-4 text-base font-black uppercase tracking-wide ${
+                        checkoutMode === "GOOGLE"
+                          ? "text-[#FF9FCA]"
+                          : "text-[#222]"
+                      }`}
+                    >
+                      Đăng nhập
+                    </div>
+
+                    <div
+                      className={`mt-1 text-sm font-bold leading-snug ${
+                        checkoutMode === "GOOGLE" ? "text-white" : "text-[#444]"
+                      }`}
+                    >
+                      Ưu đãi tốt hơn khi đăng nhập
+                    </div>
+
+                    <div
+                      className={`mt-2 sm:mt-3 text-xs leading-relaxed ${
+                        checkoutMode === "GOOGLE"
+                          ? "text-[#F4DCE8]"
+                          : "text-[#777]"
+                      }`}
+                    >
+                      Áp dụng ưu đãi tài khoản Google khi đủ điều kiện
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutMode("GUEST")}
+                    className={`rounded-2xl border-2 px-3 py-3 sm:px-4 sm:py-4 text-left transition-all ${
+                      checkoutMode === "GUEST"
+                        ? "border-[#E85C9C] bg-gradient-to-br from-[#2B1D26] to-[#1D1D1F] shadow-[0_10px_28px_rgba(232,92,156,0.22)]"
+                        : "border-[#eee] bg-white hover:border-[#FF9FCA] hover:shadow-[0_8px_20px_rgba(255,159,202,0.14)]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                          checkoutMode === "GUEST"
+                            ? "bg-[#FF9FCA]/20 text-[#FFD9EA]"
+                            : "bg-[#FFF0F7] text-[#E85C9C]"
+                        }`}
+                      >
+                        Guest
+                      </span>
+
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        <span
+                          className={`rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-black ring-2 ${
+                            checkoutMode === "GUEST"
+                              ? "bg-gradient-to-r from-[#FF77B8] to-[#FFB6D9] text-[#1f1f1f] ring-[#FFD3E8]"
+                              : "bg-[#FFEAF4] text-[#C93B82] ring-[#FFD7EA]"
+                          }`}
+                        >
+                          Giảm ngay
+                          <span className="ml-1 text-sm sm:text-base font-extrabold">
+                            {formatPriceK(basePromotionDiscount)}
+                          </span>
+                        </span>
+                        <div
+                          className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                            checkoutMode === "GUEST"
+                              ? "border-[#FF9FCA] bg-[#FF9FCA]"
+                              : "border-[#d7d7d7]"
+                          }`}
+                        >
+                          {checkoutMode === "GUEST" && (
+                            <Check
+                              size={11}
+                              className="text-[#222]"
+                              strokeWidth={3}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      className={`mt-3 sm:mt-4 text-base font-black uppercase tracking-wide ${
+                        checkoutMode === "GUEST"
+                          ? "text-[#FF9FCA]"
+                          : "text-[#222]"
+                      }`}
+                    >
+                      Vãng lai
+                    </div>
+
+                    <div
+                      className={`mt-1 text-sm font-bold leading-snug ${
+                        checkoutMode === "GUEST" ? "text-white" : "text-[#444]"
+                      }`}
+                    >
+                      Đặt nhanh không cần đăng nhập
+                    </div>
+
+                    <div
+                      className={`mt-2 sm:mt-3 text-xs leading-relaxed ${
+                        checkoutMode === "GUEST"
+                          ? "text-[#F4DCE8]"
+                          : "text-[#777]"
+                      }`}
+                    >Áp dụng khuyến mãi mặc định của shop</div>
+                  </button>
+                  </div>
+                )}
+
+                {/* Google: login or status */}
+                {checkoutMode === "GOOGLE" && !hasGoogleSession && (
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    disabled={isGoogleLoading}
+                    className="w-full rounded-2xl border-2 border-[#FF9FCA] bg-gradient-to-r from-[#FFF0F8] via-white to-[#FFF7FB] px-3 sm:px-4 py-3 text-sm font-black text-[#E85C9C] hover:brightness-[0.98] disabled:opacity-50 transition-colors"
+                  >
+                    {isGoogleLoading ? (
+                      "Đang đăng nhập..."
+                    ) : (
+                      <>
+                        Đăng nhập Google mở ưu đãi đến{" "}
+                        <span className="text-base sm:text-lg text-[#D61F7A]">
+                          {formatPriceK(firstOrderPreviewDiscount)}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {checkoutMode === "GOOGLE" &&
+                  hasGoogleSession &&
+                  (isMemberDataLoading || isFirstOrderPromoEligible) && (
+                  <div
+                    className={`rounded-2xl border px-3 py-3 text-sm font-medium ${
+                      isMemberDataLoading
+                        ? "border-slate-200 bg-slate-50 text-slate-500"
+                        : isFirstOrderPromoEligible
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-amber-200 bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {isMemberDataLoading
+                      ? "Đang kiểm tra ưu đãi tài khoản..."
+                      : isFirstOrderPromoEligible
+                        ? `🎉 Tài khoản đủ điều kiện ưu đãi đơn đầu • Ước tính giảm ${firstOrderPreviewDiscount.toLocaleString("vi-VN")}đ`
+                        : ""}
+                  </div>
+                )}
+
+                {/* Saved info */}
+                {canUseSavedCustomer && shouldShowContactForm && !isLoggedInUser && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCustomer((c) => ({
+                        ...c,
+                        fullName: savedCustomer.fullName || "",
+                        phone: normalizeValidPhoneOrEmpty(savedCustomer.phone),
+                        gmail: savedCustomer.gmail || "",
+                        ig: savedCustomer.ig || savedCustomer.fb || "",
+                      }))
+                    }
+                    className="w-full rounded-2xl border-2 border-dashed border-[#FF9FCA]/50 bg-[#FFF9FC] px-3 py-2.5 text-sm font-bold text-[#E85C9C] hover:bg-[#FFF0F7] transition-colors"
+                  >
+                    Dùng thông tin đã lưu
+                    {savedCustomer.fullName
+                      ? ` • ${savedCustomer.fullName}`
+                      : ""}
+                  </button>
+                )}
+
+                {/* Contact form */}
+                {shouldShowContactForm && (
+                  <div className="rounded-2xl border border-[#FFE4F0] bg-white p-3 sm:p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#666]">
+                          Thông tin người thuê
+                        </div>
+                        <div className="mt-1 text-[11px] text-[#888]">
+                          Điền nhanh để shop xác nhận đơn
+                        </div>
+                      </div>
+
+                      {checkoutMode === "GOOGLE" && hasGoogleSession && (
+                        <div className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                          Đã xác thực
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                        <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-1.5 uppercase tracking-[0.2em] px-1">
+                          <User size={13} className="text-[#E85C9C]" />
+                          Họ và tên
+                        </label>
+                        <input
+                          value={customer.fullName}
+                          onChange={(e) =>
+                            setCustomer((c) => ({
+                              ...c,
+                              fullName: e.target.value,
+                            }))
+                          }
+                          placeholder="Nguyễn Thị Bông"
+                          className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
+                            fullNameError
+                              ? "border-red-300 focus:border-red-400"
+                              : "border-[#eee] focus:border-[#FF9FCA]"
+                          }`}
+                        />
+                        {fullNameError && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">
+                            {fullNameError}
+                          </p>
+                        )}
+                        </div>
+
+                        <div>
+                        <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-1.5 uppercase tracking-[0.2em] px-1">
+                          <Phone size={13} className="text-[#E85C9C]" />
+                          Số điện thoại
+                        </label>
+                        <input
+                          value={customer.phone}
+                          onChange={(e) =>
+                            setCustomer((c) => ({
+                              ...c,
+                              phone: e.target.value,
+                            }))
+                          }
+                          placeholder="0901234567"
+                          inputMode="tel"
+                          className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
+                            phoneError
+                              ? "border-red-300 focus:border-red-400"
+                              : "border-[#eee] focus:border-[#FF9FCA]"
+                          }`}
+                        />
+                        {phoneError && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">
+                            {phoneError}
+                          </p>
+                        )}
+                        </div>
+                      </div>
+
+                      {checkoutMode === "GOOGLE" && (
+                        <div>
+                          <label className="text-[11px] font-black text-[#666] mb-1.5 block uppercase tracking-[0.2em] px-1">
+                            Gmail liên kết
+                          </label>
+                          <div className="flex items-center justify-between gap-3 rounded-xl border border-[#eee] bg-[#fafafa] px-3 py-2.5">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-[#444]">
+                                {customer.gmail || "yourname@gmail.com"}
+                              </div>
+                              <div className="text-[10px] text-[#999]">
+                                Email xác thực từ đăng nhập Google
+                              </div>
+                            </div>
+                            <div className="shrink-0 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                              Verified
+                            </div>
+                          </div>
+                          {gmailError && (
+                            <p className="mt-1 text-xs text-red-600 font-medium">
+                              {gmailError}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="text-[11px] font-black text-[#666] mb-1.5 block uppercase tracking-[0.2em] px-1">
+                          Instagram / Facebook
+                          <span className="ml-1 normal-case tracking-normal font-semibold text-[#999]">
+                            (không bắt buộc)
+                          </span>
+                        </label>
+                        <input
+                          value={customer.ig}
+                          onChange={(e) =>
+                            setCustomer((c) => ({ ...c, ig: e.target.value }))
+                          }
+                          placeholder="https://instagram.com/username"
+                          className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
+                            socialLinkError
+                              ? "border-amber-300 focus:border-amber-400"
+                              : "border-[#eee] focus:border-[#FF9FCA]"
+                          }`}
+                        />
+                        {socialLinkError ? (
+                          <p className="mt-1 text-xs text-amber-700 font-medium">
+                            {socialLinkError}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-[11px] text-[#999] px-1">
+                            Có thể bổ sung để shop hỗ trợ xác nhận nhanh hơn khi
+                            cần
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {step === 3 && (
               <div className="space-y-3">
-                <div className="p-4 bg-gradient-to-r from-[#FFE4F0] to-[#FFF5F8] rounded-xl border border-[#FF9FCA]">
-                  <div className="text-xs text-[#E85C9C] font-black uppercase tracking-wider mb-2">
-                    Thiết bị {isMulti && `(${effectiveDevices.length} máy)`}
+                <div className="rounded-xl border border-[#FFD4E8] bg-[#FFF7FB] px-3 py-2.5 sm:px-4">
+                  <div className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-[#E85C9C]">
+                    Bước cuối: Xác nhận đặt lịch
                   </div>
-                  {isMulti ? (
-                    <div className="space-y-3">
-                      {rentalInfoPerDevice.map((r) => {
-                        const dev = r.device;
-                        const disc = computeDiscountedPrice(
-                          r.price || 0,
-                          t1,
-                          t2,
-                        );
-                        const days = r.chargeableDays ?? chargeableDays;
-                        const fullDays = Math.floor(days);
-                        const basePrice = r.price || 0;
-                        const breakdown =
-                          fullDays > 3
-                            ? formatPriceBreakdown(dev, fullDays)
-                            : null;
-                        const daysLabel =
-                          days >= 1 ? `${Math.round(days)} ngày` : "Gói 6h";
-                        return (
-                          <div
-                            key={dev.id}
-                            className="border-b border-[#FFE4F0] pb-2 last:border-0 last:pb-0"
-                          >
-                            <div className="flex justify-between items-start text-sm gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="font-bold text-[#222]">
-                                  {dev.displayName || dev.name}
-                                </div>
-                                <p className="text-xs text-[#888] mt-0.5">
-                                  {breakdown ||
-                                    `${daysLabel} ${formatPriceK(basePrice)}`}
-                                </p>
-                              </div>
-                              <span className="font-black text-[#E85C9C] shrink-0 text-base">
-                                {formatPriceK(basePrice)}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="flex justify-between items-start gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="font-black text-[#222] uppercase">
-                          {effectiveDevices[0]?.displayName ||
-                            effectiveDevices[0]?.name}
-                        </div>
-                        {(() => {
-                          const r0 = rentalInfoPerDevice[0];
-                          const fullDays = Math.floor(chargeableDays);
-                          const breakdown =
-                            fullDays > 3 && r0?.device
-                              ? formatPriceBreakdown(r0.device, fullDays)
-                              : null;
-                          const base0 = r0?.price || 0;
-                          const daysLabel =
-                            chargeableDays >= 1
-                              ? `${Math.round(chargeableDays)} ngày`
-                              : "Gói 6h";
-                          return (
-                            <p className="text-xs text-[#888] mt-0.5">
-                              {breakdown ||
-                                `${daysLabel} ${formatPriceK(base0)}`}
-                            </p>
-                          );
-                        })()}
-                      </div>
-                      <span className="font-black text-[#E85C9C] shrink-0 text-base">
-                        {formatPriceK(rentalInfoPerDevice[0]?.price || 0)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <div className="p-3 bg-white rounded-xl border border-[#eee]">
-                  <div className="text-xs text-[#999] font-bold mb-1">
-                    Thời gian
-                  </div>
-                  <div className="text-sm text-[#222] space-y-0.5">
-                    {t1 && <div>Nhận: {formatPickupReturnSummary(t1)}</div>}
-                    {t2 && <div>Trả: {formatPickupReturnSummary(t2)}</div>}
-                    {chargeableDays > 0 && (
-                      <div className="font-bold text-[#E85C9C] mt-1">
-                        Tổng cộng:{" "}
-                        {chargeableDays < 1
-                          ? "Gói 6h"
-                          : `${chargeableDays} ngày`}
-                        .
-                      </div>
-                    )}
+                  <div className="mt-1 text-xs sm:text-sm text-[#555]">
+                    Kiểm tra thông tin thuê, áp mã/điểm (nếu có), sau đó bấm
+                    thanh toán để giữ lịch.
                   </div>
                 </div>
-                <div className="p-3 bg-white rounded-xl border border-[#eee]">
-                  <div className="text-xs text-[#999] font-bold mb-1">
-                    Chi nhánh
-                  </div>
-                  <div className="font-black text-sm text-[#222]">
-                    {BRANCHES.find((b) => b.id === selectedBranch)?.label}
-                  </div>
-                </div>
-                <div className="p-3 bg-green-50 rounded-xl border border-green-200">
-                  <div className="text-xs text-green-600 font-bold mb-1">
-                    Khách hàng
-                  </div>
-                  <div className="font-black text-sm text-[#222]">
-                    {customer.fullName?.trim() || "Chưa chọn khách hàng"}
-                  </div>
-                  {customer.phone && (
-                    <div className="text-xs text-[#777]">
-                      {normalizePhone(customer.phone)}
-                    </div>
-                  )}
-                </div>
-                <div className="p-4 bg-[#222] rounded-xl space-y-2">
-                  <div className="text-[10px] text-[#FF9FCA]/80 font-bold uppercase tracking-wider mb-2">
-                    Tổng giá
+                <div className="p-4 bg-[#222] rounded-xl space-y-2.5">
+                  <div className="text-[10px] text-[#FF9FCA]/80 font-bold uppercase tracking-wider">
+                    Thanh toán hôm nay
                   </div>
                   {priceBreakdown && (
                     <>
@@ -1115,54 +1489,309 @@ export default function QuickBookModal({
                           đ
                         </span>
                       </div>
-                      {priceBreakdown.discount > 0 &&
-                        priceBreakdown.discountLabel && (
-                          <div className="flex justify-between items-center text-sm">
-                            <span className="text-[#FF9FCA]">
-                              🔥 {priceBreakdown.discountLabel}
-                            </span>
-                            <span className="font-bold text-[#FF9FCA]">
-                              (-
-                              {(priceBreakdown.discount || 0).toLocaleString(
-                                "vi-VN",
-                              )}
-                              đ)
-                            </span>
-                          </div>
-                        )}
-                      <div className="border-t border-[#444] pt-2 mt-2 flex justify-between items-center">
-                        <span className="font-black text-white uppercase tracking-wider">
-                          ✅ Chỉ còn
-                        </span>
-                        <span className="text-2xl font-black text-[#FF9FCA]">
-                          {(priceBreakdown.discounted || 0).toLocaleString(
-                            "vi-VN",
-                          )}
-                          đ
-                        </span>
-                      </div>
-                      {priceBreakdown.discount > 0 && (
-                        <div className="text-center text-emerald-400 text-sm font-bold pt-1">
-                          💥 Tiết kiệm ngay{" "}
-                          {(priceBreakdown.discount || 0).toLocaleString(
-                            "vi-VN",
-                          )}
-                          đ!
+                      {selectedDiscountAmount > 0 && (
+                        <div className="flex justify-between items-center text-sm">
+                          <span
+                            className={
+                              isFirstOrderVoucherSelected
+                                ? "text-emerald-300"
+                                : "text-[#FF9FCA]"
+                            }
+                          >
+                            {isFirstOrderVoucherSelected ? "🎉" : "🔥"}{" "}
+                            {selectedDiscountLabel}
+                          </span>
+                          <span
+                            className={
+                              isFirstOrderVoucherSelected
+                                ? "font-bold text-emerald-300"
+                                : "font-bold text-[#FF9FCA]"
+                            }
+                          >
+                            (-{selectedDiscountAmount.toLocaleString("vi-VN")}đ)
+                          </span>
+                        </div>
+                      )}
+                      {pointDiscountAmount > 0 && (
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-amber-300">⭐ Dùng điểm</span>
+                          <span className="font-bold text-amber-300">
+                            (-{pointDiscountAmount.toLocaleString("vi-VN")}đ)
+                          </span>
                         </div>
                       )}
                     </>
                   )}
-                  {!priceBreakdown && (
-                    <div className="flex justify-between items-center">
-                      <span className="font-black text-white uppercase tracking-wider">
-                        ✅ Chỉ còn
-                      </span>
-                      <span className="text-2xl font-black text-[#FF9FCA]">
-                        {(discountedTotal || 0).toLocaleString("vi-VN")}đ
+                  {!priceBreakdown && pointDiscountAmount > 0 && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-amber-300">⭐ Dùng điểm</span>
+                      <span className="font-bold text-amber-300">
+                        (-{pointDiscountAmount.toLocaleString("vi-VN")}đ)
                       </span>
                     </div>
                   )}
+                  <div className="border-t border-[#444] pt-2 mt-2 flex justify-between items-center gap-3">
+                    <span className="font-black text-white uppercase tracking-wider">
+                      ✅ Chỉ còn
+                    </span>
+                    <span className="text-xl sm:text-2xl font-black text-[#FF9FCA] shrink-0">
+                      {payableTotal.toLocaleString("vi-VN")}đ
+                    </span>
+                  </div>
+                  {(selectedDiscountAmount > 0 || pointDiscountAmount > 0) && (
+                    <div className="text-center text-emerald-400 text-sm font-bold pt-1">
+                      💥 Tiết kiệm ngay{" "}
+                      {(selectedDiscountAmount + pointDiscountAmount).toLocaleString(
+                        "vi-VN",
+                      )}
+                      đ
+                    </div>
+                  )}
                 </div>
+
+                {isLoggedInUser && (
+                  <div className="p-3 sm:p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                    <div className="text-xs font-bold text-emerald-700">
+                      🎁 Lợi ích cho lần thuê sau
+                    </div>
+                    <div className="mt-1 text-sm text-emerald-900">
+                      <span className="font-semibold">50.000đ = 3 điểm.</span>{" "}
+                      Đơn này cộng{" "}
+                      <span className="font-extrabold">
+                        +{earnedPointPreview.toLocaleString("vi-VN")} điểm
+                      </span>{" "}
+                      vào tài khoản của bạn.
+                    </div>
+                  </div>
+                )}
+
+                {isLoggedInUser && (
+                  <div className="p-3 sm:p-4 bg-amber-50 rounded-xl border border-amber-200">
+                    <div className="flex items-start sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs text-amber-700 font-bold">
+                          Điểm thành viên
+                        </div>
+                        <div className="mt-1 text-[11px] text-amber-800/90">
+                          1 điểm = 1.000đ
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPointToUse(maxPointToUse)}
+                        className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[11px] sm:text-xs font-bold text-amber-700 hover:bg-amber-100 transition-colors"
+                      >
+                        Dùng tối đa
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPointToUse(0)}
+                        className="rounded-lg border border-amber-300 bg-white px-2 py-2 text-[11px] sm:text-xs font-bold text-amber-700 hover:bg-amber-100 transition-colors"
+                      >
+                        Không dùng điểm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPointToUse(
+                            Math.max(0, Math.floor(Math.min(maxPointToUse, memberPoint * 0.5))),
+                          )
+                        }
+                        className="rounded-lg border border-amber-300 bg-white px-2 py-2 text-[11px] sm:text-xs font-bold text-amber-700 hover:bg-amber-100 transition-colors"
+                      >
+                        Dùng 50%
+                      </button>
+                    </div>
+
+                    <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={maxPointToUse}
+                        value={pointToUse}
+                        onChange={(e) => {
+                          const next = Number(e.target.value);
+                          if (!Number.isFinite(next)) {
+                            setPointToUse(0);
+                            return;
+                          }
+                          setPointToUse(
+                            Math.max(0, Math.min(Math.floor(next), maxPointToUse)),
+                          );
+                        }}
+                        className="w-full sm:w-40 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-[#333] focus:outline-none focus:border-amber-500"
+                      />
+                      <span className="text-xs sm:text-sm font-semibold text-amber-800/90">
+                        Trừ ngay {pointDiscountAmount.toLocaleString("vi-VN")}đ
+                      </span>
+                    </div>
+
+                    <div className="mt-3 space-y-1 text-xs text-amber-900/90">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Điểm hiện có</span>
+                        <span className="font-extrabold">
+                          {memberPoint.toLocaleString("vi-VN")} điểm
+                        </span>
+                      </div>
+                      {pointDiscountAmount > 0 && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span>Đang sử dụng</span>
+                          <span className="font-extrabold">
+                            {pointToUse.toLocaleString("vi-VN")} điểm (
+                            {pointDiscountAmount.toLocaleString("vi-VN")}đ)
+                          </span>
+                        </div>
+                      )}
+                      <div className="text-[11px] text-amber-800 pt-1">
+                        Điểm được lưu trên tài khoản và dùng cho các đơn thuê sau.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="p-3 sm:p-4 bg-white rounded-xl border border-[#eee] space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-black uppercase tracking-wider text-[#E85C9C]">
+                      Tóm tắt đơn thuê
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="rounded-lg border border-[#FFD4E8] bg-[#FFF7FB] px-2.5 py-1 text-[11px] font-bold text-[#E85C9C] hover:bg-[#FFEAF3] transition-colors"
+                    >
+                      Sửa thời gian/máy
+                    </button>
+                  </div>
+                  <div className="p-3 bg-[#FFF5F8] rounded-xl border border-[#FFE4F0]">
+                    <div className="text-[11px] text-[#E85C9C] font-bold uppercase tracking-wider mb-2">
+                      Thiết bị {isMulti && `(${effectiveDevices.length} máy)`}
+                    </div>
+                    {isMulti ? (
+                      <div className="space-y-3">
+                        {rentalInfoPerDevice.map((r) => {
+                          const dev = r.device;
+                          const days = r.chargeableDays ?? chargeableDays;
+                          const fullDays = Math.floor(days);
+                          const basePrice = r.price || 0;
+                          const breakdown =
+                            fullDays > 3
+                              ? formatPriceBreakdown(dev, fullDays)
+                              : null;
+                          const daysLabel =
+                            days >= 1 ? `${Math.round(days)} ngày` : "Gói 6h";
+                          return (
+                            <div
+                              key={dev.id}
+                              className="border-b border-[#FFE4F0] pb-2 last:border-0 last:pb-0"
+                            >
+                              <div className="flex justify-between items-start text-sm gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-bold text-[#222]">
+                                    {dev.displayName || dev.name}
+                                  </div>
+                                  <p className="text-xs text-[#888] mt-0.5">
+                                    {breakdown ||
+                                      `${daysLabel} ${formatPriceK(basePrice)}`}
+                                  </p>
+                                </div>
+                                <span className="font-black text-[#E85C9C] shrink-0 text-base">
+                                  {formatPriceK(basePrice)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-black text-[#222] uppercase">
+                            {effectiveDevices[0]?.displayName ||
+                              effectiveDevices[0]?.name}
+                          </div>
+                          {(() => {
+                            const r0 = rentalInfoPerDevice[0];
+                            const fullDays = Math.floor(chargeableDays);
+                            const breakdown =
+                              fullDays > 3 && r0?.device
+                                ? formatPriceBreakdown(r0.device, fullDays)
+                                : null;
+                            const base0 = r0?.price || 0;
+                            const daysLabel =
+                              chargeableDays >= 1
+                                ? `${Math.round(chargeableDays)} ngày`
+                                : "Gói 6h";
+                            return (
+                              <p className="text-xs text-[#888] mt-0.5">
+                                {breakdown ||
+                                  `${daysLabel} ${formatPriceK(base0)}`}
+                              </p>
+                            );
+                          })()}
+                        </div>
+                        <span className="font-black text-[#E85C9C] shrink-0 text-base">
+                          {formatPriceK(rentalInfoPerDevice[0]?.price || 0)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="p-3 bg-white rounded-xl border border-[#eee]">
+                      <div className="text-xs text-[#999] font-bold mb-1">
+                        Thời gian
+                      </div>
+                      <div className="text-sm text-[#222] space-y-0.5">
+                        {t1 && <div>Nhận: {formatPickupReturnSummary(t1)}</div>}
+                        {t2 && <div>Trả: {formatPickupReturnSummary(t2)}</div>}
+                        {chargeableDays > 0 && (
+                          <div className="font-bold text-[#E85C9C] mt-1">
+                            Tổng cộng:{" "}
+                            {chargeableDays < 1
+                              ? "Gói 6h"
+                              : `${chargeableDays} ngày`}
+                            .
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl border border-[#eee]">
+                      <div className="text-xs text-[#999] font-bold mb-1">
+                        Chi nhánh
+                      </div>
+                      <div className="font-black text-sm text-[#222]">
+                        {BRANCHES.find((b) => b.id === selectedBranch)?.label}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-green-50 rounded-xl border border-green-200">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs text-green-600 font-bold mb-1">
+                        Khách hàng
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setStep(2)}
+                        className="rounded-lg border border-green-200 bg-white px-2 py-1 text-[11px] font-bold text-green-700 hover:bg-green-100 transition-colors"
+                      >
+                        Sửa khách
+                      </button>
+                    </div>
+                    <div className="font-black text-sm text-[#222]">
+                      {customer.fullName?.trim() || "Chưa chọn khách hàng"}
+                    </div>
+                    {customer.phone && (
+                      <div className="text-xs text-[#777]">
+                        {normalizePhone(customer.phone)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
                   <div className="text-xs text-emerald-700 font-bold mb-0.5">
                     🎁 Đặc biệt: Chương trình "Cọc 0 đồng"
@@ -1171,6 +1800,84 @@ export default function QuickBookModal({
                     ✅ Chỉ cần CCCD bản gốc (Shop chỉ chụp lại, không giữ máy)
                     hoặc VNeID định danh mức 2.
                   </div>
+                </div>
+                <div
+                  ref={agreementSectionRef}
+                  className="p-3 bg-white rounded-xl border border-[#eee] space-y-2"
+                >
+                  <div className="text-xs font-bold uppercase tracking-wider text-[#E85C9C]">
+                    Cam kết trước khi thanh toán
+                  </div>
+                  <label
+                    className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-xs sm:text-sm transition-colors ${
+                      agreementErrors.noResellOrPawn
+                        ? "border-red-300 bg-red-50 text-red-700"
+                        : "border-[#eee] bg-[#fafafa] text-[#444]"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={agreeNoResellOrPawn}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setAgreeNoResellOrPawn(checked);
+                        setAgreementErrors((prev) => ({
+                          ...prev,
+                          noResellOrPawn: !checked && prev.noResellOrPawn,
+                        }));
+                      }}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-[#E85C9C]"
+                    />
+                    <span>
+                      Cam kết không sử dụng máy dưới các mục đích như cầm, bán
+                      hoặc cho thuê lại. Nếu phát hiện vi phạm, tôi đồng ý bồi
+                      thường chi phí theo đúng nội dung đã nêu trong hợp đồng.{" "}
+                      <a
+                        href="https://example.com/hop-dong-thue-may"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold underline"
+                      >
+                        Xem hợp đồng
+                      </a>{" "}
+                      và{" "}
+                      <a
+                        href="https://example.com/chinh-sach-boi-thuong"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold underline"
+                      >
+                        Chính sách bồi thường
+                      </a>
+                      .
+                    </span>
+                  </label>
+                  <label
+                    className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-xs sm:text-sm transition-colors ${
+                      agreementErrors.confirmPickupReturnTime
+                        ? "border-red-300 bg-red-50 text-red-700"
+                        : "border-[#eee] bg-[#fafafa] text-[#444]"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={agreeConfirmPickupReturnTime}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setAgreeConfirmPickupReturnTime(checked);
+                        setAgreementErrors((prev) => ({
+                          ...prev,
+                          confirmPickupReturnTime:
+                            !checked && prev.confirmPickupReturnTime,
+                        }));
+                      }}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-[#E85C9C]"
+                    />
+                    <span>
+                      Xác nhận đã đúng giờ nhận/trả. Nếu cần thay đổi, tôi sẽ
+                      nhắn trực tiếp cho page.
+                    </span>
+                  </label>
                 </div>
                 {error && (
                   <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm font-bold border border-red-200">
@@ -1182,16 +1889,16 @@ export default function QuickBookModal({
           </div>
 
           {/* Footer */}
-          <div className="p-4 border-t border-[#FFE4F0] bg-white">
+          <div className="p-3 sm:p-4 border-t border-[#FFE4F0] bg-white">
             <div
               className={`grid gap-3 ${
-                step > 1 ? "grid-cols-2" : "grid-cols-1"
+                step > 1 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
               }`}
             >
               {step > 1 && (
                 <button
                   onClick={() => setStep(step - 1)}
-                  className="min-w-0 py-3 rounded-xl border-2 border-[#222] text-[#222] font-black uppercase tracking-wider hover:bg-[#f5f5f5] transition-colors"
+                  className="min-w-0 py-3 rounded-xl border-2 border-[#222] text-[#222] text-sm sm:text-base font-black uppercase tracking-wider hover:bg-[#f5f5f5] transition-colors order-2 sm:order-1"
                 >
                   Quay lại
                 </button>
@@ -1206,17 +1913,23 @@ export default function QuickBookModal({
                         !!timeSelectionError)) ||
                     (step === 2 && !isCustomerValid)
                   }
-                  className="min-w-0 py-3 rounded-xl bg-[#222] text-[#FF9FCA] font-black uppercase tracking-wider hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999]"
+                  className="min-w-0 py-3 rounded-xl bg-[#222] text-[#FF9FCA] text-sm sm:text-base font-black uppercase tracking-wider hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999] order-1 sm:order-2"
                 >
-                  Tiếp tục
+                  {step === 2
+                    ? `Tiếp tục • còn ${Math.round(payableTotal / 1000)}k`
+                    : "Tiếp tục"}
                 </button>
               ) : (
                 <button
                   onClick={handleSubmit}
                   disabled={!isCustomerValid || isSubmitting}
-                  className="min-w-0 py-3 rounded-xl bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white font-black uppercase tracking-wider hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="min-w-0 py-3 rounded-xl bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white text-sm sm:text-base font-black uppercase tracking-wider hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 order-1 sm:order-2"
                 >
-                  {isSubmitting ? "Đang xử lý..." : <>Thanh toán</>}
+                  {isSubmitting ? (
+                    "Đang xử lý..."
+                  ) : (
+                    <>Thanh toán • {payableTotal.toLocaleString("vi-VN")}đ</>
+                  )}
                 </button>
               )}
             </div>

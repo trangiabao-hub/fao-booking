@@ -38,7 +38,6 @@ const STATUS_STYLES = {
   TEST: "border-slate-200 bg-slate-50 text-slate-700",
 };
 
-const CANCELABLE_STATUSES = new Set(["PAYMENT", "CREATED"]);
 const ACTIVE_SCHEDULE_STATUSES = new Set(["PAYMENT", "IN_RENT", "CREATED"]);
 
 function formatDateTime(value) {
@@ -72,7 +71,6 @@ export default function AccountBookingsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [bookings, setBookings] = useState([]);
   const [error, setError] = useState("");
-  const [cancellingId, setCancellingId] = useState(null);
   const [pendingOrder, setPendingOrder] = useState(() => loadRecentOrder());
 
   const hasSession = !!loadCustomerSession()?.token;
@@ -161,25 +159,6 @@ export default function AccountBookingsPage() {
 
     return () => clearInterval(timer);
   }, [hasSession, pendingOrder?.orderCode, pendingOrder?.orderIdNew]);
-
-  const handleCancelBooking = async (bookingId) => {
-    const shouldCancel = window.confirm("Bạn chắc chắn muốn hủy đơn này?");
-    if (!shouldCancel) return;
-
-    setCancellingId(bookingId);
-    setError("");
-
-    try {
-      await api.put(`/v1/bookings/me/${bookingId}/cancel`);
-      setBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, status: "CANCEL" } : b)),
-      );
-    } catch (err) {
-      setError(err?.response?.data?.message || "Không thể hủy đơn này.");
-    } finally {
-      setCancellingId(null);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff8fb_0%,_#fdf2f7_35%,_#f8efe8_100%)] px-3 py-5 pb-32 md:px-4 md:py-6 md:pb-36">
@@ -339,7 +318,6 @@ export default function AccountBookingsPage() {
                 {bookingList.map((booking) => {
                   const deviceName = booking?.device?.name || "Thiết bị";
                   const status = booking?.status || "CREATED";
-                  const canCancel = CANCELABLE_STATUSES.has(status);
 
                   return (
                     <div
@@ -418,18 +396,6 @@ export default function AccountBookingsPage() {
                           </Link>
                         )}
 
-                        {canCancel && (
-                          <button
-                            type="button"
-                            disabled={cancellingId === booking.id}
-                            onClick={() => handleCancelBooking(booking.id)}
-                            className="inline-flex w-full items-center justify-center rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50 sm:w-auto sm:py-3"
-                          >
-                            {cancellingId === booking.id
-                              ? "Đang hủy..."
-                              : "Hủy đơn"}
-                          </button>
-                        )}
                       </div>
                     </div>
                   );
