@@ -50,8 +50,7 @@ function getMemberTier(totalSpent = 0) {
     emoji: "✨",
     cardClass:
       "border-rose-200 bg-[radial-gradient(circle_at_top_left,_#fff7fb_0%,_#ffe7f2_35%,_#fbcfe8_100%)] text-rose-950 shadow-[0_20px_50px_rgba(225,29,72,0.14)]",
-    badgeClass:
-      "border-rose-300/70 bg-white/55 text-rose-900 backdrop-blur",
+    badgeClass: "border-rose-300/70 bg-white/55 text-rose-900 backdrop-blur",
     pointCardClass: "border-white/50 bg-white/35 text-rose-950 backdrop-blur",
     accentClass: "bg-rose-900/75",
     ringClass: "border-white/40",
@@ -286,7 +285,8 @@ export default function AccountPage() {
                       {tier.emoji} {tier.name}
                     </div>
                     <div className="mt-1 text-xs opacity-80">
-                      Chi tiêu: {Number(totalSpent || 0).toLocaleString("vi-VN")} đ
+                      Chi tiêu:{" "}
+                      {Number(totalSpent || 0).toLocaleString("vi-VN")} đ
                     </div>
                   </div>
 
@@ -309,9 +309,10 @@ export default function AccountPage() {
                         <>Bạn có thể dùng điểm để trừ trực tiếp vào đơn hàng.</>
                       ) : (
                         <>
-                          Quy đổi ngay: <b>{memberPoint.toLocaleString("vi-VN")} điểm</b> =
-                          {" "}
-                          <b>{redeemValue.toLocaleString("vi-VN")}đ</b> khi thuê máy.
+                          Quy đổi ngay:{" "}
+                          <b>{memberPoint.toLocaleString("vi-VN")} điểm</b> ={" "}
+                          <b>{redeemValue.toLocaleString("vi-VN")}đ</b> khi thuê
+                          máy.
                         </>
                       )}
                     </div>
@@ -412,7 +413,8 @@ export default function AccountPage() {
               </div>
               <p>
                 Dưới <b>1.000.000đ</b>: <b>Thành viên</b>.<br />
-                Từ <b>1.000.000đ đến 3.000.000đ</b>: <b>Thành viên bạc</b>.<br />
+                Từ <b>1.000.000đ đến 3.000.000đ</b>: <b>Thành viên bạc</b>.
+                <br />
                 Trên <b>3.000.000đ</b>: <b>Thành viên VIP</b>.
               </p>
             </div>
@@ -427,8 +429,8 @@ export default function AccountPage() {
                 Thành viên VIP: <b>50.000đ = 3 điểm</b>.
               </p>
               <p className="mt-2 text-xs text-[#8b5f75]">
-                Hạng hiện tại của bạn: <b>{tier.name}</b>. Điểm được cộng vào tài
-                khoản sau khi đơn hoàn tất.
+                Hạng hiện tại của bạn: <b>{tier.name}</b>. Điểm được cộng vào
+                tài khoản sau khi đơn hoàn tất.
               </p>
             </div>
 
@@ -438,8 +440,8 @@ export default function AccountPage() {
               </div>
               <p>
                 <b>1 điểm = 1.000đ</b>, có thể trừ trực tiếp vào tổng tiền đơn
-                hàng ở trang đặt lịch. Bạn có thể tự chọn số điểm muốn dùng trước
-                khi thanh toán.
+                hàng ở trang đặt lịch. Bạn có thể tự chọn số điểm muốn dùng
+                trước khi thanh toán.
               </p>
             </div>
           </div>

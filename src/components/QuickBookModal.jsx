@@ -88,6 +88,16 @@ function normalizeValidPhoneOrEmpty(rawPhone) {
   return /^0\d{9}$/.test(normalized) ? normalized : "";
 }
 
+function normalizeDeviceName(name = "") {
+  return String(name).replace(/\s*\(\d+\)\s*$/, "").trim();
+}
+
+function getModelIdentity(device) {
+  const modelKey = String(device?.modelKey || "").trim();
+  if (modelKey) return modelKey.toLowerCase();
+  return normalizeDeviceName(device?.name || device?.displayName || "").toLowerCase();
+}
+
 function getOrderCodeFromPaymentResponse(data) {
   if (data?.orderCode) return data.orderCode;
   try {
@@ -461,10 +471,17 @@ export default function QuickBookModal({
           },
         });
         const data = resp.data || [];
-        const busy = data.some(
-          (d) => d.id === device.id && d.bookingDtos?.length > 0,
+        const selectedModelIdentity = getModelIdentity(device);
+        const isBusy = (d) =>
+          Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
+        const sameModelDevices = data.filter(
+          (d) => getModelIdentity(d) === selectedModelIdentity,
         );
-        setIsAvailable(!busy);
+        const soldOut =
+          sameModelDevices.length > 0
+            ? sameModelDevices.every(isBusy)
+            : data.some((d) => d.id === device.id && isBusy(d));
+        setIsAvailable(!soldOut);
       }
     } catch (err) {
       console.error("Availability check failed:", err);
@@ -547,7 +564,9 @@ export default function QuickBookModal({
       .then(([accountRes, bookingsRes]) => {
         if (!mounted) return;
         const account = accountRes?.data || {};
-        const bookings = Array.isArray(bookingsRes?.data) ? bookingsRes.data : [];
+        const bookings = Array.isArray(bookingsRes?.data)
+          ? bookingsRes.data
+          : [];
         setMemberBookingsCount(bookings.length);
         setMemberPoint(Math.max(0, Number(account.point) || 0));
       })
@@ -774,10 +793,8 @@ export default function QuickBookModal({
       const branchLabel =
         BRANCHES.find((b) => b.id === selectedBranch)?.label || selectedBranch;
       const fmt = (d) => formatDateForAPIPayload(d);
-      const note = `${normalizedCustomer.fullName} ${phone} ${branchLabel}`.slice(
-        0,
-        80,
-      );
+      const note =
+        `${normalizedCustomer.fullName} ${phone} ${branchLabel}`.slice(0, 80);
 
       if (isMulti) {
         const perDeviceAmounts = rentalInfoPerDevice.map((r) =>
@@ -794,7 +811,10 @@ export default function QuickBookModal({
         );
         const distributedPointDiscount =
           pointDiscountAmount > 0
-            ? allocateDiscountByRatio(perDeviceAfterVoucher, pointDiscountAmount)
+            ? allocateDiscountByRatio(
+                perDeviceAfterVoucher,
+                pointDiscountAmount,
+              )
             : perDeviceAfterVoucher.map(() => 0);
         const bookingRequests = rentalInfoPerDevice.map((r, idx) => {
           const dev = r.device;
@@ -1091,8 +1111,8 @@ export default function QuickBookModal({
                       Chọn cách đặt phù hợp
                     </div>
                     <div className="mt-1 text-xs text-[#8a6a79] font-medium">
-                      Mỗi hình thức có mức giảm khác nhau, xem trực tiếp trên từng
-                      tab
+                      Mỗi hình thức có mức giảm khác nhau, xem trực tiếp trên
+                      từng tab
                     </div>
                   </div>
                 )}
@@ -1100,163 +1120,169 @@ export default function QuickBookModal({
                 {/* 2 big tabs */}
                 {!isLoggedInUser && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setCheckoutMode("GOOGLE")}
-                    className={`rounded-2xl border-2 px-3 py-3 sm:px-4 sm:py-4 text-left transition-all ${
-                      checkoutMode === "GOOGLE"
-                        ? "border-[#E85C9C] bg-gradient-to-br from-[#2B1D26] to-[#1D1D1F] shadow-[0_10px_28px_rgba(232,92,156,0.22)]"
-                        : "border-[#eee] bg-white hover:border-[#FF9FCA] hover:shadow-[0_8px_20px_rgba(255,159,202,0.14)]"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                    <button
+                      type="button"
+                      onClick={() => setCheckoutMode("GOOGLE")}
+                      className={`rounded-2xl border-2 px-3 py-3 sm:px-4 sm:py-4 text-left transition-all ${
+                        checkoutMode === "GOOGLE"
+                          ? "border-[#E85C9C] bg-gradient-to-br from-[#2B1D26] to-[#1D1D1F] shadow-[0_10px_28px_rgba(232,92,156,0.22)]"
+                          : "border-[#eee] bg-white hover:border-[#FF9FCA] hover:shadow-[0_8px_20px_rgba(255,159,202,0.14)]"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                            checkoutMode === "GOOGLE"
+                              ? "bg-[#FF9FCA]/20 text-[#FFD9EA]"
+                              : "bg-[#FFF0F7] text-[#E85C9C]"
+                          }`}
+                        >
+                          Google
+                        </span>
+
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                          <span
+                            className={`rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-black ring-2 ${
+                              checkoutMode === "GOOGLE"
+                                ? "bg-gradient-to-r from-[#FF77B8] to-[#FFB6D9] text-[#1f1f1f] ring-[#FFD3E8]"
+                                : "bg-[#FFEAF4] text-[#C93B82] ring-[#FFD7EA]"
+                            }`}
+                          >
+                            Giảm ngay
+                            <span className="ml-1 text-sm sm:text-base font-extrabold">
+                              {formatPriceK(firstOrderPreviewDiscount)}
+                            </span>
+                          </span>
+                          <div
+                            className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                              checkoutMode === "GOOGLE"
+                                ? "border-[#FF9FCA] bg-[#FF9FCA]"
+                                : "border-[#d7d7d7]"
+                            }`}
+                          >
+                            {checkoutMode === "GOOGLE" && (
+                              <Check
+                                size={11}
+                                className="text-[#222]"
+                                strokeWidth={3}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        className={`mt-3 sm:mt-4 text-base font-black uppercase tracking-wide ${
                           checkoutMode === "GOOGLE"
-                            ? "bg-[#FF9FCA]/20 text-[#FFD9EA]"
-                            : "bg-[#FFF0F7] text-[#E85C9C]"
+                            ? "text-[#FF9FCA]"
+                            : "text-[#222]"
                         }`}
                       >
-                        Google
-                      </span>
+                        Đăng nhập
+                      </div>
 
-                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                      <div
+                        className={`mt-1 text-sm font-bold leading-snug ${
+                          checkoutMode === "GOOGLE"
+                            ? "text-white"
+                            : "text-[#444]"
+                        }`}
+                      >
+                        Ưu đãi tốt hơn khi đăng nhập
+                      </div>
+
+                      <div
+                        className={`mt-2 sm:mt-3 text-xs leading-relaxed ${
+                          checkoutMode === "GOOGLE"
+                            ? "text-[#F4DCE8]"
+                            : "text-[#777]"
+                        }`}
+                      >
+                        Áp dụng ưu đãi tài khoản Google khi đủ điều kiện
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setCheckoutMode("GUEST")}
+                      className={`rounded-2xl border-2 px-3 py-3 sm:px-4 sm:py-4 text-left transition-all ${
+                        checkoutMode === "GUEST"
+                          ? "border-[#E85C9C] bg-gradient-to-br from-[#2B1D26] to-[#1D1D1F] shadow-[0_10px_28px_rgba(232,92,156,0.22)]"
+                          : "border-[#eee] bg-white hover:border-[#FF9FCA] hover:shadow-[0_8px_20px_rgba(255,159,202,0.14)]"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
                         <span
-                          className={`rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-black ring-2 ${
-                            checkoutMode === "GOOGLE"
-                              ? "bg-gradient-to-r from-[#FF77B8] to-[#FFB6D9] text-[#1f1f1f] ring-[#FFD3E8]"
-                              : "bg-[#FFEAF4] text-[#C93B82] ring-[#FFD7EA]"
+                          className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                            checkoutMode === "GUEST"
+                              ? "bg-[#FF9FCA]/20 text-[#FFD9EA]"
+                              : "bg-[#FFF0F7] text-[#E85C9C]"
                           }`}
                         >
-                          Giảm ngay
-                          <span className="ml-1 text-sm sm:text-base font-extrabold">
-                            {formatPriceK(firstOrderPreviewDiscount)}
-                          </span>
+                          Guest
                         </span>
-                        <div
-                          className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                            checkoutMode === "GOOGLE"
-                              ? "border-[#FF9FCA] bg-[#FF9FCA]"
-                              : "border-[#d7d7d7]"
-                          }`}
-                        >
-                          {checkoutMode === "GOOGLE" && (
-                            <Check
-                              size={11}
-                              className="text-[#222]"
-                              strokeWidth={3}
-                            />
-                          )}
+
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                          <span
+                            className={`rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-black ring-2 ${
+                              checkoutMode === "GUEST"
+                                ? "bg-gradient-to-r from-[#FF77B8] to-[#FFB6D9] text-[#1f1f1f] ring-[#FFD3E8]"
+                                : "bg-[#FFEAF4] text-[#C93B82] ring-[#FFD7EA]"
+                            }`}
+                          >
+                            Giảm ngay
+                            <span className="ml-1 text-sm sm:text-base font-extrabold">
+                              {formatPriceK(basePromotionDiscount)}
+                            </span>
+                          </span>
+                          <div
+                            className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                              checkoutMode === "GUEST"
+                                ? "border-[#FF9FCA] bg-[#FF9FCA]"
+                                : "border-[#d7d7d7]"
+                            }`}
+                          >
+                            {checkoutMode === "GUEST" && (
+                              <Check
+                                size={11}
+                                className="text-[#222]"
+                                strokeWidth={3}
+                              />
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div
-                      className={`mt-3 sm:mt-4 text-base font-black uppercase tracking-wide ${
-                        checkoutMode === "GOOGLE"
-                          ? "text-[#FF9FCA]"
-                          : "text-[#222]"
-                      }`}
-                    >
-                      Đăng nhập
-                    </div>
-
-                    <div
-                      className={`mt-1 text-sm font-bold leading-snug ${
-                        checkoutMode === "GOOGLE" ? "text-white" : "text-[#444]"
-                      }`}
-                    >
-                      Ưu đãi tốt hơn khi đăng nhập
-                    </div>
-
-                    <div
-                      className={`mt-2 sm:mt-3 text-xs leading-relaxed ${
-                        checkoutMode === "GOOGLE"
-                          ? "text-[#F4DCE8]"
-                          : "text-[#777]"
-                      }`}
-                    >
-                      Áp dụng ưu đãi tài khoản Google khi đủ điều kiện
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setCheckoutMode("GUEST")}
-                    className={`rounded-2xl border-2 px-3 py-3 sm:px-4 sm:py-4 text-left transition-all ${
-                      checkoutMode === "GUEST"
-                        ? "border-[#E85C9C] bg-gradient-to-br from-[#2B1D26] to-[#1D1D1F] shadow-[0_10px_28px_rgba(232,92,156,0.22)]"
-                        : "border-[#eee] bg-white hover:border-[#FF9FCA] hover:shadow-[0_8px_20px_rgba(255,159,202,0.14)]"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                      <div
+                        className={`mt-3 sm:mt-4 text-base font-black uppercase tracking-wide ${
                           checkoutMode === "GUEST"
-                            ? "bg-[#FF9FCA]/20 text-[#FFD9EA]"
-                            : "bg-[#FFF0F7] text-[#E85C9C]"
+                            ? "text-[#FF9FCA]"
+                            : "text-[#222]"
                         }`}
                       >
-                        Guest
-                      </span>
-
-                      <div className="flex items-center gap-2 flex-wrap justify-end">
-                        <span
-                          className={`rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-black ring-2 ${
-                            checkoutMode === "GUEST"
-                              ? "bg-gradient-to-r from-[#FF77B8] to-[#FFB6D9] text-[#1f1f1f] ring-[#FFD3E8]"
-                              : "bg-[#FFEAF4] text-[#C93B82] ring-[#FFD7EA]"
-                          }`}
-                        >
-                          Giảm ngay
-                          <span className="ml-1 text-sm sm:text-base font-extrabold">
-                            {formatPriceK(basePromotionDiscount)}
-                          </span>
-                        </span>
-                        <div
-                          className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                            checkoutMode === "GUEST"
-                              ? "border-[#FF9FCA] bg-[#FF9FCA]"
-                              : "border-[#d7d7d7]"
-                          }`}
-                        >
-                          {checkoutMode === "GUEST" && (
-                            <Check
-                              size={11}
-                              className="text-[#222]"
-                              strokeWidth={3}
-                            />
-                          )}
-                        </div>
+                        Vãng lai
                       </div>
-                    </div>
 
-                    <div
-                      className={`mt-3 sm:mt-4 text-base font-black uppercase tracking-wide ${
-                        checkoutMode === "GUEST"
-                          ? "text-[#FF9FCA]"
-                          : "text-[#222]"
-                      }`}
-                    >
-                      Vãng lai
-                    </div>
+                      <div
+                        className={`mt-1 text-sm font-bold leading-snug ${
+                          checkoutMode === "GUEST"
+                            ? "text-white"
+                            : "text-[#444]"
+                        }`}
+                      >
+                        Đặt nhanh không cần đăng nhập
+                      </div>
 
-                    <div
-                      className={`mt-1 text-sm font-bold leading-snug ${
-                        checkoutMode === "GUEST" ? "text-white" : "text-[#444]"
-                      }`}
-                    >
-                      Đặt nhanh không cần đăng nhập
-                    </div>
-
-                    <div
-                      className={`mt-2 sm:mt-3 text-xs leading-relaxed ${
-                        checkoutMode === "GUEST"
-                          ? "text-[#F4DCE8]"
-                          : "text-[#777]"
-                      }`}
-                    >Áp dụng khuyến mãi mặc định của shop</div>
-                  </button>
+                      <div
+                        className={`mt-2 sm:mt-3 text-xs leading-relaxed ${
+                          checkoutMode === "GUEST"
+                            ? "text-[#F4DCE8]"
+                            : "text-[#777]"
+                        }`}
+                      >
+                        Áp dụng khuyến mãi mặc định của shop
+                      </div>
+                    </button>
                   </div>
                 )}
 
@@ -1284,44 +1310,48 @@ export default function QuickBookModal({
                 {checkoutMode === "GOOGLE" &&
                   hasGoogleSession &&
                   (isMemberDataLoading || isFirstOrderPromoEligible) && (
-                  <div
-                    className={`rounded-2xl border px-3 py-3 text-sm font-medium ${
-                      isMemberDataLoading
-                        ? "border-slate-200 bg-slate-50 text-slate-500"
+                    <div
+                      className={`rounded-2xl border px-3 py-3 text-sm font-medium ${
+                        isMemberDataLoading
+                          ? "border-slate-200 bg-slate-50 text-slate-500"
+                          : isFirstOrderPromoEligible
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-amber-200 bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {isMemberDataLoading
+                        ? "Đang kiểm tra ưu đãi tài khoản..."
                         : isFirstOrderPromoEligible
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : "border-amber-200 bg-amber-50 text-amber-700"
-                    }`}
-                  >
-                    {isMemberDataLoading
-                      ? "Đang kiểm tra ưu đãi tài khoản..."
-                      : isFirstOrderPromoEligible
-                        ? `🎉 Tài khoản đủ điều kiện ưu đãi đơn đầu • Ước tính giảm ${firstOrderPreviewDiscount.toLocaleString("vi-VN")}đ`
-                        : ""}
-                  </div>
-                )}
+                          ? `🎉 Tài khoản đủ điều kiện ưu đãi đơn đầu • Ước tính giảm ${firstOrderPreviewDiscount.toLocaleString("vi-VN")}đ`
+                          : ""}
+                    </div>
+                  )}
 
                 {/* Saved info */}
-                {canUseSavedCustomer && shouldShowContactForm && !isLoggedInUser && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCustomer((c) => ({
-                        ...c,
-                        fullName: savedCustomer.fullName || "",
-                        phone: normalizeValidPhoneOrEmpty(savedCustomer.phone),
-                        gmail: savedCustomer.gmail || "",
-                        ig: savedCustomer.ig || savedCustomer.fb || "",
-                      }))
-                    }
-                    className="w-full rounded-2xl border-2 border-dashed border-[#FF9FCA]/50 bg-[#FFF9FC] px-3 py-2.5 text-sm font-bold text-[#E85C9C] hover:bg-[#FFF0F7] transition-colors"
-                  >
-                    Dùng thông tin đã lưu
-                    {savedCustomer.fullName
-                      ? ` • ${savedCustomer.fullName}`
-                      : ""}
-                  </button>
-                )}
+                {canUseSavedCustomer &&
+                  shouldShowContactForm &&
+                  !isLoggedInUser && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCustomer((c) => ({
+                          ...c,
+                          fullName: savedCustomer.fullName || "",
+                          phone: normalizeValidPhoneOrEmpty(
+                            savedCustomer.phone,
+                          ),
+                          gmail: savedCustomer.gmail || "",
+                          ig: savedCustomer.ig || savedCustomer.fb || "",
+                        }))
+                      }
+                      className="w-full rounded-2xl border-2 border-dashed border-[#FF9FCA]/50 bg-[#FFF9FC] px-3 py-2.5 text-sm font-bold text-[#E85C9C] hover:bg-[#FFF0F7] transition-colors"
+                    >
+                      Dùng thông tin đã lưu
+                      {savedCustomer.fullName
+                        ? ` • ${savedCustomer.fullName}`
+                        : ""}
+                    </button>
+                  )}
 
                 {/* Contact form */}
                 {shouldShowContactForm && (
@@ -1346,58 +1376,58 @@ export default function QuickBookModal({
                     <div className="space-y-3">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                        <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-1.5 uppercase tracking-[0.2em] px-1">
-                          <User size={13} className="text-[#E85C9C]" />
-                          Họ và tên
-                        </label>
-                        <input
-                          value={customer.fullName}
-                          onChange={(e) =>
-                            setCustomer((c) => ({
-                              ...c,
-                              fullName: e.target.value,
-                            }))
-                          }
-                          placeholder="Nguyễn Thị Bông"
-                          className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
-                            fullNameError
-                              ? "border-red-300 focus:border-red-400"
-                              : "border-[#eee] focus:border-[#FF9FCA]"
-                          }`}
-                        />
-                        {fullNameError && (
-                          <p className="mt-1 text-xs text-red-600 font-medium">
-                            {fullNameError}
-                          </p>
-                        )}
+                          <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-1.5 uppercase tracking-[0.2em] px-1">
+                            <User size={13} className="text-[#E85C9C]" />
+                            Họ và tên
+                          </label>
+                          <input
+                            value={customer.fullName}
+                            onChange={(e) =>
+                              setCustomer((c) => ({
+                                ...c,
+                                fullName: e.target.value,
+                              }))
+                            }
+                            placeholder="Nguyễn Thị Bông"
+                            className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
+                              fullNameError
+                                ? "border-red-300 focus:border-red-400"
+                                : "border-[#eee] focus:border-[#FF9FCA]"
+                            }`}
+                          />
+                          {fullNameError && (
+                            <p className="mt-1 text-xs text-red-600 font-medium">
+                              {fullNameError}
+                            </p>
+                          )}
                         </div>
 
                         <div>
-                        <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-1.5 uppercase tracking-[0.2em] px-1">
-                          <Phone size={13} className="text-[#E85C9C]" />
-                          Số điện thoại
-                        </label>
-                        <input
-                          value={customer.phone}
-                          onChange={(e) =>
-                            setCustomer((c) => ({
-                              ...c,
-                              phone: e.target.value,
-                            }))
-                          }
-                          placeholder="0901234567"
-                          inputMode="tel"
-                          className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
-                            phoneError
-                              ? "border-red-300 focus:border-red-400"
-                              : "border-[#eee] focus:border-[#FF9FCA]"
-                          }`}
-                        />
-                        {phoneError && (
-                          <p className="mt-1 text-xs text-red-600 font-medium">
-                            {phoneError}
-                          </p>
-                        )}
+                          <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-1.5 uppercase tracking-[0.2em] px-1">
+                            <Phone size={13} className="text-[#E85C9C]" />
+                            Số điện thoại
+                          </label>
+                          <input
+                            value={customer.phone}
+                            onChange={(e) =>
+                              setCustomer((c) => ({
+                                ...c,
+                                phone: e.target.value,
+                              }))
+                            }
+                            placeholder="0901234567"
+                            inputMode="tel"
+                            className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
+                              phoneError
+                                ? "border-red-300 focus:border-red-400"
+                                : "border-[#eee] focus:border-[#FF9FCA]"
+                            }`}
+                          />
+                          {phoneError && (
+                            <p className="mt-1 text-xs text-red-600 font-medium">
+                              {phoneError}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -1541,9 +1571,9 @@ export default function QuickBookModal({
                   {(selectedDiscountAmount > 0 || pointDiscountAmount > 0) && (
                     <div className="text-center text-emerald-400 text-sm font-bold pt-1">
                       💥 Tiết kiệm ngay{" "}
-                      {(selectedDiscountAmount + pointDiscountAmount).toLocaleString(
-                        "vi-VN",
-                      )}
+                      {(
+                        selectedDiscountAmount + pointDiscountAmount
+                      ).toLocaleString("vi-VN")}
                       đ
                     </div>
                   )}
@@ -1597,7 +1627,12 @@ export default function QuickBookModal({
                         type="button"
                         onClick={() =>
                           setPointToUse(
-                            Math.max(0, Math.floor(Math.min(maxPointToUse, memberPoint * 0.5))),
+                            Math.max(
+                              0,
+                              Math.floor(
+                                Math.min(maxPointToUse, memberPoint * 0.5),
+                              ),
+                            ),
                           )
                         }
                         className="rounded-lg border border-amber-300 bg-white px-2 py-2 text-[11px] sm:text-xs font-bold text-amber-700 hover:bg-amber-100 transition-colors"
@@ -1619,7 +1654,10 @@ export default function QuickBookModal({
                             return;
                           }
                           setPointToUse(
-                            Math.max(0, Math.min(Math.floor(next), maxPointToUse)),
+                            Math.max(
+                              0,
+                              Math.min(Math.floor(next), maxPointToUse),
+                            ),
                           );
                         }}
                         className="w-full sm:w-40 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-[#333] focus:outline-none focus:border-amber-500"
@@ -1646,7 +1684,8 @@ export default function QuickBookModal({
                         </div>
                       )}
                       <div className="text-[11px] text-amber-800 pt-1">
-                        Điểm được lưu trên tài khoản và dùng cho các đơn thuê sau.
+                        Điểm được lưu trên tài khoản và dùng cho các đơn thuê
+                        sau.
                       </div>
                     </div>
                   </div>

@@ -8,6 +8,7 @@ import AccountBookingsPage from "./page/account-bookings";
 import AccountPage from "./page/account";
 import Menu from "./page/menu";
 import PhotoBoothPage from "./page/photobooth";
+import FeedbackPage from "./page/feedback";
 import SeoMeta from "./components/SeoMeta";
 
 const App = () => {
@@ -134,6 +135,18 @@ const App = () => {
           path="/photobooth"
         >
           <PhotoBoothPage />
+        </SeoMeta>
+      ),
+    },
+    {
+      path: "/feedback",
+      element: (
+        <SeoMeta
+          title="Feedback khách thuê máy"
+          description="Xem feedback thực tế theo từng dòng máy ảnh tại FAO để chọn máy phù hợp và đặt nhanh."
+          path="/feedback"
+        >
+          <FeedbackPage />
         </SeoMeta>
       ),
     },

@@ -32,7 +32,12 @@ const BRANCHES = [
 ];
 
 const ONE_DAY_PICKUP_OPTIONS = [
-  { id: "MORNING_0900", pickupType: "MORNING", time: MORNING_PICKUP_TIME, label: "Sáng 09:00" },
+  {
+    id: "MORNING_0900",
+    pickupType: "MORNING",
+    time: MORNING_PICKUP_TIME,
+    label: "Sáng 09:00",
+  },
   ...ONE_DAY_EVENING_SLOTS.map((slot) => ({
     id: `EVENING_${slot.replace(":", "")}`,
     pickupType: "EVENING",
@@ -395,7 +400,9 @@ export default function BookingPrefsForm({
                     {QUICK_RETURN_DAY_OFFSETS.map((offset) => {
                       const candidate = normalizeDate(addDays(date, offset));
                       const active =
-                        endDate && candidate?.getTime() === normalizeDate(endDate)?.getTime();
+                        endDate &&
+                        candidate?.getTime() ===
+                          normalizeDate(endDate)?.getTime();
                       return (
                         <button
                           key={offset}

@@ -167,6 +167,13 @@ export default function SlideNav() {
                 >
                   Danh mục thiết bị
                 </Link>
+                <Link
+                  to="/feedback"
+                  onClick={() => setOpen(false)}
+                  className="block rounded-lg border border-[#eee] px-3 py-2 text-sm font-semibold text-[#333] hover:border-[#FF9FCA]"
+                >
+                  Feedback thực tế
+                </Link>
                 {hasSession && (
                   <Link
                     to="/my-bookings"

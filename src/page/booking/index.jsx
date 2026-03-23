@@ -133,6 +133,15 @@ function normalizeDeviceName(name = "") {
   return name.replace(/\s*\(\d+\)\s*$/, "").trim();
 }
 
+function getModelIdentity(device) {
+  const modelKey = String(device?.modelKey || "").trim();
+  if (modelKey) return modelKey.toLowerCase();
+  const normalizedName = normalizeDeviceName(
+    device?.name || device?.displayName || "",
+  );
+  return normalizedName.toLowerCase();
+}
+
 function getTetDayLabel(date) {
   if (!date) return null;
   const d = normalizeDate(date);
@@ -201,6 +210,7 @@ function printContract({ device, total, t1, t2 }) {
   const machineName = escapeHtmlContract(device.displayName || "—");
   const machineValue = escapeHtmlContract(formatVnd(device.deposit)) + " VND";
   const rentalPrice = escapeHtmlContract(formatVnd(total)) + " VND";
+  const extensionFeePerHour = "100.000 VND/giờ";
   const fromTime = format(t1, "HH");
   const fromDate = format(t1, "dd/MM/yyyy");
   const toTime = format(t2, "HH");
@@ -222,7 +232,12 @@ h2{text-align:center;font-size:18px;margin-bottom:24px;}
 <div class="clause"><span class="clause-num">1.</span> Dòng Máy Tên: <span class="fill">${machineName}</span></div>
 <div class="clause"><span class="clause-num">2.</span> Giá Trị Máy: <span class="fill">${machineValue}</span></div>
 <div class="clause"><span class="clause-num">3.</span> Giá Thuê: <span class="fill">${rentalPrice}</span></div>
-<div class="clause"><span class="clause-num">5.</span> Thời Hạn Thuê: <span class="fill">${timeRange}</span></div>
+<div class="clause"><span class="clause-num">4.</span> Thời Hạn Thuê: <span class="fill">${timeRange}</span></div>
+<div class="clause"><span class="clause-num">5.</span> Cam kết sử dụng đúng mục đích: Bên thuê không được cầm cố, bán, cho thuê lại, chuyển giao hoặc tẩu tán thiết bị dưới bất kỳ hình thức nào khi chưa có văn bản chấp thuận của bên cho thuê.</div>
+<div class="clause"><span class="clause-num">6.</span> Chế tài vi phạm mục đích sử dụng: Nếu phát sinh hành vi tại Điều 5, bên thuê chịu bồi thường ngay 100% giá trị máy theo Điều 2, cộng phạt vi phạm 30% giá trị máy và toàn bộ chi phí thu hồi, xác minh, xử lý pháp lý (nếu có).</div>
+<div class="clause"><span class="clause-num">7.</span> Trả trễ và gia hạn: Sau thời điểm phải trả ghi tại Điều 4, bên thuê có tối đa 30 phút gia hạn mềm để liên hệ shop. Quá mốc này, mọi thời gian phát sinh được tính phí gia hạn ${extensionFeePerHour}, làm tròn theo từng giờ. Máy chỉ được xem là đã trả khi bên cho thuê xác nhận tình trạng và hoàn tất công nợ.</div>
+<div class="clause"><span class="clause-num">8.</span> Bồi thường do ảnh hưởng lịch khách sau: Nếu việc trả trễ làm ảnh hưởng lịch khách kế tiếp, bên thuê đồng ý thanh toán toàn bộ thiệt hại thực tế phát sinh gồm chi phí điều phối, hỗ trợ khách bị dời lịch và phần doanh thu bị mất (nếu có), ngoài phí gia hạn tại Điều 7.</div>
+<div class="clause"><span class="clause-num">9.</span> Xác nhận: Việc thanh toán đặt cọc/tiền thuê đồng nghĩa bên thuê đã đọc, hiểu và chấp thuận toàn bộ điều khoản trên, cam kết thanh toán đủ các khoản phát sinh do vi phạm.</div>
 <script>window.onload=function(){window.focus();window.print();};window.onafterprint=function(){window.close();};</script>
 </body>
 </html>`;
@@ -979,16 +994,20 @@ export default function BookingPage() {
         if (cancelled) return;
 
         const data = resp.data || [];
-        const deviceBusy = data.some(
-          (d) =>
-            d.id === selectedDevice.id &&
-            Array.isArray(d.bookingDtos) &&
-            d.bookingDtos.length > 0
+        const selectedModelIdentity = getModelIdentity(selectedDevice);
+        const isBusy = (d) =>
+          Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
+        const sameModelDevices = data.filter(
+          (d) => getModelIdentity(d) === selectedModelIdentity
         );
+        const soldOut =
+          sameModelDevices.length > 0
+            ? sameModelDevices.every(isBusy)
+            : data.some((d) => d.id === selectedDevice.id && isBusy(d));
 
         setAvailabilityByBranch((prev) => ({
           ...prev,
-          [branchId]: { loading: false, error: null, soldOut: deviceBusy },
+          [branchId]: { loading: false, error: null, soldOut },
         }));
       } catch (err) {
         console.error("Failed to fetch bookings:", err);

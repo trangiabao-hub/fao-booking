@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { format, addDays } from "date-fns";
 import vi from "date-fns/locale/vi";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import DatePicker, { registerLocale } from "react-datepicker";
 import {
@@ -31,7 +31,7 @@ import {
   computeDiscountBreakdown,
   calculateRentalInfo,
 } from "../../utils/pricing";
-import { formatPriceFormula, formatPriceK } from "../../utils/bookingHelpers";
+import { formatPriceK } from "../../utils/bookingHelpers";
 import { saveBookingPrefs } from "../../utils/storage";
 import useBookingSocket from "../../lib/useBookingSocket";
 import "react-datepicker/dist/react-datepicker.css";
@@ -264,13 +264,22 @@ function ChicCard({
   onSuggestedQuickBook,
   isSelected,
   onToggleSelect,
+  feedbackHref,
+  cardAnchorId,
+  isFocused,
   index = 0,
 }) {
   const originalLabel = formatPriceK(pricing?.original || 0);
   const discountedLabel = formatPriceK(pricing?.discounted || 0);
+  const billableDays = Math.max(1, pricing?.billableDays || 1);
   const savingAmount = (pricing?.original || 0) - (pricing?.discounted || 0);
   const savingLabel = savingAmount > 0 ? formatPriceK(savingAmount) : null;
-  const priceFormula = formatPriceFormula(device);
+  const discountedDisplayLabel =
+    pricing?.durationType === "ONE_DAY"
+      ? `${savingLabel ? "Chỉ còn " : ""}${discountedLabel} / ${billableDays} ngày`
+      : savingLabel
+        ? `Chỉ còn ${discountedLabel}`
+        : discountedLabel;
   const isHot = device.bookingCount > 5 || device.priceOneDay >= 400000;
   const isAvailable = device.isAvailable !== false;
   const suggestedSlot = device.availabilitySuggestion || null;
@@ -298,12 +307,23 @@ function ChicCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: "easeOut", delay: Math.min(index * 0.03, 0.3) }}
+      transition={{
+        duration: 0.2,
+        ease: "easeOut",
+        delay: Math.min(index * 0.03, 0.3),
+      }}
       className={`relative group select-none h-full z-10 ${
         isAvailable || hasSuggestedSlot ? "" : "cursor-not-allowed"
       }`}
+      id={cardAnchorId}
     >
-      <div className="bg-[#FFFBF5] rounded-xl overflow-hidden relative border-2 border-transparent shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-all duration-200 flex flex-col h-full touch-manipulation">
+      <div
+        className={`bg-[#FFFBF5] rounded-xl overflow-hidden relative border-2 shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-all duration-200 flex flex-col h-full touch-manipulation ${
+          isFocused
+            ? "border-[#E85C9C] ring-2 ring-[#FFB6D7]/70"
+            : "border-transparent"
+        }`}
+      >
         {/* PROMO BADGE - top right */}
         <div className="absolute top-0 right-0 bg-[#1a1a1a] text-white px-3 py-1.5 rounded-bl-xl z-30 shadow-md border-l-2 border-b-2 border-amber-400/90">
           <span className="text-[10px] md:text-[11px] font-black leading-none block">
@@ -418,16 +438,10 @@ function ChicCard({
                 {originalLabel}
               </span>
               <span className="text-base md:text-lg font-black text-[#E85C9C] leading-none">
-                {savingLabel ? `Chỉ còn ${discountedLabel}` : discountedLabel}
+                {discountedDisplayLabel}
               </span>
             </div>
           </div>
-
-          {priceFormula && (
-            <p className="text-[10px] text-[#777] font-medium mt-1.5 leading-tight">
-              {priceFormula}
-            </p>
-          )}
 
           <button
             onClick={
@@ -448,6 +462,14 @@ function ChicCard({
                 ? "Dời theo gợi ý & đặt"
                 : "Tạm hết máy"}
           </button>
+
+          <Link
+            to={feedbackHref || "/feedback"}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full mt-2 py-2 text-center text-[11px] font-bold rounded-lg uppercase tracking-wider border border-[#FFD3E7] text-[#E85C9C] bg-[#FFF5FA] hover:bg-[#FFE9F4] transition-colors"
+          >
+            Xem feedback thực tế
+          </Link>
         </div>
       </div>
     </motion.div>
@@ -849,7 +871,9 @@ function ConflictModal({ info, onDismiss }) {
 
 // Main Component
 export default function DeviceCatalogPage() {
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const lastFocusedRef = React.useRef("");
 
   const initialCategory = searchParams.get("category") || "all";
   const initialSearchQuery = searchParams.get("q") || "";
@@ -881,6 +905,7 @@ export default function DeviceCatalogPage() {
     ? searchParams.get("pickupSlot")
     : null;
   const initialAvailabilityConfirmed = searchParams.get("availability") === "1";
+  const focusModelParam = searchParams.get("focusModel") || "";
 
   const [devices, setDevices] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1173,7 +1198,16 @@ export default function DeviceCatalogPage() {
 
     const conflicted = activeDevices.filter((d) => {
       const display = (d.displayName || d.name || "").toLowerCase();
-      return eventNames.some((en) => en === display);
+      const hasRealtimeConflict = eventNames.some((en) => en === display);
+      if (!hasRealtimeConflict) return false;
+
+      const modelState = processedDevices.find(
+        (p) =>
+          normalizeDeviceName(p.displayName || p.name || "").toLowerCase() ===
+          display,
+      );
+      // Only show conflict when this model is truly out of stock.
+      return modelState?.isAvailable === false;
     });
 
     if (conflicted.length > 0) {
@@ -1314,6 +1348,10 @@ export default function DeviceCatalogPage() {
   const getDevicePricing = useCallback(
     (device) => {
       const { durationType, fromDateTime, toDateTime } = pricingContext;
+      const billableDays =
+        durationType === "ONE_DAY"
+          ? Math.max(1, pricingContext.totalDays || 1)
+          : 0;
 
       const { price: original } = calculateRentalInfo(
         fromDateTime && toDateTime ? [fromDateTime, toDateTime] : [],
@@ -1322,12 +1360,29 @@ export default function DeviceCatalogPage() {
 
       if (original <= 0) {
         const oneDayPrice = device?.priceOneDay || 0;
-        return { original: oneDayPrice, discounted: oneDayPrice };
+        return {
+          original: oneDayPrice,
+          discounted: oneDayPrice,
+          durationType,
+          billableDays,
+        };
       }
 
       const b = computeDiscountBreakdown(original, fromDateTime, toDateTime);
-      if (!b) return { original, discounted: original };
-      return { original: b.original, discounted: b.discounted };
+      if (!b) {
+        return {
+          original,
+          discounted: original,
+          durationType,
+          billableDays,
+        };
+      }
+      return {
+        original: b.original,
+        discounted: b.discounted,
+        durationType,
+        billableDays,
+      };
     },
     [pricingContext],
   );
@@ -1500,7 +1555,9 @@ export default function DeviceCatalogPage() {
       ? nextPrice
       : "all";
 
-    setSelectedCategory((prev) => (prev === nextCategory ? prev : nextCategory));
+    setSelectedCategory((prev) =>
+      prev === nextCategory ? prev : nextCategory,
+    );
     setSearchQuery((prev) =>
       prev === nextSearchQuery ? prev : nextSearchQuery,
     );
@@ -1625,7 +1682,10 @@ export default function DeviceCatalogPage() {
     }
 
     if (availabilityPrefs.endDate) {
-      nextParams.set("endDate", format(availabilityPrefs.endDate, "yyyy-MM-dd"));
+      nextParams.set(
+        "endDate",
+        format(availabilityPrefs.endDate, "yyyy-MM-dd"),
+      );
     } else {
       nextParams.delete("endDate");
     }
@@ -1696,6 +1756,40 @@ export default function DeviceCatalogPage() {
       toDate: to ? format(to, "dd/MM") : "",
     };
   }, [availabilityRange, availabilityPrefs]);
+
+  const buildFeedbackHref = useCallback(
+    (modelName, modelKey) => {
+      const currentCatalogPath = `${location.pathname}${location.search}`;
+      const params = new URLSearchParams();
+      params.set("model", modelName || "");
+      if (modelKey) params.set("modelKey", modelKey);
+      if (selectedCategory && selectedCategory !== "all") {
+        params.set("category", selectedCategory);
+      }
+      params.set("from", currentCatalogPath);
+      return `/feedback?${params.toString()}`;
+    },
+    [location.pathname, location.search, selectedCategory],
+  );
+
+  useEffect(() => {
+    if (!focusModelParam) return;
+    const focusToken = compactSearchText(focusModelParam);
+    if (!focusToken || lastFocusedRef.current === focusToken) return;
+
+    const matched = filteredDevices.find(
+      (device) => compactSearchText(device.displayName) === focusToken,
+    );
+    if (!matched) return;
+
+    lastFocusedRef.current = focusToken;
+    const elementId = `catalog-card-${focusToken}`;
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(elementId)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [focusModelParam, filteredDevices]);
 
   return (
     <div className="min-h-screen font-sans relative text-[#333] overflow-x-hidden flex flex-col pb-32 md:pb-36 selection:bg-[#FF9FCA] selection:text-white">
@@ -1922,13 +2016,27 @@ export default function DeviceCatalogPage() {
             >
               {filteredDevices.map((device, idx) => (
                 <ChicCard
-                  key={device.modelKey ? `model-${device.modelKey}` : `dev-${device.id}`}
+                  key={
+                    device.modelKey
+                      ? `model-${device.modelKey}`
+                      : `dev-${device.id}`
+                  }
                   device={device}
                   pricing={getDevicePricing(device)}
                   onQuickBook={handleQuickBook}
                   onSuggestedQuickBook={handleSuggestedQuickBook}
                   isSelected={selectedDeviceIds.has(device.id)}
                   onToggleSelect={handleToggleSelect}
+                  feedbackHref={buildFeedbackHref(
+                    device.displayName,
+                    device.modelKey,
+                  )}
+                  cardAnchorId={`catalog-card-${compactSearchText(device.displayName)}`}
+                  isFocused={
+                    !!focusModelParam &&
+                    compactSearchText(device.displayName) ===
+                      compactSearchText(focusModelParam)
+                  }
                   index={idx}
                 />
               ))}
