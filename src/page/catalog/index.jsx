@@ -1040,7 +1040,11 @@ export default function DeviceCatalogPage() {
     try {
       const [devicesRes, categoriesRes] = await Promise.all([
         api.get("/v1/devices"),
-        api.get("/v1/device-categories/with-items").catch(() => ({ data: [] })),
+        api
+          .get("/v1/device-categories/with-items", {
+            params: { includeFeedbackImages: false },
+          })
+          .catch(() => ({ data: [] })),
       ]);
       setDevices(devicesRes.data || []);
       setApiCategories(categoriesRes.data || []);

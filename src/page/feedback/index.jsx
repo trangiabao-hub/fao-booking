@@ -13,6 +13,7 @@ const DEFAULT_CATEGORY_KEY = "all";
 const DEFAULT_MODEL = "Tất cả máy";
 /** Chỉ dùng khi không có ảnh thật — giữ vừa đủ để demo, tránh spam request. */
 const MOCK_IMAGES_PER_MODEL = 6;
+const GALLERY_PAGE_SIZE = 12;
 const ASPECT_RATIO_SEQUENCE = [
   "3 / 4",
   "4 / 5",
@@ -322,6 +323,10 @@ export default function FeedbackPage() {
   const appliedInitialModelKeyRef = useRef("");
   const [quickBookDevice, setQuickBookDevice] = useState(null);
   const [showQuickBookModal, setShowQuickBookModal] = useState(false);
+  const [galleryPage, setGalleryPage] = useState(0);
+  const [galleryPayload, setGalleryPayload] = useState(null);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryError, setGalleryError] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -330,8 +335,14 @@ export default function FeedbackPage() {
       setError("");
       try {
         const [res, categoriesRes] = await Promise.all([
-          api.get("/v1/devices"),
-          api.get("/v1/device-categories/with-items").catch(() => ({ data: [] })),
+          api.get("/v1/devices", {
+            params: { type: "DEVICE", includeFeedbackImages: false },
+          }),
+          api
+            .get("/v1/device-categories/with-items", {
+              params: { includeFeedbackImages: false },
+            })
+            .catch(() => ({ data: [] })),
         ]);
         if (!isMounted) return;
         setDevices(Array.isArray(res.data) ? res.data : []);
@@ -351,6 +362,42 @@ export default function FeedbackPage() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    setGalleryPage(0);
+  }, [selectedCategory, selectedModel]);
+
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    const load = async () => {
+      setGalleryLoading(true);
+      setGalleryError("");
+      try {
+        const params = {
+          category: selectedCategory,
+          page: galleryPage,
+          size: GALLERY_PAGE_SIZE,
+        };
+        if (selectedModel && selectedModel !== DEFAULT_MODEL) {
+          params.model = selectedModel;
+        }
+        const res = await api.get("/v1/feedback/gallery", { params });
+        if (!cancelled) setGalleryPayload(res.data || null);
+      } catch {
+        if (!cancelled) {
+          setGalleryError("Không tải được danh sách ảnh. Thử lại sau.");
+          setGalleryPayload(null);
+        }
+      } finally {
+        if (!cancelled) setGalleryLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, selectedCategory, selectedModel, galleryPage]);
 
   const modelRows = useMemo(() => {
     const cameraDevices = devices.filter(
@@ -539,40 +586,23 @@ export default function FeedbackPage() {
   );
 
   const galleryItems = useMemo(() => {
-    const items = [];
-    for (const row of filteredRows) {
-      const primaryFb = pickFirstUnitDeviceForFeedback(row, deviceById);
-      const deviceFbImages = normalizeImageList(primaryFb?.feedbackImages);
-      const modelMeta = resolveModelMeta(row);
-      const metaImages = normalizeImageList(modelMeta?.images);
-      const effectiveImages =
-        deviceFbImages.length > 0
-          ? deviceFbImages
-          : metaImages.length > 0
-            ? metaImages
-            : row.images;
-      const realCount = normalizeImageList(effectiveImages).length;
-      // Có ảnh thật: chỉ render đúng số file — không nhân bản URL (?mock=) gây tải trùng & giật.
-      const galleryTarget =
-        realCount > 0 ? realCount : Math.max(1, MOCK_IMAGES_PER_MODEL);
-      const gallery = buildMockRichGallery(
-        effectiveImages.length > 0 ? effectiveImages : [FALLBACK_IMG],
-        row.displayName,
-        galleryTarget,
-      );
-      for (let idx = 0; idx < gallery.length; idx += 1) {
-        items.push({
-          id: `${row.modelKey}-${idx}`,
-          modelKey: row.modelKey,
-          modelName: row.displayName,
-          line: row.line,
-          image: gallery[idx] || FALLBACK_IMG,
-          bookDevice: row.representativeDevice || null,
-        });
-      }
-    }
-    return items;
-  }, [filteredRows, resolveModelMeta, deviceById]);
+    const rows = Array.isArray(galleryPayload?.content) ? galleryPayload.content : [];
+    return rows.map((row) => {
+      const bid = row.bookDeviceId != null ? normalizeId(row.bookDeviceId) : "";
+      const bookDevice = bid ? deviceById.get(bid) || null : null;
+      return {
+        id: row.id,
+        modelKey: row.modelKey,
+        modelName: row.modelName,
+        line: row.line,
+        image: row.image || FALLBACK_IMG,
+        bookDevice,
+      };
+    });
+  }, [galleryPayload, deviceById]);
+
+  const galleryTotal = galleryPayload?.totalElements ?? 0;
+  const galleryTotalPages = Math.max(1, galleryPayload?.totalPages ?? 1);
 
   const filterDescription = useMemo(() => {
     if (selectedModelRow) {
@@ -763,7 +793,7 @@ export default function FeedbackPage() {
               </p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[#e8c4d4] bg-[#fff5f9] px-3.5 py-1.5 text-xs font-bold text-[#9d3d5c] w-fit shadow-sm rotate-[-0.4deg]">
-              ♥ {galleryItems.length} khoảnh khắc
+              ♥ {galleryTotal} khoảnh khắc
             </div>
           </div>
 
@@ -876,12 +906,36 @@ export default function FeedbackPage() {
             <div className="rounded-xl border-2 border-dashed border-red-300/80 bg-[#fff5f5] p-6 text-red-800 text-sm font-semibold shadow-[3px_4px_0_rgba(200,100,100,0.12)] rotate-[-0.3deg]">
               {error}
             </div>
+          ) : galleryError ? (
+            <div className="rounded-xl border-2 border-dashed border-red-300/80 bg-[#fff5f5] p-6 text-red-800 text-sm font-semibold shadow-[3px_4px_0_rgba(200,100,100,0.12)] rotate-[-0.3deg]">
+              {galleryError}
+            </div>
           ) : filteredRows.length === 0 ? (
             <div className="rounded-xl border-2 border-dashed border-[#d4c4b0] bg-[#fffdf9] p-8 text-center text-[#6a5a52] font-feedback-ui shadow-[2px_4px_0_rgba(180,150,120,0.1)]">
               Trang này còn trống — thử đổi bộ lọc hoặc chọn &quot;Tất cả&quot;
               nhé.
             </div>
+          ) : galleryLoading && galleryItems.length === 0 ? (
+            <div className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-4 [column-fill:_balance]">
+              {skeletonItems.map((item) => (
+                <article
+                  key={item.id}
+                  className="mb-4 break-inside-avoid rounded-lg bg-[#fffcf7] p-2.5 pb-4 shadow-[4px_6px_0_rgba(180,150,120,0.12),0_12px_28px_-8px_rgba(60,40,30,0.12)] ring-1 ring-[#e8dcc8] border border-[#f0e8dc]"
+                >
+                  <div className="aspect-[4/5] w-full animate-pulse rounded-sm bg-gradient-to-br from-[#f0e4dc] via-[#faf3ee] to-[#e8ddd4]" />
+                  <div className="mt-3 space-y-2 px-1 text-center">
+                    <div className="mx-auto h-4 w-2/3 rounded-full bg-[#e5d5c8]/90 animate-pulse" />
+                    <div className="mx-auto h-2.5 w-1/2 rounded-full bg-[#e0d4cc] animate-pulse" />
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : galleryItems.length === 0 ? (
+            <div className="rounded-xl border-2 border-dashed border-[#d4c4b0] bg-[#fffdf9] p-8 text-center text-[#6a5a52] font-feedback-ui shadow-[2px_4px_0_rgba(180,150,120,0.1)]">
+              Chưa có ảnh feedback cho bộ lọc này.
+            </div>
           ) : (
+            <>
             <div className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-4 [column-fill:_balance]">
               {galleryItems.map((item, idx) => {
                 const tilt =
@@ -943,7 +997,12 @@ export default function FeedbackPage() {
                         <button
                           type="button"
                           onClick={() => handleOpenQuickBook(item)}
-                          className="rounded-full border border-[#e8c8d0] bg-gradient-to-r from-[#fdf2f5] to-[#f8e4eb] px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#7a2d48] shadow-sm transition-all hover:from-[#fce8f0] hover:to-[#f5d0de] hover:text-[#5c1f36]"
+                          disabled={!item.bookDevice}
+                          className={`rounded-full border px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-sm transition-all ${
+                            item.bookDevice
+                              ? "border-[#e8c8d0] bg-gradient-to-r from-[#fdf2f5] to-[#f8e4eb] text-[#7a2d48] hover:from-[#fce8f0] hover:to-[#f5d0de] hover:text-[#5c1f36]"
+                              : "border-[#e5dcd6] bg-[#f5f0ec] text-[#a09088] cursor-not-allowed"
+                          }`}
                         >
                           Đặt ngay
                         </button>
@@ -954,6 +1013,32 @@ export default function FeedbackPage() {
                 );
               })}
             </div>
+            {galleryTotalPages > 1 ? (
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-3 font-feedback-ui text-sm text-[#5c4a42]">
+                <button
+                  type="button"
+                  disabled={galleryPage <= 0 || galleryLoading}
+                  onClick={() => setGalleryPage((p) => Math.max(0, p - 1))}
+                  className="rounded-lg border border-[#d4c4b0] bg-[#fffdf9] px-4 py-2 font-bold text-[#6b3d4a] shadow-sm transition-colors enabled:hover:bg-[#fff5f0] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ← Trước
+                </button>
+                <span className="font-semibold tabular-nums">
+                  Trang {galleryPage + 1} / {galleryTotalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={galleryPage >= galleryTotalPages - 1 || galleryLoading}
+                  onClick={() =>
+                    setGalleryPage((p) => Math.min(galleryTotalPages - 1, p + 1))
+                  }
+                  className="rounded-lg border border-[#d4c4b0] bg-[#fffdf9] px-4 py-2 font-bold text-[#6b3d4a] shadow-sm transition-colors enabled:hover:bg-[#fff5f0] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Sau →
+                </button>
+              </div>
+            ) : null}
+            </>
           )}
         </div>
       </div>
