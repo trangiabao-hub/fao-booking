@@ -858,7 +858,7 @@ export default function FeedbackPage() {
 
         <div className="mt-6">
           {loading ? (
-            <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-3 sm:gap-4 [column-fill:_balance]">
+            <div className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-4 [column-fill:_balance]">
               {skeletonItems.map((item) => (
                 <article
                   key={item.id}
@@ -882,7 +882,7 @@ export default function FeedbackPage() {
               nhé.
             </div>
           ) : (
-            <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-3 sm:gap-4 [column-fill:_balance]">
+            <div className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-4 [column-fill:_balance]">
               {galleryItems.map((item, idx) => {
                 const tilt =
                   idx % 5 === 0
