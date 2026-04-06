@@ -139,188 +139,250 @@ function SuccessCard({ details }) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Main Success Card */}
+    <div className="space-y-5 lg:space-y-6">
       <motion.div
-        initial={{ opacity: 0, y: 20, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="bg-white rounded-2xl border border-pink-100 shadow-lg shadow-pink-500/10 p-5 sm:p-6 lg:p-8 text-center"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: "easeOut" }}
+        className="bg-white rounded-2xl lg:rounded-3xl border border-pink-100 shadow-lg shadow-pink-500/10 overflow-hidden"
       >
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-        >
-          <CheckCircleIcon className="w-16 h-16 text-green-500 mx-auto" />
-        </motion.div>
-        <h2 className="text-2xl sm:text-3xl font-bold text-pink-800 mt-4">
-          Thanh toán thành công! 🎉
-        </h2>
-        <p className="text-slate-600 mt-2 text-sm sm:text-base">
-          Cảm ơn bạn đã tin tưởng. Tụi mình đã nhận được lịch đặt của bạn.
-        </p>
+        {/* —— Focus: thành công + lưu ý + copy / Messenger —— */}
+        <div className="p-5 sm:p-6 lg:p-8 xl:p-10 text-center border-b border-pink-100/80 bg-gradient-to-b from-white to-pink-50/40">
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.1, type: "spring", stiffness: 220 }}
+          >
+            <CheckCircleIcon className="w-14 h-14 sm:w-16 sm:h-16 lg:w-[4.5rem] lg:h-[4.5rem] text-emerald-500 mx-auto" />
+          </motion.div>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-pink-900 mt-3 lg:mt-4 tracking-tight">
+            Thanh toán thành công
+          </h1>
+          <p className="text-slate-600 text-sm lg:text-base mt-1.5 max-w-md lg:max-w-xl mx-auto leading-relaxed">
+            Shop đã nhận thanh toán. Bạn cần thêm một bước để shop xác nhận đơn.
+          </p>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-2 lg:gap-5">
-          <div className="space-y-4">
-            {/* Lưu ý hoàn tất đơn - ưu tiên đầu */}
-            <div className="p-4 sm:p-5 bg-blue-50 rounded-xl border border-blue-200 text-left">
-              <h3 className="font-bold text-blue-800 text-base sm:text-lg mb-3 flex items-center gap-2">
-                <ChatBubbleLeftRightIcon className="w-6 h-6 text-blue-600" />
-                Lưu ý: Nhắn cho page để hoàn tất đơn hàng
-              </h3>
-              <p className="text-sm sm:text-base text-blue-700 mb-3">
-                Để shop xác nhận đơn, vui lòng gửi thông tin đơn cho page Facebook:
+          <div className="mt-5 lg:mt-8 lg:grid lg:grid-cols-2 lg:gap-6 lg:items-stretch text-left">
+            <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3.5 lg:px-5 lg:py-4 h-full flex flex-col justify-center">
+              <p className="text-[11px] font-black uppercase tracking-wider text-amber-900/80">
+                Lưu ý quan trọng
               </p>
-              <ol className="text-sm sm:text-base text-blue-800 space-y-2 list-decimal list-inside">
-                <li>Ấn <strong>"Copy đơn hàng"</strong> để copy thông tin</li>
-                <li>Ấn <strong>"Nhắn shop qua Messenger"</strong></li>
-                <li>Dán nội dung (Ctrl+V hoặc giữ → Dán) vào ô chat và gửi</li>
-              </ol>
+              <p className="text-sm lg:text-[15px] text-amber-950 font-semibold mt-1 leading-snug">
+                Vui lòng gửi thông tin đơn hàng cho shop (Facebook / Messenger) để
+                hoàn tất và xác nhận lịch.
+              </p>
+              <p className="text-xs lg:text-sm text-amber-900/75 mt-2 leading-relaxed">
+                Copy nội dung đơn → mở chat shop → dán và gửi.
+              </p>
             </div>
 
-            <div className="text-left bg-pink-50 rounded-xl p-4 space-y-3">
-              <h3 className="font-semibold text-pink-900 border-b border-pink-200 pb-2 mb-2">
-                Chi tiết đơn hàng
-              </h3>
+            <div className="mt-4 lg:mt-0 rounded-xl border border-emerald-200/90 bg-emerald-50/90 px-4 py-3.5 lg:px-5 lg:py-4 w-full space-y-3 h-full">
+              <p className="text-sm lg:text-base font-black text-emerald-950 leading-snug">
+                Nhận và Hoàn máy trực tiếp tại:
+              </p>
+              <div className="text-sm lg:text-[15px] text-emerald-950 space-y-2 leading-relaxed">
+                <p>
+                  <span className="mr-1" aria-hidden>
+                    📍
+                  </span>
+                  Lầu 1, tại 475 Huỳnh Văn Bánh, Q. Phú Nhuận —{" "}
+                  <a
+                    href="https://maps.app.goo.gl/Lg6KoXzXWrdiurWj9?g_st=ic"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-emerald-800 underline decoration-emerald-400 underline-offset-2 hover:text-emerald-900"
+                  >
+                    chỉ đường Google Maps
+                  </a>
+                </p>
+                <p>
+                  <span className="mr-1" aria-hidden>
+                    📞
+                  </span>
+                  <a
+                    href="tel:0901355198"
+                    className="font-bold text-emerald-900 hover:underline"
+                  >
+                    0901355198
+                  </a>
+                </p>
+                <p className="text-emerald-900/90">
+                  <span className="font-semibold">Thời gian làm việc:</span>{" "}
+                  09h00 - 22h00
+                </p>
+              </div>
+              <p className="text-xs sm:text-sm lg:text-[15px] text-emerald-900/90 leading-relaxed pt-1 border-t border-emerald-200/70">
+                <span className="mr-1" aria-hidden>
+                  🪪
+                </span>
+                Khách iu khi đến nhận máy chuẩn bị giúp FAO{" "}
+                <strong>CCCD bản gốc</strong> hoặc{" "}
+                <strong>VNeID định danh mức 2</strong>. Khi đến shop mình mang dép
+                đen trên kệ, lên lầu 1 quẹo phải để nhận máy ạ
+                <span aria-hidden>✨</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 lg:mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg sm:max-w-none lg:max-w-3xl mx-auto lg:gap-4">
+            <button
+              type="button"
+              onClick={handleCopyOrder}
+              className="flex items-center justify-center gap-2 px-4 py-3.5 lg:py-4 rounded-xl bg-slate-800 text-white font-bold text-sm sm:text-base lg:text-lg shadow-md hover:bg-slate-900 transition-all active:scale-[0.98]"
+            >
+              <ClipboardDocumentIcon className="w-5 h-5 lg:w-6 lg:h-6 shrink-0" />
+              Copy đơn hàng
+            </button>
+            <button
+              type="button"
+              onClick={handleMessengerClick}
+              className="flex items-center justify-center gap-2 px-4 py-3.5 lg:py-4 rounded-xl bg-[#0084FF] text-white font-bold text-sm sm:text-base lg:text-lg shadow-md shadow-blue-500/25 hover:bg-[#006edc] transition-all active:scale-[0.98]"
+            >
+              <ChatBubbleLeftRightIcon className="w-5 h-5 lg:w-6 lg:h-6 shrink-0" />
+              Liên hệ shop (Messenger)
+            </button>
+          </div>
+
+          {(showMessengerToast || showCopyOrderToast) && (
+            <motion.p
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-3 lg:mt-4 text-sm lg:text-base font-semibold text-emerald-700 bg-emerald-50 rounded-lg py-2.5 px-4 max-w-lg lg:max-w-3xl mx-auto"
+            >
+              {showMessengerToast
+                ? "Đã copy nội dung — dán (Ctrl+V) vào Messenger và gửi shop."
+                : "Đã copy tóm tắt đơn hàng."}
+            </motion.p>
+          )}
+        </div>
+
+        {/* —— Phụ: chi tiết + các tùy chọn —— PC: 2 cột —— */}
+        <div className="p-4 sm:p-5 lg:p-8 xl:px-10 xl:pb-10 bg-slate-50/80 lg:grid lg:grid-cols-12 lg:gap-8 lg:items-start">
+          <div className="lg:col-span-7 space-y-4">
+          <p className="text-[10px] lg:text-xs font-bold uppercase tracking-widest text-slate-400 text-center lg:text-left">
+            Thêm (tùy chọn)
+          </p>
+
+          <details className="group rounded-xl border border-pink-100 bg-white open:shadow-sm lg:shadow-sm">
+            <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-4 py-3 lg:px-5 lg:py-3.5 text-left font-semibold text-pink-900 text-sm lg:text-base [&::-webkit-details-marker]:hidden">
+              <span>Xem chi tiết đơn</span>
+              <span className="text-slate-400 text-xs font-normal group-open:rotate-180 transition-transform">
+                ▼
+              </span>
+            </summary>
+            <div className="px-4 pb-4 lg:px-5 lg:pb-5 pt-0 border-t border-pink-50 text-left space-y-3">
               {details.devices && details.devices.length > 1 ? (
-                <div className="space-y-2">
+                <div className="space-y-2 pt-3">
                   {details.devices.map((d, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <img src={d.img} alt={d.name} className="w-12 h-12 rounded-lg object-cover" />
-                      <p className="font-semibold text-pink-800">{d.name}</p>
+                    <div key={i} className="flex items-center gap-3">
+                      <img
+                        src={d.img}
+                        alt={d.name}
+                        className="w-11 h-11 rounded-lg object-cover border border-pink-100"
+                      />
+                      <p className="font-semibold text-pink-900 text-sm">{d.name}</p>
                     </div>
                   ))}
-                  <p className="text-sm text-slate-500 pt-1">Mã đơn: {details.orderCode}</p>
+                  <p className="text-xs text-slate-500">Mã đơn: {details.orderCode}</p>
                 </div>
               ) : (
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 pt-3">
                   <img
                     src={details.device.img}
                     alt={details.device.name}
-                    className="w-16 h-16 rounded-lg object-cover"
+                    className="w-14 h-14 rounded-lg object-cover border border-pink-100"
                   />
                   <div>
-                    <p className="font-semibold text-pink-800">{details.device.name}</p>
-                    <p className="text-sm text-slate-500">Mã đơn: {details.orderCode}</p>
+                    <p className="font-semibold text-pink-900 text-sm">
+                      {details.device.name}
+                    </p>
+                    <p className="text-xs text-slate-500">Mã đơn: {details.orderCode}</p>
                   </div>
                 </div>
               )}
-              <div className="text-sm space-y-1 pt-2">
+              <div className="text-xs sm:text-sm text-slate-700 space-y-1.5 leading-relaxed">
                 <p>
-                  <b>Nhận máy:</b>{" "}
+                  <span className="text-slate-500">Nhận:</span>{" "}
                   {formatVNDateTime(details.bookingFrom)}
                 </p>
                 <p>
-                  <b>Trả máy:</b>{" "}
+                  <span className="text-slate-500">Trả:</span>{" "}
                   {formatVNDateTime(details.bookingTo)}
                 </p>
                 <p>
-                  <b>Tổng tiền:</b>{" "}
+                  <span className="text-slate-500">Tổng:</span>{" "}
                   <span className="font-bold text-pink-600">
                     {details.total.toLocaleString("vi-VN")} đ
                   </span>
                 </p>
               </div>
             </div>
+          </details>
           </div>
-          {/* Action Buttons */}
-          <div className="space-y-3 text-left">
-            <div className="space-y-2">
-              <button
-                onClick={handleCopyOrder}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200 hover:bg-slate-200 transition-all active:scale-95"
-              >
-                <ClipboardDocumentIcon className="w-5 h-5" />
-                Copy đơn hàng
-              </button>
-              {(details.orderIdNew || details.orderCode) && (
-                <Link
-                  to={details.orderIdNew ? `/order/${details.orderIdNew}` : `/order/code/${details.orderCode}`}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-pink-100 text-pink-700 font-semibold border border-pink-200 hover:bg-pink-200 transition-all active:scale-95"
-                >
-                  <LinkIcon className="w-5 h-5" />
-                  Xem / Chia sẻ link đơn hàng
-                </Link>
-              )}
-            </div>
 
+          <div className="lg:col-span-5 mt-4 lg:mt-0 space-y-3 lg:pl-2 lg:border-l lg:border-slate-200/90">
+            <p className="text-[10px] lg:text-xs font-bold uppercase tracking-widest text-slate-400 text-center lg:text-left">
+              Thao tác nhanh
+            </p>
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-2">
+            {(details.orderIdNew || details.orderCode) && (
+              <Link
+                to={
+                  details.orderIdNew
+                    ? `/order/${details.orderIdNew}`
+                    : `/order/code/${details.orderCode}`
+                }
+                className="inline-flex flex-1 min-h-[44px] min-w-0 items-center justify-center gap-2 px-3 py-2.5 lg:py-3 rounded-xl bg-white text-pink-700 text-sm lg:text-[15px] font-semibold border border-pink-200 hover:bg-pink-50 transition-colors"
+              >
+                <LinkIcon className="w-4 h-4 shrink-0" />
+                Link đơn hàng
+              </Link>
+            )}
             <button
+              type="button"
               onClick={handleAddToCalendar}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-pink-600 text-white font-semibold shadow-lg shadow-pink-500/30 hover:bg-pink-700 transition-all active:scale-95"
+              className="inline-flex flex-1 min-h-[44px] min-w-0 items-center justify-center gap-2 px-3 py-2.5 lg:py-3 rounded-xl bg-white text-pink-800 text-sm lg:text-[15px] font-semibold border border-pink-200 hover:bg-pink-50 transition-colors"
             >
-              <CalendarIcon className="w-5 h-5" />
-              Thêm vào Lịch Google
+              <CalendarIcon className="w-4 h-4 shrink-0" />
+              Google Calendar
             </button>
-
             <button
-              onClick={handleMessengerClick}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#0084FF] text-white font-semibold shadow-lg shadow-blue-500/30 hover:bg-[#0066CC] transition-all active:scale-95"
-            >
-              <ChatBubbleLeftRightIcon className="w-5 h-5" />
-              Nhắn shop qua Messenger
-            </button>
-
-            <button
+              type="button"
               onClick={handleShare}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold shadow-lg shadow-purple-500/30 hover:opacity-90 transition-all active:scale-95"
+              className="inline-flex flex-1 min-h-[44px] min-w-0 items-center justify-center gap-2 px-3 py-2.5 lg:py-3 rounded-xl bg-white text-slate-700 text-sm lg:text-[15px] font-semibold border border-slate-200 hover:bg-slate-50 transition-colors"
             >
-              <ShareIcon className="w-5 h-5" />
-              Chia sẻ với bạn bè
+              <ShareIcon className="w-4 h-4 shrink-0" />
+              Chia sẻ
             </button>
+          </div>
 
-            {showShare && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-sm text-green-600 bg-green-50 rounded-lg py-2 text-center"
-              >
-                ✓ Đã copy link!
-              </motion.div>
-            )}
-
-            {showMessengerToast && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-sm text-green-600 bg-green-50 rounded-lg py-2 text-center"
-              >
-                Đã copy tin nhắn! Mở Messenger và dán (Ctrl+V) để gửi nhé.
-              </motion.div>
-            )}
-
-            {showCopyOrderToast && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-sm text-green-600 bg-green-50 rounded-lg py-2 text-center"
-              >
-                ✓ Đã copy tóm tắt đơn hàng!
-              </motion.div>
-            )}
+          {showShare && (
+            <p className="text-center lg:text-left text-xs font-medium text-emerald-700">
+              Đã copy nội dung chia sẻ.
+            </p>
+          )}
           </div>
         </div>
       </motion.div>
 
-      {/* Book Again CTA */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6, duration: 0.5 }}
-        className="grid gap-2 md:grid-cols-2"
+        transition={{ delay: 0.15, duration: 0.4 }}
+        className="grid gap-2 sm:grid-cols-2 lg:max-w-2xl lg:mx-auto lg:gap-3"
       >
         <Link
           to="/my-bookings"
-          className="flex items-center justify-center gap-2 w-full px-4 py-3.5 rounded-xl bg-[#222] text-[#FF9FCA] font-semibold border border-[#222] hover:bg-[#333] transition-all active:scale-95"
+          className="flex items-center justify-center gap-2 w-full px-4 py-3 lg:py-3.5 rounded-xl bg-[#222] text-[#FF9FCA] text-sm lg:text-base font-bold border border-[#222] hover:bg-[#333] transition-colors"
         >
-          Quản lý đơn của tôi
+          Đơn của tôi
         </Link>
         <Link
           to="/catalog"
-          className="flex items-center justify-center gap-2 w-full px-4 py-3.5 rounded-xl bg-slate-100 text-slate-800 font-semibold border border-slate-200 hover:bg-slate-200 transition-all active:scale-95"
+          className="flex items-center justify-center gap-2 w-full px-4 py-3 lg:py-3.5 rounded-xl bg-white text-slate-800 text-sm lg:text-base font-bold border border-slate-200 hover:bg-slate-50 transition-colors"
         >
-          <CameraIcon className="w-5 h-5" />
-          Thuê thêm máy khác
+          <CameraIcon className="w-4 h-4 lg:w-5 lg:h-5" />
+          Thuê thêm
         </Link>
       </motion.div>
     </div>
@@ -478,9 +540,9 @@ export default function PaymentStatusPage() {
   }, [searchParams]);
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-white to-pink-100 pb-32 md:pb-36">
+    <div className="min-h-dvh bg-gradient-to-b from-white to-pink-100 pb-32 md:pb-36 lg:pb-24">
       <SlideNav />
-      <div className="max-w-5xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+      <div className="max-w-5xl lg:max-w-6xl xl:max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-10 lg:py-10 xl:px-12">
         {status === "checking" && (
           <LoadingState message="Đang kiểm tra trạng thái thanh toán..." />
         )}

@@ -76,6 +76,19 @@ const App = () => {
       ),
     },
     {
+      path: "/order/booking/:bookingId",
+      element: (
+        <SeoMeta
+          title="Thông tin đơn hàng"
+          description="Chi tiết đơn thuê thiết bị tại FAO."
+          path="/order"
+          noindex
+        >
+          <OrderInfoPage />
+        </SeoMeta>
+      ),
+    },
+    {
       path: "/order/:orderIdNew",
       element: (
         <SeoMeta

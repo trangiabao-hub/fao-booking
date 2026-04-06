@@ -59,19 +59,26 @@ import BookingPrefsForm, {
 const FIRST_ORDER_DISCOUNT_RATE = 0.3;
 const FIRST_ORDER_DISCOUNT_CAP = 200000;
 
+/** Giống catalog: local datetime không hậu tố Z — backend parse LocalDateTime. */
+function formatLocalDateTimeForDeviceApi(date) {
+  if (!date) return null;
+  return format(date, "yyyy-MM-dd'T'HH:mm:ss");
+}
+
 function isValidGmail(email) {
   return /^[^\s@]+@gmail\.com$/i.test((email || "").trim());
 }
 
-function isValidInstagramOrFacebookUrl(link) {
+function isUrlForPlatform(link, platform) {
   const raw = (link || "").trim();
-  if (!raw) return true;
+  if (!raw) return false;
   try {
     const url = new URL(raw);
     const host = url.hostname.toLowerCase();
+    if (platform === "instagram") {
+      return host === "instagram.com" || host === "www.instagram.com";
+    }
     return (
-      host === "instagram.com" ||
-      host === "www.instagram.com" ||
       host === "facebook.com" ||
       host === "www.facebook.com" ||
       host === "m.facebook.com" ||
@@ -81,6 +88,37 @@ function isValidInstagramOrFacebookUrl(link) {
   } catch {
     return false;
   }
+}
+
+function isSavedSocialValid(saved) {
+  const ig = (saved?.ig || "").trim();
+  const fb = (saved?.fb || "").trim();
+  if (!ig && !fb) return false;
+  if (ig && isUrlForPlatform(ig, "instagram")) return true;
+  if (fb && isUrlForPlatform(fb, "facebook")) return true;
+  return false;
+}
+
+function buildCustomerInfoSnapshot(customer, socialPlatform) {
+  const socialLink = (customer.ig || "").trim();
+  return {
+    fullName: (customer.fullName || "").trim(),
+    phone: normalizePhone(customer.phone),
+    gmail: (customer.gmail || "").trim(),
+    ig: socialPlatform === "instagram" ? socialLink : "",
+    fb: socialPlatform === "facebook" ? socialLink : "",
+  };
+}
+
+function isCustomerInfoSnapshotDifferent(saved, snap) {
+  if (!saved) return true;
+  return (
+    (saved.fullName || "").trim() !== snap.fullName ||
+    normalizePhone(saved.phone || "") !== snap.phone ||
+    (saved.gmail || "").trim() !== snap.gmail ||
+    (saved.ig || "").trim() !== snap.ig ||
+    (saved.fb || "").trim() !== snap.fb
+  );
 }
 
 function normalizeValidPhoneOrEmpty(rawPhone) {
@@ -124,7 +162,7 @@ async function resolveGuestCustomerId(customer) {
     phone: customer.phone || null,
     email: customer.gmail || null,
     ig: customer.ig || null,
-    fb: null,
+    fb: customer.fb || null,
   };
   const response = await api.post("/accounts/resolve", payload);
   const customerId = response?.data?.id;
@@ -132,6 +170,20 @@ async function resolveGuestCustomerId(customer) {
     throw new Error("Không lấy được customerId");
   }
   return customerId;
+}
+
+/** Đồng bộ hồ sơ lên server — chỉ khi đã đăng nhập Google. */
+async function syncCustomerProfileToServer(checkoutMode, hasGoogleSession, snap) {
+  if (checkoutMode !== "GOOGLE" || !hasGoogleSession) return;
+  const me = await api.get("/account");
+  if (!me?.data?.id) return;
+  await api.put("/customer/profile", {
+    fullName: snap.fullName,
+    phone: snap.phone,
+    email: snap.gmail || me?.data?.email,
+    ig: snap.ig || null,
+    fb: snap.fb || null,
+  });
 }
 
 function allocateDiscountByRatio(amounts, discount) {
@@ -236,6 +288,13 @@ export default function QuickBookModal({
       ig: saved?.ig || saved?.fb || "",
     };
   });
+  const [socialPlatform, setSocialPlatform] = useState(() => {
+    const saved = loadCustomerInfo();
+    const hasFb = !!(saved?.fb || "").trim();
+    const hasIg = !!(saved?.ig || "").trim();
+    if (hasFb && !hasIg) return "facebook";
+    return "instagram";
+  });
   const [checkoutMode, setCheckoutMode] = useState("GOOGLE");
   const [hasGoogleSession, setHasGoogleSession] = useState(
     () => !!loadCustomerSession()?.token,
@@ -255,43 +314,54 @@ export default function QuickBookModal({
     confirmPickupReturnTime: false,
   });
   const agreementSectionRef = useRef(null);
+  /** Tránh reset step khi parent re-render: initialPrefs là object mới mỗi lần render. */
+  const quickBookWasOpenRef = useRef(false);
   // showGuestCheckout removed — both options always visible now
 
-  // Sync state when modal opens
+  // Chỉ áp initial prefs / reset form khi vừa mở modal (không chạy lại trong lúc đang mở)
   useLayoutEffect(() => {
-    if (isOpen) {
-      setError("");
-      setCheckoutMode("GOOGLE");
-      setPointToUse(0);
-      setAgreeNoResellOrPawn(false);
-      setAgreeConfirmPickupReturnTime(false);
-      setAgreementErrors({
-        noResellOrPawn: false,
-        confirmPickupReturnTime: false,
-      });
-      if (hasInitialPrefs && initialPrefs) {
-        const p = initialPrefs;
-        setStep(p.step || 1);
-        if (p.branchId) setSelectedBranch(p.branchId);
-        if (p.durationType) setSelectedDuration(p.durationType);
-        if (p.date) setSelectedDate(normalizeDate(p.date));
-        if (p.endDate) setEndDateState(normalizeDate(p.endDate));
-        if (p.timeFrom) setSixHourTimeFrom(p.timeFrom);
-        if (p.timeTo) setSixHourTimeTo(p.timeTo);
-        if (p.pickupType) setPickupType(p.pickupType);
-        if (p.pickupSlot) setPickupSlot(p.pickupSlot);
-      } else {
-        const p = getInitialPrefs();
-        setStep(1);
-        setSelectedBranch(p.branchId);
-        setSelectedDuration(p.durationId);
-        setSelectedDate(p.date);
-        setEndDateState(p.endDate);
-        setSixHourTimeFrom(p.timeFrom);
-        setSixHourTimeTo(p.timeTo);
-        setPickupType(p.pickupType);
-        setPickupSlot(p.pickupSlot);
-      }
+    if (!isOpen) {
+      quickBookWasOpenRef.current = false;
+      return;
+    }
+
+    const alreadyOpen = quickBookWasOpenRef.current;
+    quickBookWasOpenRef.current = true;
+    if (alreadyOpen) {
+      return;
+    }
+
+    setError("");
+    setCheckoutMode("GOOGLE");
+    setPointToUse(0);
+    setAgreeNoResellOrPawn(false);
+    setAgreeConfirmPickupReturnTime(false);
+    setAgreementErrors({
+      noResellOrPawn: false,
+      confirmPickupReturnTime: false,
+    });
+    if (hasInitialPrefs && initialPrefs) {
+      const p = initialPrefs;
+      setStep(p.step || 1);
+      if (p.branchId) setSelectedBranch(p.branchId);
+      if (p.durationType) setSelectedDuration(p.durationType);
+      if (p.date) setSelectedDate(normalizeDate(p.date));
+      if (p.endDate) setEndDateState(normalizeDate(p.endDate));
+      if (p.timeFrom) setSixHourTimeFrom(p.timeFrom);
+      if (p.timeTo) setSixHourTimeTo(p.timeTo);
+      if (p.pickupType) setPickupType(p.pickupType);
+      if (p.pickupSlot) setPickupSlot(p.pickupSlot);
+    } else {
+      const p = getInitialPrefs();
+      setStep(1);
+      setSelectedBranch(p.branchId);
+      setSelectedDuration(p.durationId);
+      setSelectedDate(p.date);
+      setEndDateState(p.endDate);
+      setSixHourTimeFrom(p.timeFrom);
+      setSixHourTimeTo(p.timeTo);
+      setPickupType(p.pickupType);
+      setPickupSlot(p.pickupSlot);
     }
   }, [isOpen, hasInitialPrefs, initialPrefs, getInitialPrefs]);
 
@@ -453,8 +523,11 @@ export default function QuickBookModal({
     setIsCheckingAvailability(true);
     try {
       if (isMulti) {
+        const fromStr = formatLocalDateTimeForDeviceApi(t1);
+        const toStr = formatLocalDateTimeForDeviceApi(t2);
+        if (!fromStr || !toStr) return;
         const modelResp = await api.get("v1/devices/model-availability", {
-          params: { from: t1.toISOString(), to: t2.toISOString() },
+          params: { from: fromStr, to: toStr },
         });
         const apiModel = modelResp.data || {};
         const allAvailable = effectiveDevices.every(
@@ -463,10 +536,15 @@ export default function QuickBookModal({
         setIsAvailable(allAvailable);
       } else {
         const device = effectiveDevices[0];
+        const fromStr = formatLocalDateTimeForDeviceApi(t1);
+        const lookupTo =
+          selectedDuration === "ONE_DAY" ? addDays(t2, 1) : t2;
+        const toStr = formatLocalDateTimeForDeviceApi(lookupTo);
+        if (!fromStr || !toStr) return;
         const resp = await api.get("v1/devices/booking", {
           params: {
-            startDate: t1.toISOString(),
-            endDate: t2.toISOString(),
+            startDate: fromStr.slice(0, 10),
+            endDate: toStr.slice(0, 10),
             branchId: selectedBranch,
           },
         });
@@ -489,7 +567,15 @@ export default function QuickBookModal({
     } finally {
       setIsCheckingAvailability(false);
     }
-  }, [effectiveDevices, isMulti, t1, t2, selectedBranch, timeSelectionError]);
+  }, [
+    effectiveDevices,
+    isMulti,
+    t1,
+    t2,
+    selectedBranch,
+    selectedDuration,
+    timeSelectionError,
+  ]);
 
   useEffect(() => {
     if (isOpen && effectiveDevices.length > 0) {
@@ -501,7 +587,6 @@ export default function QuickBookModal({
     selectedDate,
     selectedDuration,
     selectedBranch,
-    initialPrefs,
     checkAvailability,
   ]);
 
@@ -591,11 +676,15 @@ export default function QuickBookModal({
 
   // Validate customer info
   const socialLinkError = useMemo(() => {
-    if (!customer.ig?.trim()) return "";
-    return isValidInstagramOrFacebookUrl(customer.ig)
-      ? ""
-      : "Link phải là Instagram hoặc Facebook hợp lệ (https://...).";
-  }, [customer.ig]);
+    const raw = (customer.ig || "").trim();
+    if (!raw) return "Vui lòng nhập link.";
+    if (!isUrlForPlatform(raw, socialPlatform)) {
+      return socialPlatform === "instagram"
+        ? "Link phải là URL Instagram hợp lệ (https://instagram.com/...)."
+        : "Link phải là URL Facebook hợp lệ (https://facebook.com/...).";
+    }
+    return "";
+  }, [customer.ig, socialPlatform]);
   const fullNameError = useMemo(() => {
     return customer.fullName?.trim().length >= 2
       ? ""
@@ -615,8 +704,13 @@ export default function QuickBookModal({
       : "Vui lòng nhập Gmail hợp lệ (đuôi @gmail.com).";
   }, [checkoutMode, customer.gmail, hasGoogleSession]);
   const isCustomerValid = useMemo(() => {
-    return !fullNameError && !phoneError && !gmailError;
-  }, [fullNameError, phoneError, gmailError]);
+    return (
+      !fullNameError &&
+      !phoneError &&
+      !gmailError &&
+      !socialLinkError
+    );
+  }, [fullNameError, phoneError, gmailError, socialLinkError]);
   const isFirstOrderPromoEligible = useMemo(() => {
     return (
       checkoutMode === "GOOGLE" &&
@@ -678,6 +772,14 @@ export default function QuickBookModal({
       Math.min(Math.floor(payableBeforePoint / 1000), Math.floor(memberPoint)),
     );
   }, [hasGoogleSession, payableBeforePoint, memberPoint]);
+  const suggestedHalfPoints = useMemo(
+    () =>
+      Math.max(
+        0,
+        Math.floor(Math.min(maxPointToUse, memberPoint * 0.5)),
+      ),
+    [maxPointToUse, memberPoint],
+  );
   useEffect(() => {
     setPointToUse((prev) => Math.max(0, Math.min(prev, maxPointToUse)));
   }, [maxPointToUse]);
@@ -711,9 +813,7 @@ export default function QuickBookModal({
       !!savedCustomer?.fullName &&
       /^0\d{9}$/.test(phone) &&
       isValidGmail(savedCustomer?.gmail || "") &&
-      isValidInstagramOrFacebookUrl(
-        savedCustomer?.ig || savedCustomer?.fb || "",
-      )
+      isSavedSocialValid(savedCustomer)
     );
   }, [savedCustomer]);
 
@@ -748,19 +848,19 @@ export default function QuickBookModal({
     setError("");
 
     try {
+      const socialLink = (customer.ig || "").trim();
       const normalizedCustomer = {
         fullName: (customer.fullName || "").trim(),
         phone: normalizePhone(customer.phone),
         gmail: (customer.gmail || "").trim(),
-        ig: (customer.ig || "").trim(),
+        ig: socialPlatform === "instagram" ? socialLink : "",
+        fb: socialPlatform === "facebook" ? socialLink : "",
       };
       saveCustomerInfo(normalizedCustomer);
 
       const phone = normalizedCustomer.phone;
       let customerId = null;
       if (checkoutMode === "GOOGLE") {
-        const socialLink = normalizedCustomer.ig;
-        const isFacebook = /facebook\.com|fb\.com/i.test(socialLink);
         const me = await api.get("/account");
         const currentAccountId = me?.data?.id;
         if (!currentAccountId) {
@@ -771,8 +871,8 @@ export default function QuickBookModal({
             fullName: normalizedCustomer.fullName,
             phone,
             email: normalizedCustomer.gmail || me?.data?.email,
-            ig: isFacebook ? null : socialLink || null,
-            fb: isFacebook ? socialLink || null : null,
+            ig: normalizedCustomer.ig || null,
+            fb: normalizedCustomer.fb || null,
           });
         } catch (profileErr) {
           // Profile sync is best-effort; do not block payment flow.
@@ -1460,8 +1560,33 @@ export default function QuickBookModal({
                       <div>
                         <label className="text-[11px] font-black text-[#666] mb-1.5 block uppercase tracking-[0.2em] px-1">
                           Instagram / Facebook
-                          <span className="ml-1 normal-case tracking-normal font-semibold text-[#999]">
-                            (không bắt buộc)
+                        </label>
+                        <div className="flex flex-wrap gap-4 mb-2 px-1">
+                          <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[#444]">
+                            <input
+                              type="radio"
+                              name="socialPlatform"
+                              checked={socialPlatform === "instagram"}
+                              onChange={() => setSocialPlatform("instagram")}
+                              className="h-4 w-4 accent-[#E85C9C] shrink-0"
+                            />
+                            Instagram
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[#444]">
+                            <input
+                              type="radio"
+                              name="socialPlatform"
+                              checked={socialPlatform === "facebook"}
+                              onChange={() => setSocialPlatform("facebook")}
+                              className="h-4 w-4 accent-[#E85C9C] shrink-0"
+                            />
+                            Facebook
+                          </label>
+                        </div>
+                        <label className="text-[10px] font-bold text-[#888] mb-1 block uppercase tracking-wider px-1">
+                          Link{" "}
+                          <span className="text-red-500 normal-case font-semibold">
+                            (bắt buộc)
                           </span>
                         </label>
                         <input
@@ -1469,21 +1594,26 @@ export default function QuickBookModal({
                           onChange={(e) =>
                             setCustomer((c) => ({ ...c, ig: e.target.value }))
                           }
-                          placeholder="https://instagram.com/username"
+                          placeholder={
+                            socialPlatform === "instagram"
+                              ? "https://instagram.com/username"
+                              : "https://facebook.com/username"
+                          }
                           className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
                             socialLinkError
-                              ? "border-amber-300 focus:border-amber-400"
+                              ? "border-red-300 focus:border-red-400"
                               : "border-[#eee] focus:border-[#FF9FCA]"
                           }`}
                         />
-                        {socialLinkError ? (
-                          <p className="mt-1 text-xs text-amber-700 font-medium">
+                        {socialLinkError && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">
                             {socialLinkError}
                           </p>
-                        ) : (
+                        )}
+                        {!socialLinkError && (
                           <p className="mt-1 text-[11px] text-[#999] px-1">
-                            Có thể bổ sung để shop hỗ trợ xác nhận nhanh hơn khi
-                            cần
+                            Dán link đầy đủ (https://...) đúng với nền tảng đã
+                            chọn.
                           </p>
                         )}
                       </div>
@@ -1494,222 +1624,37 @@ export default function QuickBookModal({
             )}
 
             {step === 3 && (
-              <div className="space-y-3">
-                <div className="rounded-xl border border-[#FFD4E8] bg-[#FFF7FB] px-3 py-2.5 sm:px-4">
-                  <div className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-[#E85C9C]">
-                    Bước cuối: Xác nhận đặt lịch
+              <div className="space-y-3 sm:space-y-3.5">
+                <div className="rounded-xl border border-[#F5D7E6] bg-[#FFFAFC] px-3.5 py-2.5 sm:px-4 sm:py-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
+                    Bước cuối · Xác nhận & thanh toán
                   </div>
-                  <div className="mt-1 text-xs sm:text-sm text-[#555]">
-                    Kiểm tra thông tin thuê, áp mã/điểm (nếu có), sau đó bấm
-                    thanh toán để giữ lịch.
-                  </div>
-                </div>
-                <div className="p-4 bg-[#222] rounded-xl space-y-2.5">
-                  <div className="text-[10px] text-[#FF9FCA]/80 font-bold uppercase tracking-wider">
-                    Thanh toán hôm nay
-                  </div>
-                  {priceBreakdown && (
-                    <>
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-[#ccc]">✨ Giá gốc</span>
-                        <span className="font-bold text-white">
-                          {(priceBreakdown.original || 0).toLocaleString(
-                            "vi-VN",
-                          )}
-                          đ
-                        </span>
-                      </div>
-                      {selectedDiscountAmount > 0 && (
-                        <div className="flex justify-between items-center text-sm">
-                          <span
-                            className={
-                              isFirstOrderVoucherSelected
-                                ? "text-emerald-300"
-                                : "text-[#FF9FCA]"
-                            }
-                          >
-                            {isFirstOrderVoucherSelected ? "🎉" : "🔥"}{" "}
-                            {selectedDiscountLabel}
-                          </span>
-                          <span
-                            className={
-                              isFirstOrderVoucherSelected
-                                ? "font-bold text-emerald-300"
-                                : "font-bold text-[#FF9FCA]"
-                            }
-                          >
-                            (-{selectedDiscountAmount.toLocaleString("vi-VN")}đ)
-                          </span>
-                        </div>
-                      )}
-                      {pointDiscountAmount > 0 && (
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-amber-300">⭐ Dùng điểm</span>
-                          <span className="font-bold text-amber-300">
-                            (-{pointDiscountAmount.toLocaleString("vi-VN")}đ)
-                          </span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {!priceBreakdown && pointDiscountAmount > 0 && (
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-amber-300">⭐ Dùng điểm</span>
-                      <span className="font-bold text-amber-300">
-                        (-{pointDiscountAmount.toLocaleString("vi-VN")}đ)
-                      </span>
-                    </div>
-                  )}
-                  <div className="border-t border-[#444] pt-2 mt-2 flex justify-between items-center gap-3">
-                    <span className="font-black text-white uppercase tracking-wider">
-                      ✅ Chỉ còn
-                    </span>
-                    <span className="text-xl sm:text-2xl font-black text-[#FF9FCA] shrink-0">
-                      {payableTotal.toLocaleString("vi-VN")}đ
-                    </span>
-                  </div>
-                  {(selectedDiscountAmount > 0 || pointDiscountAmount > 0) && (
-                    <div className="text-center text-emerald-400 text-sm font-bold pt-1">
-                      💥 Tiết kiệm ngay{" "}
-                      {(
-                        selectedDiscountAmount + pointDiscountAmount
-                      ).toLocaleString("vi-VN")}
-                      đ
-                    </div>
-                  )}
+                  <p className="mt-1.5 text-[12px] text-stone-600 leading-relaxed">
+                    Kiểm tra máy và giá, dùng điểm nếu cần, tick cam kết rồi
+                    thanh toán.
+                  </p>
                 </div>
 
-                {isLoggedInUser && (
-                  <div className="p-3 sm:p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                    <div className="text-xs font-bold text-emerald-700">
-                      🎁 Lợi ích cho lần thuê sau
-                    </div>
-                    <div className="mt-1 text-sm text-emerald-900">
-                      <span className="font-semibold">50.000đ = 3 điểm.</span>{" "}
-                      Đơn này cộng{" "}
-                      <span className="font-extrabold">
-                        +{earnedPointPreview.toLocaleString("vi-VN")} điểm
-                      </span>{" "}
-                      vào tài khoản của bạn.
-                    </div>
-                  </div>
-                )}
-
-                {isLoggedInUser && (
-                  <div className="p-3 sm:p-4 bg-amber-50 rounded-xl border border-amber-200">
-                    <div className="flex items-start sm:items-center justify-between gap-3">
-                      <div>
-                        <div className="text-xs text-amber-700 font-bold">
-                          Điểm thành viên
-                        </div>
-                        <div className="mt-1 text-[11px] text-amber-800/90">
-                          1 điểm = 1.000đ
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setPointToUse(maxPointToUse)}
-                        className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[11px] sm:text-xs font-bold text-amber-700 hover:bg-amber-100 transition-colors"
-                      >
-                        Dùng tối đa
-                      </button>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPointToUse(0)}
-                        className="rounded-lg border border-amber-300 bg-white px-2 py-2 text-[11px] sm:text-xs font-bold text-amber-700 hover:bg-amber-100 transition-colors"
-                      >
-                        Không dùng điểm
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPointToUse(
-                            Math.max(
-                              0,
-                              Math.floor(
-                                Math.min(maxPointToUse, memberPoint * 0.5),
-                              ),
-                            ),
-                          )
-                        }
-                        className="rounded-lg border border-amber-300 bg-white px-2 py-2 text-[11px] sm:text-xs font-bold text-amber-700 hover:bg-amber-100 transition-colors"
-                      >
-                        Dùng 50%
-                      </button>
-                    </div>
-
-                    <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
-                      <input
-                        type="number"
-                        min={0}
-                        max={maxPointToUse}
-                        value={pointToUse}
-                        onChange={(e) => {
-                          const next = Number(e.target.value);
-                          if (!Number.isFinite(next)) {
-                            setPointToUse(0);
-                            return;
-                          }
-                          setPointToUse(
-                            Math.max(
-                              0,
-                              Math.min(Math.floor(next), maxPointToUse),
-                            ),
-                          );
-                        }}
-                        className="w-full sm:w-40 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-[#333] focus:outline-none focus:border-amber-500"
-                      />
-                      <span className="text-xs sm:text-sm font-semibold text-amber-800/90">
-                        Trừ ngay {pointDiscountAmount.toLocaleString("vi-VN")}đ
-                      </span>
-                    </div>
-
-                    <div className="mt-3 space-y-1 text-xs text-amber-900/90">
-                      <div className="flex items-center justify-between gap-2">
-                        <span>Điểm hiện có</span>
-                        <span className="font-extrabold">
-                          {memberPoint.toLocaleString("vi-VN")} điểm
-                        </span>
-                      </div>
-                      {pointDiscountAmount > 0 && (
-                        <div className="flex items-center justify-between gap-2">
-                          <span>Đang sử dụng</span>
-                          <span className="font-extrabold">
-                            {pointToUse.toLocaleString("vi-VN")} điểm (
-                            {pointDiscountAmount.toLocaleString("vi-VN")}đ)
-                          </span>
-                        </div>
-                      )}
-                      <div className="text-[11px] text-amber-800 pt-1">
-                        Điểm được lưu trên tài khoản và dùng cho các đơn thuê
-                        sau.
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="p-3 sm:p-4 bg-white rounded-xl border border-[#eee] space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-black uppercase tracking-wider text-[#E85C9C]">
-                      Tóm tắt đơn thuê
+                {/* 1) Thiết bị — ưu tiên trên cùng */}
+                <div className="p-3.5 sm:p-4 bg-white rounded-xl border border-[#F0E8EC] space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
+                      Thông tin máy
                     </div>
                     <button
                       type="button"
                       onClick={() => setStep(1)}
-                      className="rounded-lg border border-[#FFD4E8] bg-[#FFF7FB] px-2.5 py-1 text-[11px] font-bold text-[#E85C9C] hover:bg-[#FFEAF3] transition-colors"
+                      className="rounded-lg border border-[#F5D7E6] bg-[#FFF8FB] px-2.5 py-1.5 text-[11px] font-bold text-[#E85C9C] hover:bg-[#FFF0F6] transition-colors shrink-0"
                     >
-                      Sửa thời gian/máy
+                      Sửa máy / lịch
                     </button>
                   </div>
-                  <div className="p-3 bg-[#FFF5F8] rounded-xl border border-[#FFE4F0]">
-                    <div className="text-[11px] text-[#E85C9C] font-bold uppercase tracking-wider mb-2">
+                  <div className="p-3 sm:p-3.5 bg-[#FFF8FB] rounded-xl border border-[#FAD6E8]">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C94B86] mb-2">
                       Thiết bị {isMulti && `(${effectiveDevices.length} máy)`}
                     </div>
                     {isMulti ? (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {rentalInfoPerDevice.map((r) => {
                           const dev = r.device;
                           const days = r.chargeableDays ?? chargeableDays;
@@ -1726,17 +1671,17 @@ export default function QuickBookModal({
                               key={dev.id}
                               className="border-b border-[#FFE4F0] pb-2 last:border-0 last:pb-0"
                             >
-                              <div className="flex justify-between items-start text-sm gap-3">
+                              <div className="flex justify-between items-start gap-3">
                                 <div className="min-w-0 flex-1">
-                                  <div className="font-bold text-[#222]">
+                                  <div className="font-bold text-stone-900 text-[13px] leading-snug">
                                     {dev.displayName || dev.name}
                                   </div>
-                                  <p className="text-xs text-[#888] mt-0.5">
+                                  <p className="text-[12px] text-stone-500 mt-1 leading-relaxed">
                                     {breakdown ||
                                       `${daysLabel} ${formatPriceK(basePrice)}`}
                                   </p>
                                 </div>
-                                <span className="font-black text-[#E85C9C] shrink-0 text-base">
+                                <span className="font-black text-[#E85C9C] shrink-0 text-[13px] tabular-nums">
                                   {formatPriceK(basePrice)}
                                 </span>
                               </div>
@@ -1747,7 +1692,7 @@ export default function QuickBookModal({
                     ) : (
                       <div className="flex justify-between items-start gap-3">
                         <div className="min-w-0 flex-1">
-                          <div className="font-black text-[#222] uppercase">
+                          <div className="font-black text-stone-900 uppercase text-[13px] leading-snug">
                             {effectiveDevices[0]?.displayName ||
                               effectiveDevices[0]?.name}
                           </div>
@@ -1764,94 +1709,298 @@ export default function QuickBookModal({
                                 ? `${Math.round(chargeableDays)} ngày`
                                 : "Gói 6h";
                             return (
-                              <p className="text-xs text-[#888] mt-0.5">
+                              <p className="text-[12px] text-stone-500 mt-1 leading-relaxed">
                                 {breakdown ||
                                   `${daysLabel} ${formatPriceK(base0)}`}
                               </p>
                             );
                           })()}
                         </div>
-                        <span className="font-black text-[#E85C9C] shrink-0 text-base">
+                        <span className="font-black text-[#E85C9C] shrink-0 text-[13px] tabular-nums">
                           {formatPriceK(rentalInfoPerDevice[0]?.price || 0)}
                         </span>
                       </div>
                     )}
                   </div>
+                </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="p-3 bg-white rounded-xl border border-[#eee]">
-                      <div className="text-xs text-[#999] font-bold mb-1">
+                {/* 2) Giá + điểm */}
+                <div className="rounded-xl border border-[#EDD5E3] bg-gradient-to-b from-white via-[#FFFCFD] to-[#FFF7FA] p-3.5 sm:p-4 space-y-3 sm:space-y-3.5 shadow-[0_6px_24px_rgba(232,92,156,0.07)]">
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
+                    Thanh toán hôm nay
+                  </div>
+                  {priceBreakdown && (
+                    <div className="space-y-2 pt-0.5">
+                      <div className="flex justify-between items-baseline gap-3 text-[13px] leading-snug">
+                        <span className="text-stone-500">✨ Giá gốc</span>
+                        <span className="font-bold text-stone-900 tabular-nums shrink-0">
+                          {(priceBreakdown.original || 0).toLocaleString(
+                            "vi-VN",
+                          )}
+                          đ
+                        </span>
+                      </div>
+                      {selectedDiscountAmount > 0 && (
+                        <div className="flex justify-between items-baseline gap-3 text-[13px] leading-snug">
+                          <span
+                            className={
+                              isFirstOrderVoucherSelected
+                                ? "text-emerald-700"
+                                : "text-[#E85C9C]"
+                            }
+                          >
+                            {isFirstOrderVoucherSelected ? "🎉" : "🔥"}{" "}
+                            {selectedDiscountLabel}
+                          </span>
+                          <span
+                            className={
+                              isFirstOrderVoucherSelected
+                                ? "font-bold text-emerald-700 tabular-nums shrink-0"
+                                : "font-bold text-[#E85C9C] tabular-nums shrink-0"
+                            }
+                          >
+                            (−{selectedDiscountAmount.toLocaleString("vi-VN")}đ)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {isLoggedInUser && (
+                    <div className="rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50 to-white px-3.5 py-3 sm:px-4 sm:py-3.5 space-y-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-amber-900/70">
+                            Ví điểm của bạn
+                          </div>
+                          <div className="mt-1 flex items-baseline gap-2 flex-wrap">
+                            <span className="text-[1.625rem] sm:text-[1.75rem] font-black tabular-nums text-amber-950 leading-none tracking-tight">
+                              {memberPoint.toLocaleString("vi-VN")}
+                            </span>
+                            <span className="text-[13px] font-bold text-amber-900/80">
+                              điểm
+                            </span>
+                            <span className="text-[11px] text-amber-800/50">
+                              · 1 điểm = 1.000đ
+                            </span>
+                          </div>
+                          <p className="mt-2 text-[11px] text-amber-900/45 leading-relaxed max-w-[18rem]">
+                            Điểm giữ lâu dài — chỉ trừ khi bạn muốn giảm bill
+                            hôm nay.
+                          </p>
+                        </div>
+                        {pointDiscountAmount > 0 && (
+                          <div className="text-right shrink-0 rounded-lg bg-white border border-amber-100/90 px-2.5 py-1.5">
+                            <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-amber-800/55">
+                              Trừ hôm nay
+                            </div>
+                            <div className="text-[13px] font-black text-amber-950 tabular-nums mt-0.5">
+                              −{pointDiscountAmount.toLocaleString("vi-VN")}đ
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-0.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-500 mb-2">
+                          Trừ cho đơn này
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <div className="inline-flex rounded-full border border-amber-200/90 bg-white p-0.5 shadow-sm">
+                            <button
+                              type="button"
+                              onClick={() => setPointToUse(0)}
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition-all ${
+                                pointToUse === 0
+                                  ? "bg-amber-100 text-amber-950 shadow-sm ring-1 ring-amber-200/90"
+                                  : "text-amber-900/50 hover:bg-amber-50/90"
+                              }`}
+                            >
+                              Không trừ
+                            </button>
+                            <button
+                              type="button"
+                              disabled={suggestedHalfPoints <= 0}
+                              onClick={() => setPointToUse(suggestedHalfPoints)}
+                              className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition-all disabled:opacity-35 disabled:pointer-events-none ${
+                                maxPointToUse > 0 &&
+                                suggestedHalfPoints > 0 &&
+                                pointToUse === suggestedHalfPoints
+                                  ? "bg-amber-100 text-amber-950 shadow-sm ring-1 ring-amber-200/90"
+                                  : "text-amber-900/50 hover:bg-amber-50/90"
+                              }`}
+                            >
+                              Một nửa
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              max={maxPointToUse}
+                              value={pointToUse}
+                              onChange={(e) => {
+                                const next = Number(e.target.value);
+                                if (!Number.isFinite(next)) {
+                                  setPointToUse(0);
+                                  return;
+                                }
+                                setPointToUse(
+                                  Math.max(
+                                    0,
+                                    Math.min(
+                                      Math.floor(next),
+                                      maxPointToUse,
+                                    ),
+                                  ),
+                                );
+                              }}
+                              className="w-13 rounded-lg border border-amber-200 bg-white py-1.5 px-1 text-center text-[13px] font-bold text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-[#E85C9C]/25"
+                            />
+                            <span className="text-[11px] text-amber-900/55 font-medium">
+                              điểm
+                            </span>
+                            <span className="text-[10px] text-stone-400 tabular-nums">
+                              / {maxPointToUse.toLocaleString("vi-VN")} tối đa
+                            </span>
+                          </div>
+                        </div>
+                        {maxPointToUse > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setPointToUse(maxPointToUse)}
+                            className={`mt-2 text-left text-[11px] font-medium leading-relaxed transition-colors ${
+                              pointToUse === maxPointToUse
+                                ? "text-amber-900/75"
+                                : "text-stone-400 hover:text-[#C94B86]"
+                            }`}
+                          >
+                            {pointToUse === maxPointToUse
+                              ? "Đang trừ tối đa theo bill. Giảm số điểm nếu muốn giữ lại cho đơn sau."
+                              : `Chỉ khi cần: trừ tối đa ${maxPointToUse.toLocaleString("vi-VN")} điểm (−${(maxPointToUse * 1000).toLocaleString("vi-VN")}đ)`}
+                          </button>
+                        )}
+                      </div>
+
+                      {maxPointToUse === 0 && memberPoint > 0 && (
+                        <p className="text-[11px] text-amber-900/45 leading-relaxed">
+                          Đơn này chưa thể trừ thêm điểm (bill sau giảm quá
+                          nhỏ).
+                        </p>
+                      )}
+                      <p className="text-[11px] text-emerald-800/90 leading-relaxed pt-2 border-t border-amber-100">
+                        🎁 Dự kiến +
+                        {earnedPointPreview.toLocaleString("vi-VN")} điểm ·
+                        50.000đ = 3 điểm
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="border-t border-[#EDD5E3] pt-3 mt-0.5 flex justify-between items-baseline gap-3">
+                    <span className="font-black text-stone-800 uppercase tracking-[0.1em] text-[11px] sm:text-xs">
+                      Chỉ còn
+                    </span>
+                    <span className="text-xl sm:text-[1.65rem] font-black text-[#E85C9C] shrink-0 tabular-nums leading-none tracking-tight">
+                      {payableTotal.toLocaleString("vi-VN")}đ
+                    </span>
+                  </div>
+                  {(selectedDiscountAmount > 0 || pointDiscountAmount > 0) && (
+                    <div className="text-center text-[12px] sm:text-[13px] font-bold text-emerald-700 pt-0.5">
+                      💥 Tiết kiệm{" "}
+                      {(
+                        selectedDiscountAmount + pointDiscountAmount
+                      ).toLocaleString("vi-VN")}
+                      đ
+                    </div>
+                  )}
+                </div>
+
+                {/* 3) Thời gian · chi nhánh · khách */}
+                <div className="p-3.5 sm:p-4 bg-white rounded-xl border border-[#F0E8EC] space-y-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
+                    Chi tiết đặt
+                  </div>
+                  <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
+                    <div className="p-3 rounded-xl border border-stone-100 bg-stone-50/70">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-stone-500 mb-1.5">
                         Thời gian
                       </div>
-                      <div className="text-sm text-[#222] space-y-0.5">
-                        {t1 && <div>Nhận: {formatPickupReturnSummary(t1)}</div>}
-                        {t2 && <div>Trả: {formatPickupReturnSummary(t2)}</div>}
+                      <div className="text-[13px] text-stone-800 space-y-1 leading-relaxed">
+                        {t1 && (
+                          <div>
+                            <span className="text-stone-500">Nhận:</span>{" "}
+                            {formatPickupReturnSummary(t1)}
+                          </div>
+                        )}
+                        {t2 && (
+                          <div>
+                            <span className="text-stone-500">Trả:</span>{" "}
+                            {formatPickupReturnSummary(t2)}
+                          </div>
+                        )}
                         {chargeableDays > 0 && (
-                          <div className="font-bold text-[#E85C9C] mt-1">
-                            Tổng cộng:{" "}
+                          <div className="font-bold text-[#E85C9C] text-[12px] pt-0.5">
                             {chargeableDays < 1
-                              ? "Gói 6h"
-                              : `${chargeableDays} ngày`}
-                            .
+                              ? "Gói 6 giờ"
+                              : `${chargeableDays} ngày thuê`}
                           </div>
                         )}
                       </div>
                     </div>
-                    <div className="p-3 bg-white rounded-xl border border-[#eee]">
-                      <div className="text-xs text-[#999] font-bold mb-1">
+                    <div className="p-3 rounded-xl border border-stone-100 bg-stone-50/70">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-stone-500 mb-1.5">
                         Chi nhánh
                       </div>
-                      <div className="font-black text-sm text-[#222]">
+                      <div className="font-bold text-[13px] text-stone-900 leading-snug">
                         {BRANCHES.find((b) => b.id === selectedBranch)?.label}
                       </div>
                     </div>
                   </div>
-
-                  <div className="p-3 bg-green-50 rounded-xl border border-green-200">
+                  <div className="p-3 rounded-xl border border-[#E8F5E9] bg-emerald-50/60">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-xs text-green-600 font-bold mb-1">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-800/90">
                         Khách hàng
-                      </div>
+                      </span>
                       <button
                         type="button"
                         onClick={() => setStep(2)}
-                        className="rounded-lg border border-green-200 bg-white px-2 py-1 text-[11px] font-bold text-green-700 hover:bg-green-100 transition-colors"
+                        className="rounded-lg border border-emerald-200/90 bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 transition-colors"
                       >
-                        Sửa khách
+                        Sửa
                       </button>
                     </div>
-                    <div className="font-black text-sm text-[#222]">
-                      {customer.fullName?.trim() || "Chưa chọn khách hàng"}
+                    <div className="font-bold text-[13px] text-stone-900 mt-1.5 leading-snug">
+                      {customer.fullName?.trim() || "—"}
                     </div>
                     {customer.phone && (
-                      <div className="text-xs text-[#777]">
+                      <div className="text-[12px] text-stone-600 tabular-nums mt-0.5">
                         {normalizePhone(customer.phone)}
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
-                  <div className="text-xs text-emerald-700 font-bold mb-0.5">
-                    🎁 Đặc biệt: Chương trình "Cọc 0 đồng"
+                <div className="p-3.5 sm:p-4 bg-emerald-50/90 rounded-xl border border-emerald-200/80">
+                  <div className="text-[11px] text-emerald-900 font-bold leading-snug mb-1">
+                    Đặc biệt: Cọc 0 đồng
                   </div>
-                  <div className="text-xs text-emerald-800/90">
-                    ✅ Chỉ cần CCCD bản gốc (Shop chỉ chụp lại, không giữ máy)
-                    hoặc VNeID định danh mức 2.
+                  <div className="text-[12px] text-emerald-900/85 leading-relaxed">
+                    Chỉ cần CCCD bản gốc (shop chụp lại, không giữ máy) hoặc
+                    VNeID định danh mức 2.
                   </div>
                 </div>
                 <div
                   ref={agreementSectionRef}
-                  className="p-3 bg-white rounded-xl border border-[#eee] space-y-2"
+                  className="p-3.5 sm:p-4 bg-white rounded-xl border border-[#F0E8EC] space-y-2.5"
                 >
-                  <div className="text-xs font-bold uppercase tracking-wider text-[#E85C9C]">
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
                     Cam kết trước khi thanh toán
                   </div>
                   <label
-                    className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-xs sm:text-sm transition-colors ${
+                    className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
                       agreementErrors.noResellOrPawn
-                        ? "border-red-300 bg-red-50 text-red-700"
-                        : "border-[#eee] bg-[#fafafa] text-[#444]"
+                        ? "border-red-300 bg-red-50 text-red-800"
+                        : "border-stone-100 bg-stone-50/80 text-stone-700"
                     }`}
                   >
                     <input
@@ -1865,7 +2014,7 @@ export default function QuickBookModal({
                           noResellOrPawn: !checked && prev.noResellOrPawn,
                         }));
                       }}
-                      className="mt-0.5 h-4 w-4 shrink-0 accent-[#E85C9C]"
+                      className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
                     />
                     <span>
                       Cam kết không sử dụng máy dưới các mục đích như cầm, bán
@@ -1892,10 +2041,10 @@ export default function QuickBookModal({
                     </span>
                   </label>
                   <label
-                    className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-xs sm:text-sm transition-colors ${
+                    className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
                       agreementErrors.confirmPickupReturnTime
-                        ? "border-red-300 bg-red-50 text-red-700"
-                        : "border-[#eee] bg-[#fafafa] text-[#444]"
+                        ? "border-red-300 bg-red-50 text-red-800"
+                        : "border-stone-100 bg-stone-50/80 text-stone-700"
                     }`}
                   >
                     <input
@@ -1910,7 +2059,7 @@ export default function QuickBookModal({
                             !checked && prev.confirmPickupReturnTime,
                         }));
                       }}
-                      className="mt-0.5 h-4 w-4 shrink-0 accent-[#E85C9C]"
+                      className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
                     />
                     <span>
                       Xác nhận đã đúng giờ nhận/trả. Nếu cần thay đổi, tôi sẽ
@@ -1919,7 +2068,7 @@ export default function QuickBookModal({
                   </label>
                 </div>
                 {error && (
-                  <div className="p-3 bg-red-50 text-red-700 rounded-xl text-sm font-bold border border-red-200">
+                  <div className="p-3.5 bg-red-50 text-red-800 rounded-xl text-[13px] font-semibold leading-relaxed border border-red-200/90">
                     {error}
                   </div>
                 )}
@@ -1944,7 +2093,30 @@ export default function QuickBookModal({
               )}
               {step < 3 ? (
                 <button
-                  onClick={() => setStep(step + 1)}
+                  onClick={async () => {
+                    if (step === 2 && isCustomerValid) {
+                      const snap = buildCustomerInfoSnapshot(
+                        customer,
+                        socialPlatform,
+                      );
+                      if (isCustomerInfoSnapshotDifferent(loadCustomerInfo(), snap)) {
+                        saveCustomerInfo(snap);
+                      }
+                      try {
+                        await syncCustomerProfileToServer(
+                          checkoutMode,
+                          hasGoogleSession,
+                          snap,
+                        );
+                      } catch (e) {
+                        console.warn(
+                          "Không thể đồng bộ hồ sơ lên server.",
+                          e,
+                        );
+                      }
+                    }
+                    setStep(step + 1);
+                  }}
                   disabled={
                     (step === 1 &&
                       (!isAvailable ||

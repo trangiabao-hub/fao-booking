@@ -4,6 +4,10 @@ import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
 import "dayjs/locale/vi";
+import {
+  MagnifyingGlassIcon,
+  ArrowPathIcon,
+} from "@heroicons/react/24/outline";
 import api from "../../config/axios";
 import SlideNav from "../../components/SlideNav";
 import {
@@ -38,7 +42,88 @@ const STATUS_STYLES = {
   TEST: "border-slate-200 bg-slate-50 text-slate-700",
 };
 
-const ACTIVE_SCHEDULE_STATUSES = new Set(["PAYMENT", "IN_RENT", "CREATED"]);
+const COMPLETED_STATUSES = new Set(["DONE"]);
+const CANCELLED_STATUSES = new Set(["CANCEL", "REFUNDED"]);
+/** Không còn ở tab Sắp nhận / Sắp trả */
+const CLOSED_FOR_PICKUP_RETURN = new Set([
+  "DONE",
+  "CANCEL",
+  "REFUNDED",
+  "IN_RENT",
+]);
+
+const MAIN_TABS = [
+  {
+    id: "pickup",
+    label: "Sắp nhận",
+    hint: "Chưa nhận máy — chờ xử lý, thanh toán hoặc đến ngày nhận.",
+  },
+  {
+    id: "return",
+    label: "Sắp trả",
+    hint: "Đang thuê — cần trả máy đúng hạn.",
+  },
+  {
+    id: "completed",
+    label: "Đã hoàn thành",
+    hint: "Đã trả máy xong (hoàn tất thuê).",
+  },
+  {
+    id: "cancelled",
+    label: "Đã hủy",
+    hint: "Đơn đã hủy hoặc đã hoàn cọc.",
+  },
+];
+
+const TAB_SORT_OPTIONS = {
+  pickup: [
+    { id: "from_asc", label: "Gần ngày nhận máy" },
+    { id: "from_desc", label: "Ngày nhận sau hơn" },
+  ],
+  return: [
+    { id: "to_asc", label: "Gần ngày trả máy" },
+    { id: "to_desc", label: "Ngày trả sau hơn" },
+  ],
+  completed: [
+    { id: "ended_desc", label: "Kết thúc gần đây" },
+    { id: "ended_asc", label: "Kết thúc lâu hơn" },
+  ],
+  cancelled: [
+    { id: "ended_desc", label: "Mới cập nhật" },
+    { id: "ended_asc", label: "Cũ hơn" },
+  ],
+};
+
+function bookingMatchesMainTab(booking, tabId) {
+  const s = booking?.status;
+  if (tabId === "completed") return COMPLETED_STATUSES.has(s);
+  if (tabId === "cancelled") return CANCELLED_STATUSES.has(s);
+  if (tabId === "return") return s === "IN_RENT";
+  if (tabId === "pickup") return !CLOSED_FOR_PICKUP_RETURN.has(s);
+  return false;
+}
+
+function sortBookingsForTab(list, sortId) {
+  const arr = [...list];
+  const from = (b) => new Date(b?.bookingFrom || 0).getTime();
+  const to = (b) => new Date(b?.bookingTo || 0).getTime();
+  switch (sortId) {
+    case "from_asc":
+      return arr.sort((a, b) => from(a) - from(b));
+    case "from_desc":
+      return arr.sort((a, b) => from(b) - from(a));
+    case "to_asc":
+      return arr.sort((a, b) => to(a) - to(b));
+    case "to_desc":
+      return arr.sort((a, b) => to(b) - to(a));
+    case "ended_desc":
+      return arr.sort((a, b) => to(b) - to(a));
+    case "ended_asc":
+      return arr.sort((a, b) => to(a) - to(b));
+    default:
+      return arr;
+  }
+}
 
 function formatDateTime(value) {
   if (!value) return "—";
@@ -69,34 +154,53 @@ function getStatusClasses(status) {
 
 export default function AccountBookingsPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [bookings, setBookings] = useState([]);
   const [error, setError] = useState("");
   const [pendingOrder, setPendingOrder] = useState(() => loadRecentOrder());
+  const [mainTab, setMainTab] = useState("pickup");
+  const [sortBy, setSortBy] = useState("from_asc");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const hasSession = !!loadCustomerSession()?.token;
 
-  const scheduleBookings = useMemo(() => {
-    return [...bookings]
-      .filter((b) => ACTIVE_SCHEDULE_STATUSES.has(b?.status))
-      .sort(
-        (a, b) =>
-          new Date(a?.bookingFrom || 0).getTime() -
-          new Date(b?.bookingFrom || 0).getTime(),
-      );
+  const tabCounts = useMemo(() => {
+    return {
+      pickup: bookings.filter((b) => bookingMatchesMainTab(b, "pickup")).length,
+      return: bookings.filter((b) => bookingMatchesMainTab(b, "return")).length,
+      completed: bookings.filter((b) =>
+        bookingMatchesMainTab(b, "completed"),
+      ).length,
+      cancelled: bookings.filter((b) =>
+        bookingMatchesMainTab(b, "cancelled"),
+      ).length,
+    };
   }, [bookings]);
+
+  const sortOptionsForTab = TAB_SORT_OPTIONS[mainTab] || TAB_SORT_OPTIONS.pickup;
+
+  const filteredBookings = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return bookings.filter((b) => {
+      if (!bookingMatchesMainTab(b, mainTab)) return false;
+      if (!q) return true;
+      const name = (b?.device?.name || "").toLowerCase();
+      return name.includes(q);
+    });
+  }, [bookings, mainTab, searchQuery]);
 
   const bookingList = useMemo(() => {
-    return [...bookings].sort(
-      (a, b) =>
-        new Date(b?.bookingFrom || 0).getTime() -
-        new Date(a?.bookingFrom || 0).getTime(),
-    );
-  }, [bookings]);
+    return sortBookingsForTab(filteredBookings, sortBy);
+  }, [filteredBookings, sortBy]);
 
-  const fetchMyBookings = async ({ silent = false } = {}) => {
+  const fetchMyBookings = async ({
+    silent = false,
+    fullPage = true,
+  } = {}) => {
     if (!silent) {
-      setIsLoading(true);
       setError("");
+      if (fullPage) setIsLoading(true);
+      else setIsRefreshing(true);
     }
 
     try {
@@ -139,8 +243,15 @@ export default function AccountBookingsPage() {
     } catch (err) {
       setError(err?.response?.data?.message || "Không tải được danh sách đơn.");
     } finally {
-      if (!silent) setIsLoading(false);
+      if (!silent) {
+        if (fullPage) setIsLoading(false);
+        else setIsRefreshing(false);
+      }
     }
+  };
+
+  const handleRefresh = () => {
+    fetchMyBookings({ silent: false, fullPage: false });
   };
 
   useEffect(() => {
@@ -161,10 +272,10 @@ export default function AccountBookingsPage() {
   }, [hasSession, pendingOrder?.orderCode, pendingOrder?.orderIdNew]);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff8fb_0%,_#fdf2f7_35%,_#f8efe8_100%)] px-3 py-5 pb-32 md:px-4 md:py-6 md:pb-36">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff8fb_0%,_#fdf2f7_35%,_#f8efe8_100%)] px-3 py-5 pb-32 md:px-4 md:py-6 md:pb-36 lg:pb-28">
       <SlideNav />
 
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-6xl lg:max-w-7xl">
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-600">
             {error}
@@ -228,179 +339,215 @@ export default function AccountBookingsPage() {
         )}
 
         {hasSession && !isLoading && bookings.length > 0 && (
-          <div className="mt-4 grid gap-3.5 xl:mt-5 xl:grid-cols-[0.9fr_1.1fr]">
-            <section className="rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-[0_10px_30px_rgba(20,20,20,0.05)] md:rounded-[28px] md:p-5">
-              <div className="mb-3.5 flex items-start justify-between gap-2.5 md:mb-4 md:gap-3">
-                <div>
-                  <h2 className="text-[15px] font-black uppercase tracking-wide text-[#222] md:text-base">
-                    Lịch hẹn sắp tới
-                  </h2>
-                  <p className="mt-1 text-[13px] leading-5 text-[#777] md:text-sm">
-                    Các đơn đang hoạt động theo thời gian gần nhất.
-                  </p>
-                </div>
-                <span className="rounded-full bg-[#F7F1F5] px-2.5 py-1 text-[11px] font-semibold text-[#8B6A7C] md:px-3 md:text-xs">
-                  {scheduleBookings.length} lịch
-                </span>
-              </div>
-
-              {scheduleBookings.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-[#EADCE3] bg-[#FFFCFD] p-4 text-sm text-[#777]">
-                  Hiện chưa có lịch hẹn đang hoạt động.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {scheduleBookings.map((booking, index) => (
-                    <div
-                      key={`schedule-${booking.id}`}
-                      className="relative overflow-hidden rounded-2xl border border-[#F2E2EA] bg-[#FFFDFE] p-3"
-                    >
-                      <div className="absolute left-0 top-0 h-full w-1.5 bg-[#FF9FCA]" />
-
-                      <div className="pl-2.5">
-                        <div className="flex items-start justify-between gap-2.5">
-                          <div>
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#C187A4] md:text-[11px] md:tracking-[0.16em]">
-                              Lịch {index + 1}
-                            </div>
-                            <h3 className="mt-1 text-[15px] font-bold text-[#222] md:text-base">
-                              {booking?.device?.name || "Thiết bị"}
-                            </h3>
-                          </div>
-
-                          <span
-                            className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold md:px-2.5 md:text-[11px] ${getStatusClasses(
-                              booking?.status,
-                            )}`}
-                          >
-                            {STATUS_LABEL[booking?.status] ||
-                              booking?.status ||
-                              "Đang xử lý"}
-                          </span>
-                        </div>
-
-                        <div className="mt-2 grid gap-2 text-[#5B5B61]">
-                          <div className="rounded-xl bg-[#FFF7FB] px-3 py-2">
-                            <span className="text-xs font-medium text-[#8A6A7A]">
-                              Nhận máy
-                            </span>
-                            <span className="mt-0.5 block text-sm font-semibold text-[#242424]">
-                              {formatDateTime(booking.bookingFrom)}
-                            </span>
-                          </div>
-                          <div className="rounded-xl bg-[#FFF7FB] px-3 py-2">
-                            <span className="text-xs font-medium text-[#8A6A7A]">
-                              Trả máy
-                            </span>
-                            <span className="mt-0.5 block text-sm font-semibold text-[#242424]">
-                              {formatDateTime(booking.bookingTo)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-[0_10px_30px_rgba(20,20,20,0.05)] md:rounded-[28px] md:p-5">
-              <div className="mb-3.5 md:mb-4">
-                <h2 className="text-[15px] font-black uppercase tracking-wide text-[#222] md:text-base">
-                  Danh sách đơn hàng
-                </h2>
-                <p className="mt-1 text-[13px] leading-5 text-[#777] md:text-sm">
-                  Toàn bộ đơn theo tài khoản của bạn, sắp xếp từ mới đến cũ.
+          <div className="mt-4 space-y-4 xl:mt-5">
+            <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h1 className="text-xl font-black tracking-tight text-[#222] md:text-2xl">
+                  Đơn của tôi
+                </h1>
+                <p className="mt-0.5 text-sm text-[#777]">
+                  {bookings.length} đơn · Sắp nhận, đang thuê, hoàn tất hoặc đã hủy
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-2xl border border-[#EADCE3] bg-white px-4 py-2.5 text-sm font-bold text-[#444] shadow-sm transition hover:bg-[#FFFCFD] disabled:opacity-50 sm:self-center"
+              >
+                <ArrowPathIcon
+                  className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`}
+                />
+                Làm mới
+              </button>
+            </header>
 
-              <div className="space-y-3 md:space-y-4">
-                {bookingList.map((booking) => {
+            <section className="rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-[0_10px_30px_rgba(20,20,20,0.05)] md:rounded-[28px] md:p-5 lg:p-6">
+              <div className="mb-4 grid grid-cols-2 gap-1.5 rounded-2xl border border-[#EADCE3] bg-[#FFFCFD] p-1 sm:grid-cols-4 md:gap-2 md:p-1.5">
+                {MAIN_TABS.map((tab) => {
+                  const active = mainTab === tab.id;
+                  const count = tabCounts[tab.id] ?? 0;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        setMainTab(tab.id);
+                        const first =
+                          TAB_SORT_OPTIONS[tab.id]?.[0]?.id ?? "from_asc";
+                        setSortBy(first);
+                      }}
+                      title={tab.hint}
+                      className={`rounded-xl px-2 py-2.5 text-center text-[11px] font-black leading-tight transition md:px-3 md:py-3 md:text-sm ${
+                        active
+                          ? "bg-[#222] text-white shadow-md"
+                          : "text-[#444] hover:bg-white/80"
+                      }`}
+                    >
+                      <span className="block">{tab.label}</span>
+                      <span
+                        className={`mt-0.5 block text-[10px] font-semibold tabular-nums md:text-xs ${
+                          active ? "text-white/85" : "text-[#999]"
+                        }`}
+                      >
+                        {count} đơn
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="mb-4 text-[13px] leading-relaxed text-[#777] md:text-sm">
+                {
+                  MAIN_TABS.find((t) => t.id === mainTab)?.hint
+                }
+              </p>
+
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-4">
+                <label className="relative block min-w-0 flex-1">
+                  <span className="sr-only">Tìm theo tên máy</span>
+                  <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#BD86A1]" />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Tìm theo tên máy…"
+                    className="w-full rounded-2xl border border-[#EADCE3] bg-[#FFFCFD] py-3 pl-10 pr-3 text-sm text-[#222] outline-none ring-pink-300/40 placeholder:text-[#AAA] focus:border-pink-300 focus:ring-2"
+                    autoComplete="off"
+                  />
+                </label>
+                <div className="shrink-0 lg:min-w-56">
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-[#8B6A7C]">
+                    Sắp xếp
+                  </label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="mt-1 w-full cursor-pointer rounded-2xl border border-[#EADCE3] bg-white px-3 py-2.5 text-sm font-semibold text-[#222] outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-300/30"
+                  >
+                    {sortOptionsForTab.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="mb-4 text-[13px] text-[#777] md:text-sm">
+                Hiển thị{" "}
+                <span className="font-semibold text-[#444]">
+                  {bookingList.length}
+                </span>
+                {searchQuery.trim()
+                  ? ` / ${bookings.filter((b) => bookingMatchesMainTab(b, mainTab)).length}`
+                  : ""}{" "}
+                đơn trong tab này
+                {searchQuery.trim() ? " (sau khi tìm)" : ""}
+              </div>
+
+              {bookingList.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-[#EADCE3] bg-[#FFFCFD] px-4 py-10 text-center">
+                  <p className="text-sm font-semibold text-[#444]">
+                    {searchQuery.trim()
+                      ? "Không có đơn phù hợp"
+                      : mainTab === "pickup"
+                        ? "Chưa có đơn sắp nhận máy"
+                        : mainTab === "return"
+                          ? "Chưa có đơn cần trả máy"
+                          : mainTab === "completed"
+                            ? "Chưa có đơn đã hoàn thành"
+                            : "Chưa có đơn đã hủy / hoàn cọc"}
+                  </p>
+                  <p className="mx-auto mt-2 max-w-sm text-sm text-[#777]">
+                    {searchQuery.trim()
+                      ? "Thử đổi từ khóa hoặc chọn tab khác."
+                      : mainTab === "cancelled"
+                        ? "Đơn bị hủy hoặc đã hoàn cọc sẽ nằm ở tab này."
+                        : "Đơn mới ở tab Sắp nhận; đang giữ máy xem Sắp trả; trả xong xem Đã hoàn thành."}
+                  </p>
+                  {searchQuery.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="mt-4 inline-flex rounded-2xl bg-[#1F1F1F] px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-95"
+                    >
+                      Xóa từ khóa
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <ul className="space-y-3 md:space-y-4">
+                  {bookingList.map((booking) => {
                   const deviceName = booking?.device?.name || "Thiết bị";
                   const status = booking?.status || "CREATED";
 
                   return (
-                    <div
+                    <li
                       key={booking.id}
                       className="overflow-hidden rounded-2xl border border-[#F1E3EA] bg-white shadow-[0_4px_14px_rgba(20,20,20,0.03)]"
                     >
-                      <div className="border-b border-[#F5E9EF] px-3.5 py-3 md:px-5 md:py-3.5">
-                        <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:justify-between">
-                          <div>
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#BD86A1] md:text-[11px] md:tracking-[0.16em]">
-                              Đơn thuê thiết bị
-                            </div>
-                            <div className="mt-1 text-base font-black leading-tight text-[#222] md:text-lg">
-                              {deviceName}
-                            </div>
-                            <div className="mt-1 break-all text-xs text-[#7D7D84]">
-                              Mã nhóm đơn:{" "}
-                              <span className="font-semibold text-[#4A4A4F]">
-                                {booking.orderIdNew || "—"}
-                              </span>
-                            </div>
-                          </div>
+                      <div className="flex flex-col gap-3 px-3.5 py-3.5 md:flex-row md:items-center md:justify-between md:px-5 md:py-4">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-base font-black leading-snug text-[#222] md:text-lg">
+                            {deviceName}
+                          </h3>
+                          <p className="mt-1 text-xs text-[#8A6A7A] md:text-sm">
+                            Nhận{" "}
+                            <span className="font-semibold text-[#333]">
+                              {formatDateTime(booking.bookingFrom)}
+                            </span>
+                            {" · "}
+                            Trả{" "}
+                            <span className="font-semibold text-[#333]">
+                              {formatDateTime(booking.bookingTo)}
+                            </span>
+                          </p>
+                        </div>
+                        <span
+                          className={`inline-flex w-fit shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold md:px-3 md:py-1.5 md:text-xs ${getStatusClasses(
+                            status,
+                          )}`}
+                        >
+                          {STATUS_LABEL[status] || status}
+                        </span>
+                      </div>
 
-                          <span
-                            className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-[11px] font-semibold md:px-3 md:py-1.5 md:text-xs ${getStatusClasses(
-                              status,
-                            )}`}
-                          >
-                            {STATUS_LABEL[status] || status}
+                      <div className="grid gap-2 border-t border-[#F5E9EF] px-3.5 py-3 text-sm sm:grid-cols-2 md:gap-3 md:px-5 md:py-3.5">
+                        <div className="rounded-xl bg-[#FCF7FA] px-3 py-2.5 text-xs text-[#8A6A7A] md:text-sm">
+                          <span className="font-medium">Thời lượng:</span>{" "}
+                          <span className="font-semibold text-[#232323]">
+                            {getDurationText(
+                              booking.bookingFrom,
+                              booking.bookingTo,
+                            )}
+                          </span>
+                        </div>
+                        <div className="rounded-xl bg-[#FCF7FA] px-3 py-2.5 text-xs text-[#8A6A7A] md:text-sm">
+                          <span className="font-medium">Tổng thanh toán:</span>{" "}
+                          <span className="font-semibold text-[#232323]">
+                            {formatPrice(booking.total)}
                           </span>
                         </div>
                       </div>
 
-                      <div className="grid gap-2 px-3.5 py-3 text-sm md:grid-cols-2 md:gap-2.5 md:px-5 md:py-3.5">
-                        <div className="rounded-xl bg-[#FCF7FA] px-3 py-2.5">
-                          <div className="text-xs text-[#8A6A7A]">
-                            Nhận máy:{" "}
-                            <span className="font-semibold text-[#232323]">
-                              {formatDateTime(booking.bookingFrom)}
-                            </span>
-                          </div>
-                          <div className="mt-1 text-xs text-[#8A6A7A]">
-                            Trả máy:{" "}
-                            <span className="font-semibold text-[#232323]">
-                              {formatDateTime(booking.bookingTo)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl bg-[#FCF7FA] px-3 py-2.5">
-                          <div className="text-xs text-[#8A6A7A]">
-                            Thời lượng:{" "}
-                            <span className="font-semibold text-[#232323]">
-                              {getDurationText(
-                                booking.bookingFrom,
-                                booking.bookingTo,
-                              )}
-                            </span>
-                          </div>
-                          <div className="mt-1 text-xs text-[#8A6A7A]">
-                            Tổng thanh toán:{" "}
-                            <span className="font-semibold text-[#232323]">
-                              {formatPrice(booking.total)}
-                            </span>
-                          </div>
-                        </div>
+                      <div className="border-t border-[#F5E9EF] px-3.5 py-3 md:px-5 md:py-3.5">
+                        <Link
+                          to={
+                            booking.orderIdNew
+                              ? `/order/${booking.orderIdNew}`
+                              : `/order/booking/${booking.id}`
+                          }
+                          className="inline-flex w-full min-h-[44px] items-center justify-center rounded-2xl bg-[#1F1F1F] px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-95 sm:w-auto sm:px-6 sm:py-3"
+                        >
+                          Xem chi tiết đơn
+                        </Link>
                       </div>
-
-                      <div className="flex flex-col gap-2 border-t border-[#F5E9EF] px-3.5 py-3 sm:flex-row sm:flex-wrap md:px-5 md:py-3.5">
-                        {booking.orderIdNew && (
-                          <Link
-                            to={`/order/${booking.orderIdNew}`}
-                            className="inline-flex w-full items-center justify-center rounded-2xl bg-[#1F1F1F] px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-95 sm:w-auto sm:py-3"
-                          >
-                            Xem chi tiết
-                          </Link>
-                        )}
-
-                      </div>
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
+                </ul>
+              )}
             </section>
           </div>
         )}

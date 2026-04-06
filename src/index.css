@@ -1,5 +1,35 @@
 @import "tailwindcss";
 
+/* Chữ script: Great Vibes + Playwrite VN (fallback dấu tiếng Việt) */
+.font-feedback-display {
+  font-family: "Great Vibes", "Playwrite VN", cursive, system-ui, sans-serif;
+}
+.font-feedback-ui {
+  font-family: "Quicksand", system-ui, sans-serif;
+}
+
+/* Trang /feedback — nền sổ kỷ yếu / giấy học trò */
+.feedback-yearbook-bg {
+  background-color: #e8e0d2;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 30px,
+      rgba(200, 175, 155, 0.12) 30px,
+      rgba(200, 175, 155, 0.12) 31px
+    ),
+    radial-gradient(
+      ellipse 90% 50% at 50% -5%,
+      rgba(255, 210, 225, 0.35),
+      transparent 55%
+    );
+}
+
+.font-feedback-yearbook-title {
+  font-family: "Caveat", cursive, system-ui, sans-serif;
+}
+
 /* *{
   padding: 0;
   margin: 0;

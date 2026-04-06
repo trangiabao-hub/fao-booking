@@ -1410,10 +1410,24 @@ export default function DeviceCatalogPage() {
     return [...BUILTIN_CATEGORIES, ...dynamic];
   }, [apiCategories]);
 
+  // Device IDs allowed on tab "Tất cả" / "Máy trống" (category có bật showOnAllPage)
+  const allowedOnAllDeviceIds = useMemo(() => {
+    const set = new Set();
+    for (const cat of apiCategories) {
+      if (cat.showOnAllPage === false) continue;
+      for (const item of cat.items || []) {
+        if (item.deviceId != null) set.add(item.deviceId);
+      }
+    }
+    return set;
+  }, [apiCategories]);
+
   // Build global device order based on category priority + item priority
   const globalDeviceOrder = useMemo(() => {
     // Sort categories by their orderNumber (from backend)
-    const sortedCats = [...apiCategories].sort(
+    const sortedCats = [...apiCategories]
+      .filter((cat) => cat.showOnAllPage !== false)
+      .sort(
       (a, b) => (a.orderNumber ?? 0) - (b.orderNumber ?? 0),
     );
     const orderMap = new Map(); // deviceId -> { catOrder, itemOrder }
@@ -1475,6 +1489,18 @@ export default function DeviceCatalogPage() {
       });
     }
 
+    const restrictAllTabs =
+      apiCategories.length > 0 &&
+      (selectedCategory === "all" || selectedCategory === "available");
+    if (restrictAllTabs) {
+      filtered = filtered.filter((d) => {
+        for (const gid of d.groupDeviceIds) {
+          if (allowedOnAllDeviceIds.has(gid)) return true;
+        }
+        return false;
+      });
+    }
+
     // Filter by price range
     const range = PRICE_RANGES.find((r) => r.id === priceRange);
     if (range && priceRange !== "all") {
@@ -1523,17 +1549,28 @@ export default function DeviceCatalogPage() {
       return { cat: bestCat, item: bestItem };
     };
 
-    // Always sort: availability first → then category order → then item order → then orderNumber
-    filtered.sort((a, b) => {
-      const availDiff = availPriority(a) - availPriority(b);
-      if (availDiff !== 0) return availDiff;
+    // Tab Tất cả / Máy trống: giữ nguyên section — sort theo category trước, rồi mới trống/không trống
+    // (tránh xáo trộn máy cùng category vì ưu tiên availability toàn trang).
+    const groupByCategoryFirst =
+      selectedCategory === "all" || selectedCategory === "available";
 
+    filtered.sort((a, b) => {
       const orderA = getCatOrder(a);
       const orderB = getCatOrder(b);
 
+      if (groupByCategoryFirst) {
+        if (orderA.cat !== orderB.cat) return orderA.cat - orderB.cat;
+        // Trong cùng category: trống → có thể dời lịch → không trống, rồi thứ tự trong category
+        const availDiff = availPriority(a) - availPriority(b);
+        if (availDiff !== 0) return availDiff;
+        if (orderA.item !== orderB.item) return orderA.item - orderB.item;
+        return (a.orderNumber ?? 999999) - (b.orderNumber ?? 999999);
+      }
+
+      const availDiff = availPriority(a) - availPriority(b);
+      if (availDiff !== 0) return availDiff;
       if (orderA.cat !== orderB.cat) return orderA.cat - orderB.cat;
       if (orderA.item !== orderB.item) return orderA.item - orderB.item;
-
       return (a.orderNumber ?? 999999) - (b.orderNumber ?? 999999);
     });
 
@@ -1544,7 +1581,64 @@ export default function DeviceCatalogPage() {
     selectedCategory,
     priceRange,
     mergedCategories,
+    globalDeviceOrder,
+    allowedOnAllDeviceIds,
+    apiCategories.length,
   ]);
+
+  /** Tab Tất cả / Máy trống: nhóm máy theo category (cùng thứ tự ưu tiên với globalDeviceOrder). */
+  const catalogSectionsAllOrAvailable = useMemo(() => {
+    const useSections =
+      (selectedCategory === "all" || selectedCategory === "available") &&
+      apiCategories.length > 0;
+    if (!useSections) return null;
+
+    const sortedShowAllCats = [...apiCategories]
+      .filter((c) => c.showOnAllPage !== false)
+      .sort((a, b) => (a.orderNumber ?? 0) - (b.orderNumber ?? 0));
+
+    const primarySectionForDevice = (d) => {
+      for (const cat of sortedShowAllCats) {
+        for (const item of cat.items || []) {
+          if (item.deviceId != null && d.groupDeviceIds.has(item.deviceId)) {
+            return {
+              sectionKey: `cat-${cat.id}`,
+              sectionTitle: (cat.name || "").trim() || "Danh mục",
+            };
+          }
+        }
+      }
+      return { sectionKey: "other", sectionTitle: "Khác" };
+    };
+
+    const sections = [];
+    let sectionKey = null;
+    let sectionTitle = null;
+    let bucket = [];
+
+    const flush = () => {
+      if (bucket.length === 0) return;
+      sections.push({
+        key: sectionKey,
+        title: sectionTitle,
+        devices: bucket,
+      });
+      bucket = [];
+    };
+
+    for (const d of filteredDevices) {
+      const next = primarySectionForDevice(d);
+      if (next.sectionKey !== sectionKey) {
+        flush();
+        sectionKey = next.sectionKey;
+        sectionTitle = next.sectionTitle;
+      }
+      bucket.push(d);
+    }
+    flush();
+
+    return sections;
+  }, [filteredDevices, selectedCategory, apiCategories]);
 
   // Sync filters from URL -> state (support opening shared links with pre-filled filters)
   useEffect(() => {
@@ -2007,6 +2101,49 @@ export default function DeviceCatalogPage() {
                 Xóa bộ lọc
               </button>
             </div>
+          ) : catalogSectionsAllOrAvailable ? (
+            <motion.div
+              key={selectedCategory}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex flex-col gap-8 sm:gap-10"
+            >
+              {catalogSectionsAllOrAvailable.map((section) => (
+                <section key={section.key} className="min-w-0">
+                  <h3 className="mb-3 sm:mb-4 px-0.5 text-xs sm:text-sm font-black uppercase tracking-[0.2em] text-[#222] border-b border-[#222]/10 pb-2">
+                    {section.title}
+                  </h3>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    {section.devices.map((device, idx) => (
+                      <ChicCard
+                        key={
+                          device.modelKey
+                            ? `model-${device.modelKey}`
+                            : `dev-${device.id}`
+                        }
+                        device={device}
+                        pricing={getDevicePricing(device)}
+                        onQuickBook={handleQuickBook}
+                        onSuggestedQuickBook={handleSuggestedQuickBook}
+                        isSelected={selectedDeviceIds.has(device.id)}
+                        onToggleSelect={handleToggleSelect}
+                        feedbackHref={buildFeedbackHref(
+                          device.displayName,
+                          device.modelKey,
+                        )}
+                        cardAnchorId={`catalog-card-${compactSearchText(device.displayName)}`}
+                        isFocused={
+                          !!focusModelParam &&
+                          compactSearchText(device.displayName) ===
+                            compactSearchText(focusModelParam)
+                        }
+                        index={idx}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </motion.div>
           ) : (
             <motion.div
               key={selectedCategory}

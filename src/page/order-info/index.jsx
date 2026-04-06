@@ -57,7 +57,7 @@ function ErrorState({ message }) {
 }
 
 export default function OrderInfoPage() {
-  const { orderIdNew, orderCode } = useParams();
+  const { orderIdNew, orderCode, bookingId } = useParams();
   const [orderDetails, setOrderDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -66,6 +66,56 @@ export default function OrderInfoPage() {
   useEffect(() => {
     const fetchOrder = async () => {
       const byCode = !!orderCode;
+
+      if (bookingId) {
+        setLoading(true);
+        setError(null);
+        try {
+          const res = await api.get(`/v1/bookings/detail/${bookingId}`);
+          const b = res.data;
+          if (!b?.id) {
+            setError("Không tìm thấy đơn hàng");
+            setOrderDetails(null);
+            return;
+          }
+          let device = {
+            name: b.device?.name || "Thiết bị",
+            img: FALLBACK_IMG,
+          };
+          if (b.device?.id) {
+            try {
+              const devRes = await api.get(`/v1/devices/${b.device.id}`);
+              device = {
+                name: devRes.data?.name || device.name,
+                img: devRes.data?.images?.[0] || FALLBACK_IMG,
+              };
+            } catch {
+              /* keep fallback */
+            }
+          }
+          const oid =
+            b.orderIdNew != null && String(b.orderIdNew).trim() !== ""
+              ? String(b.orderIdNew).trim()
+              : null;
+          setOrderDetails({
+            orderIdNew: oid,
+            orderCode: null,
+            refFallback: !oid && b.id ? `Đặt chỗ #${b.id}` : null,
+            bookingFrom: b.bookingFrom,
+            bookingTo: b.bookingTo,
+            total: b.total ?? 0,
+            device,
+            devices: null,
+          });
+        } catch (err) {
+          console.error("Failed to fetch booking:", err);
+          setError("Không tìm thấy đơn hàng hoặc đơn đã bị hủy");
+          setOrderDetails(null);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
 
       if (!orderIdNew && !orderCode) {
         setError("Thiếu mã đơn hàng");
@@ -111,6 +161,7 @@ export default function OrderInfoPage() {
         setOrderDetails({
           orderIdNew: byCode ? null : orderIdNew,
           orderCode: byCode ? orderCode : null,
+          refFallback: null,
           bookingFrom: first.bookingFrom,
           bookingTo: first.bookingTo,
           total: totalSum,
@@ -126,7 +177,7 @@ export default function OrderInfoPage() {
     };
 
     fetchOrder();
-  }, [orderIdNew, orderCode]);
+  }, [orderIdNew, orderCode, bookingId]);
 
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
   const deviceLabel = orderDetails?.devices?.length
@@ -216,7 +267,10 @@ export default function OrderInfoPage() {
               <div className="rounded-xl border border-[#FFE4F0] bg-white px-4 py-3">
                 <p className="text-xs uppercase tracking-wider text-slate-500">Mã đơn</p>
                 <p className="font-bold text-[#E85C9C] break-all">
-                  {orderDetails.orderCode || orderDetails.orderIdNew}
+                  {orderDetails.orderCode ||
+                    orderDetails.orderIdNew ||
+                    orderDetails.refFallback ||
+                    "—"}
                 </p>
               </div>
 
