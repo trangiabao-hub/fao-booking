@@ -65,8 +65,10 @@ function formatLocalDateTimeForDeviceApi(date) {
   return format(date, "yyyy-MM-dd'T'HH:mm:ss");
 }
 
-function isValidGmail(email) {
-  return /^[^\s@]+@gmail\.com$/i.test((email || "").trim());
+function isValidEmail(email) {
+  const s = (email || "").trim();
+  if (!s) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
 function isUrlForPlatform(link, platform) {
@@ -699,9 +701,9 @@ export default function QuickBookModal({
   const gmailError = useMemo(() => {
     if (checkoutMode !== "GOOGLE") return "";
     if (!hasGoogleSession) return "Vui lòng đăng nhập Google để tiếp tục.";
-    return isValidGmail(customer.gmail)
+    return isValidEmail(customer.gmail)
       ? ""
-      : "Vui lòng nhập Gmail hợp lệ (đuôi @gmail.com).";
+      : "Vui lòng nhập email hợp lệ.";
   }, [checkoutMode, customer.gmail, hasGoogleSession]);
   const isCustomerValid = useMemo(() => {
     return (
@@ -812,7 +814,7 @@ export default function QuickBookModal({
     return (
       !!savedCustomer?.fullName &&
       /^0\d{9}$/.test(phone) &&
-      isValidGmail(savedCustomer?.gmail || "") &&
+      isValidEmail(savedCustomer?.gmail || "") &&
       isSavedSocialValid(savedCustomer)
     );
   }, [savedCustomer]);
@@ -1534,12 +1536,12 @@ export default function QuickBookModal({
                       {checkoutMode === "GOOGLE" && (
                         <div>
                           <label className="text-[11px] font-black text-[#666] mb-1.5 block uppercase tracking-[0.2em] px-1">
-                            Gmail liên kết
+                            Email liên kết
                           </label>
                           <div className="flex items-center justify-between gap-3 rounded-xl border border-[#eee] bg-[#fafafa] px-3 py-2.5">
                             <div className="min-w-0">
                               <div className="truncate text-sm font-semibold text-[#444]">
-                                {customer.gmail || "yourname@gmail.com"}
+                                {customer.gmail || "email@example.com"}
                               </div>
                               <div className="text-[10px] text-[#999]">
                                 Email xác thực từ đăng nhập Google

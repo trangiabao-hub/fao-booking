@@ -888,7 +888,7 @@ export default function FeedbackPage() {
 
         <div className="mt-6">
           {loading ? (
-            <div className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-4 [column-fill:_balance]">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 items-start">
               {skeletonItems.map((item) => (
                 <article
                   key={item.id}
@@ -916,7 +916,7 @@ export default function FeedbackPage() {
               nhé.
             </div>
           ) : galleryLoading && galleryItems.length === 0 ? (
-            <div className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-4 [column-fill:_balance]">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 items-start">
               {skeletonItems.map((item) => (
                 <article
                   key={item.id}
@@ -936,7 +936,7 @@ export default function FeedbackPage() {
             </div>
           ) : (
             <>
-            <div className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-4 [column-fill:_balance]">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 items-start">
               {galleryItems.map((item, idx) => {
                 const tilt =
                   idx % 5 === 0
