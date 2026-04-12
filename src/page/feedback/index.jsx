@@ -248,22 +248,23 @@ function normalizeFromCatalogPath(value = "") {
   return raw;
 }
 
-function buildCatalogLinkWithModel(fromCatalogPath, modelName) {
+/** Quay catalog: giữ query (ngày, chi nhánh, giá…), bỏ lọc/scroll theo từng máy; đồng bộ tab category. */
+function buildCatalogBackHref(fromCatalogPath, categoryKey) {
+  const base = normalizeFromCatalogPath(fromCatalogPath);
   try {
-    const url = new URL(fromCatalogPath, "https://fao.local");
-    const params = new URLSearchParams(url.search);
-    if (modelName) params.set("q", modelName);
-    else params.delete("q");
-    if (modelName) params.set("focusModel", modelName);
-    else params.delete("focusModel");
-    const q = params.toString();
-    return `/catalog${q ? `?${q}` : ""}`;
+    const url = new URL(base, "https://fao.local");
+    const params = url.searchParams;
+    params.delete("q");
+    params.delete("focusModel");
+    if (categoryKey && categoryKey !== DEFAULT_CATEGORY_KEY) {
+      params.set("category", categoryKey);
+    } else {
+      params.delete("category");
+    }
+    const qs = params.toString();
+    return `${url.pathname}${qs ? `?${qs}` : ""}`;
   } catch {
-    const p = new URLSearchParams();
-    if (modelName) p.set("q", modelName);
-    if (modelName) p.set("focusModel", modelName);
-    const q = p.toString();
-    return `/catalog${q ? `?${q}` : ""}`;
+    return base;
   }
 }
 
@@ -521,12 +522,10 @@ export default function FeedbackPage() {
     appliedInitialModelKeyRef.current = initialModelKey;
   }, [initialModelKey, modelRows, selectedModel]);
 
-  const backToCatalogHref = useMemo(() => {
-    if (selectedModel && selectedModel !== DEFAULT_MODEL) {
-      return buildCatalogLinkWithModel(fromCatalogPath, selectedModel);
-    }
-    return fromCatalogPath;
-  }, [fromCatalogPath, selectedModel]);
+  const backToCatalogHref = useMemo(
+    () => buildCatalogBackHref(fromCatalogPath, selectedCategory),
+    [fromCatalogPath, selectedCategory],
+  );
 
   useEffect(() => {
     if (modelRows.length === 0) return;
@@ -776,7 +775,7 @@ export default function FeedbackPage() {
             className="inline-flex items-center gap-2 text-sm font-bold text-[#5c4a42] hover:text-[#b03060] transition-colors"
           >
             <ArrowRight size={16} className="rotate-180" />
-            Quay lại danh mục (giữ bộ lọc)
+            Quay lại danh mục
           </Link>
         </div>
 

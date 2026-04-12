@@ -145,7 +145,7 @@ const Header = () => {
               Fao Sài Gòn
             </span>
           </Link>
-          <nav className="hidden md:flex items-center gap-8">
+          {/* <nav className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
               <a
                 key={link.id}
@@ -159,7 +159,7 @@ const Header = () => {
           </nav>
           <div className="flex items-center gap-4">
             <Link
-              to="/photobooth"
+              to="/my-bookings"
               className="hidden sm:inline-block bg-white text-pink-600 border border-pink-200 font-semibold px-5 py-2.5 rounded-full text-sm hover:bg-pink-50 transition-all duration-300"
             >
               Photo Booth
@@ -180,10 +180,10 @@ const Header = () => {
                 <Bars3Icon className="h-7 w-7" />
               )}
             </button>
-          </div>
+          </div> */}
         </div>
       </div>
-      <AnimatePresence>
+      {/* <AnimatePresence>
         {isMenuOpen && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -203,7 +203,7 @@ const Header = () => {
                 </a>
               ))}
               <Link
-                to="/photobooth"
+                to="/my-bookings"
                 className="bg-white text-pink-600 border border-pink-200 font-semibold px-8 py-3 rounded-full text-base hover:bg-pink-50 transition-all duration-300 active:scale-95"
               >
                 Photo Booth
@@ -217,7 +217,7 @@ const Header = () => {
             </nav>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence> */}
     </header>
   );
 };
@@ -273,8 +273,7 @@ const HeroSection = () => {
   );
 
   return (
-    // ===== FIX HERE: Changed 100vh to 100dvh =====
-    <div className="relative bg-gradient-to-b from-rose-50 to-pink-100 text-center overflow-hidden flex flex-col items-center justify-center min-h-[calc(100dvh-5rem)] md:pt-28 md:pb-36">
+    <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-rose-50 to-pink-100 pt-20 pb-[calc(4rem+max(12px,env(safe-area-inset-bottom))+12px)] text-center">
       <BackgroundPattern />
 
       <FloatingIcon
@@ -636,17 +635,18 @@ const Footer = () => (
 // ==== Component Gốc: HomePage ====
 export default function HomePage() {
   return (
-    <div className="bg-white text-slate-800 pb-32 md:pb-36">
+    <div className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-white text-slate-800">
       <style>{swiperStyles}</style>
       <Header />
-      <main className="pt-20">
-        <HeroSection />
-        <FeaturesSection />
+
+      <HeroSection />
+      <main className="min-h-0 shrink-0">
+        {/* <FeaturesSection />
         <TestimonialsSection />
         <CategoriesSection />
-        <CallToActionSection />
+        <CallToActionSection /> */}
       </main>
-      <Footer />
+      {/* <Footer /> */}
       <SlideNav />
     </div>
   );

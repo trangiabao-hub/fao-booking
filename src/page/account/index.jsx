@@ -8,6 +8,7 @@ import {
   loadCustomerSession,
   saveCustomerSession,
 } from "../../utils/storage";
+import { computeTotalSpentFromBookings } from "../../utils/loyaltyEarn";
 
 function getMemberTier(totalSpent = 0) {
   const spent = Number(totalSpent) || 0;
@@ -128,11 +129,7 @@ export default function AccountPage() {
     try {
       const res = await api.get("/v1/bookings/me");
       const bookings = Array.isArray(res?.data) ? res.data : [];
-      const paidStatuses = new Set(["PAYMENT", "IN_RENT", "DONE", "REFUNDED"]);
-      const spent = bookings
-        .filter((booking) => paidStatuses.has(booking?.status))
-        .reduce((sum, booking) => sum + (Number(booking?.total) || 0), 0);
-      setTotalSpent(Math.round(spent));
+      setTotalSpent(computeTotalSpentFromBookings(bookings));
     } catch (err) {
       setTotalSpent(0);
     }
@@ -425,12 +422,14 @@ export default function AccountPage() {
               </div>
               <p>
                 Thành viên: <b>50.000đ = 3 điểm</b>.<br />
-                Thành viên bạc: <b>50.000đ = 3 điểm</b>.<br />
-                Thành viên VIP: <b>50.000đ = 3 điểm</b>.
+                Thành viên bạc: <b>50.000đ = 4 điểm</b>.<br />
+                Thành viên VIP: <b>50.000đ = 5 điểm</b>.
               </p>
               <p className="mt-2 text-xs text-[#8b5f75]">
-                Hạng hiện tại của bạn: <b>{tier.name}</b>. Điểm được cộng vào
-                tài khoản sau khi đơn hoàn tất.
+                Hạng hiện tại của bạn: <b>{tier.name}</b>. Chênh lệch nhỏ giữa
+                các hạng giúp khách có lý do quay lại, không đổi giá thuê hay
+                quy đổi điểm (1 điểm = 1.000đ). Điểm được cộng sau khi đơn hoàn
+                tất.
               </p>
             </div>
 

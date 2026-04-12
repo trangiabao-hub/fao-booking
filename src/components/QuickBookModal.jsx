@@ -49,6 +49,12 @@ import {
   computeDiscountedPrice,
   computeDiscountBreakdown,
 } from "../utils/bookingHelpers";
+import {
+  computeEarnedPoints,
+  computeTotalSpentFromBookings,
+  memberTierKeyFromTotalSpent,
+  pointsPerEarnBlock,
+} from "../utils/loyaltyEarn";
 import { calculateRentalInfo } from "../utils/pricing";
 import BookingPrefsForm, {
   computeAvailabilityRange,
@@ -90,6 +96,13 @@ function isUrlForPlatform(link, platform) {
   } catch {
     return false;
   }
+}
+
+/** Nhận diện IG/FB từ URL để auto chọn radio (paste, load từ lưu / tài khoản). */
+function detectSocialPlatformFromLink(link) {
+  if (isUrlForPlatform(link, "instagram")) return "instagram";
+  if (isUrlForPlatform(link, "facebook")) return "facebook";
+  return null;
 }
 
 function isSavedSocialValid(saved) {
@@ -292,6 +305,9 @@ export default function QuickBookModal({
   });
   const [socialPlatform, setSocialPlatform] = useState(() => {
     const saved = loadCustomerInfo();
+    const link = (saved?.ig || saved?.fb || "").trim();
+    const detected = detectSocialPlatformFromLink(link);
+    if (detected) return detected;
     const hasFb = !!(saved?.fb || "").trim();
     const hasIg = !!(saved?.ig || "").trim();
     if (hasFb && !hasIg) return "facebook";
@@ -302,6 +318,7 @@ export default function QuickBookModal({
     () => !!loadCustomerSession()?.token,
   );
   const [memberBookingsCount, setMemberBookingsCount] = useState(0);
+  const [memberTotalSpent, setMemberTotalSpent] = useState(0);
   const [memberPoint, setMemberPoint] = useState(0);
   const [pointToUse, setPointToUse] = useState(0);
   const [isMemberDataLoading, setIsMemberDataLoading] = useState(false);
@@ -598,6 +615,7 @@ export default function QuickBookModal({
     if (!session?.token) {
       setHasGoogleSession(false);
       setMemberBookingsCount(0);
+      setMemberTotalSpent(0);
       setMemberPoint(0);
       setIsMemberDataLoading(false);
       return;
@@ -615,6 +633,7 @@ export default function QuickBookModal({
         setCheckoutMode("GOOGLE");
         setHasGoogleSession(true);
         setMemberBookingsCount(bookings.length);
+        setMemberTotalSpent(computeTotalSpentFromBookings(bookings));
         setMemberPoint(Math.max(0, Number(account.point) || 0));
         const nextCustomer = {
           fullName: account.fullName || saved.fullName || "",
@@ -632,6 +651,7 @@ export default function QuickBookModal({
         clearCustomerSession();
         setHasGoogleSession(false);
         setMemberBookingsCount(0);
+        setMemberTotalSpent(0);
         setMemberPoint(0);
       })
       .finally(() => {
@@ -655,6 +675,7 @@ export default function QuickBookModal({
           ? bookingsRes.data
           : [];
         setMemberBookingsCount(bookings.length);
+        setMemberTotalSpent(computeTotalSpentFromBookings(bookings));
         setMemberPoint(Math.max(0, Number(account.point) || 0));
       })
       .catch(() => {
@@ -675,6 +696,11 @@ export default function QuickBookModal({
       setCheckoutMode("GOOGLE");
     }
   }, [hasGoogleSession, checkoutMode]);
+
+  useLayoutEffect(() => {
+    const detected = detectSocialPlatformFromLink(customer.ig);
+    if (detected) setSocialPlatform(detected);
+  }, [customer.ig]);
 
   // Validate customer info
   const socialLinkError = useMemo(() => {
@@ -793,10 +819,19 @@ export default function QuickBookModal({
     () => Math.max(0, payableBeforePoint - pointDiscountAmount),
     [payableBeforePoint, pointDiscountAmount],
   );
-  const earnedPointPreview = useMemo(
-    () => Math.floor(Math.max(0, payableTotal) / 50000) * 3,
-    [payableTotal],
-  );
+  const earnedPointPreview = useMemo(() => {
+    const tierKey = hasGoogleSession
+      ? memberTierKeyFromTotalSpent(memberTotalSpent)
+      : "member";
+    return computeEarnedPoints(payableTotal, tierKey);
+  }, [payableTotal, hasGoogleSession, memberTotalSpent]);
+  const earnedPointRulePreview = useMemo(() => {
+    if (!hasGoogleSession) return "50.000đ = 3 điểm";
+    const n = pointsPerEarnBlock(
+      memberTierKeyFromTotalSpent(memberTotalSpent),
+    );
+    return `50.000đ = ${n} điểm theo hạng`;
+  }, [hasGoogleSession, memberTotalSpent]);
   const discountedLabel = formatPriceK(payableTotal);
   const selectedDiscountAmount = isFirstOrderVoucherSelected
     ? firstOrderDiscount
@@ -1892,8 +1927,8 @@ export default function QuickBookModal({
                       )}
                       <p className="text-[11px] text-emerald-800/90 leading-relaxed pt-2 border-t border-amber-100">
                         🎁 Dự kiến +
-                        {earnedPointPreview.toLocaleString("vi-VN")} điểm ·
-                        50.000đ = 3 điểm
+                        {earnedPointPreview.toLocaleString("vi-VN")} điểm ·{" "}
+                        {earnedPointRulePreview}
                       </p>
                     </div>
                   )}
