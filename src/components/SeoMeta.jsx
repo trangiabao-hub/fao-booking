@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 const SITE_NAME = "FAO Booking";
-const DEFAULT_IMAGE_PATH = "/vite.svg";
+const DEFAULT_IMAGE_PATH = "/og-image.png";
 
 const upsertMeta = (attr, key, content) => {
   if (!content) return;

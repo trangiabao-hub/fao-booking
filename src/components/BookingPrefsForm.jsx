@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from "react";
+import React, { useMemo, useEffect, useState, useRef } from "react";
 import { format, addDays } from "date-fns";
 import vi from "date-fns/locale/vi";
 import DatePicker from "react-datepicker";
@@ -31,12 +31,20 @@ const BRANCHES = [
   { id: "Q9", label: "FAO Q9 (Vinhomes)", disabled: true, comingSoon: true },
 ];
 
+const AFTERNOON_PICKUP_TIME = "15:00";
+
 const ONE_DAY_PICKUP_OPTIONS = [
   {
     id: "MORNING_0900",
     pickupType: "MORNING",
     time: MORNING_PICKUP_TIME,
     label: "Sáng 09:00",
+  },
+  {
+    id: "AFTERNOON_1500",
+    pickupType: "AFTERNOON",
+    time: AFTERNOON_PICKUP_TIME,
+    label: "Chiều 15:00",
   },
   ...ONE_DAY_EVENING_SLOTS.map((slot) => ({
     id: `EVENING_${slot.replace(":", "")}`,
@@ -214,6 +222,14 @@ export default function BookingPrefsForm({
   setPickupSlot,
   error,
 }) {
+  /** Thuê theo ngày: cùng một khung giờ cho nhận & trả (mặc định) hoặc chọn giờ trả riêng. */
+  const [sameReturnTime, setSameReturnTime] = useState(() => {
+    if (durationType !== "ONE_DAY") return true;
+    if (timeFrom && timeTo && timeFrom !== timeTo) return false;
+    return true;
+  });
+  const prevDurationTypeRef = useRef(durationType);
+
   const { fromDateTime, toDateTime } = useMemo(
     () =>
       computeAvailabilityRange({
@@ -258,10 +274,9 @@ export default function BookingPrefsForm({
   }, [durationType, timeFrom, timeTo, setTimeTo]);
 
   useEffect(() => {
-    if (durationType === "ONE_DAY" && timeFrom && timeTo !== timeFrom) {
-      setTimeTo(timeFrom);
-    }
-  }, [durationType, timeFrom, timeTo, setTimeTo]);
+    if (durationType !== "ONE_DAY" || !sameReturnTime || !timeFrom) return;
+    if (timeTo !== timeFrom) setTimeTo(timeFrom);
+  }, [durationType, sameReturnTime, timeFrom, timeTo, setTimeTo]);
 
   useEffect(() => {
     if (durationType !== "ONE_DAY") return;
@@ -273,6 +288,7 @@ export default function BookingPrefsForm({
     setPickupSlot(MORNING_PICKUP_TIME);
     setTimeFrom(MORNING_PICKUP_TIME);
     setTimeTo(MORNING_PICKUP_TIME);
+    setSameReturnTime(true);
   }, [
     durationType,
     timeFrom,
@@ -281,6 +297,26 @@ export default function BookingPrefsForm({
     setTimeFrom,
     setTimeTo,
   ]);
+
+  useEffect(() => {
+    if (durationType !== "ONE_DAY" || sameReturnTime) return;
+    const validTo = ONE_DAY_PICKUP_OPTIONS.some((o) => o.time === timeTo);
+    if (validTo) return;
+    setTimeTo(timeFrom);
+  }, [durationType, sameReturnTime, timeTo, timeFrom, setTimeTo]);
+
+  useEffect(() => {
+    const prev = prevDurationTypeRef.current;
+    prevDurationTypeRef.current = durationType;
+    if (durationType !== "ONE_DAY") {
+      setSameReturnTime(true);
+      return;
+    }
+    if (prev !== "ONE_DAY") {
+      if (timeFrom && timeTo && timeFrom !== timeTo) setSameReturnTime(false);
+      else setSameReturnTime(true);
+    }
+  }, [durationType, timeFrom, timeTo]);
 
   return (
     <div className="min-w-0 overflow-x-hidden">
@@ -461,8 +497,10 @@ export default function BookingPrefsForm({
                 {!pickupType
                   ? "Chưa chọn giờ nhận"
                   : pickupType === "EVENING"
-                    ? `Nhận Tối (${pickupSlot})`
-                    : `Nhận Sáng (${MORNING_PICKUP_TIME})`}
+                    ? `Nhận tối (${pickupSlot})`
+                    : pickupType === "AFTERNOON"
+                      ? `Nhận chiều (${AFTERNOON_PICKUP_TIME})`
+                      : `Nhận sáng (${MORNING_PICKUP_TIME})`}
               </div>
             )}
           </div>
@@ -504,6 +542,59 @@ export default function BookingPrefsForm({
               className="overflow-hidden"
             >
               <div className="pt-2 space-y-3">
+                <div className="rounded-xl border border-[#eee] bg-white/80 px-3 py-2.5 space-y-2">
+                  <div className="text-xs font-bold uppercase tracking-wide text-[#888]">
+                    Cách chọn giờ trả
+                  </div>
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="oneDayReturnMode"
+                      checked={sameReturnTime}
+                      onChange={() => {
+                        setSameReturnTime(true);
+                        if (timeFrom) setTimeTo(timeFrom);
+                      }}
+                      className="mt-0.5 accent-[#E85C9C]"
+                    />
+                    <span className="text-sm text-[#444] leading-snug">
+                      <span className="font-bold text-[#222]">
+                        Cùng khung giờ nhận &amp; trả
+                      </span>
+                      <span className="block text-[#666] font-medium mt-0.5">
+                        Ví dụ nhận 20:30 thì trả đúng 20:30 ngày trả — phổ biến
+                        cho thuê theo ngày.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="oneDayReturnMode"
+                      checked={!sameReturnTime}
+                      onChange={() => {
+                        setSameReturnTime(false);
+                        const alt = ONE_DAY_PICKUP_OPTIONS.find(
+                          (o) => o.time !== timeFrom,
+                        );
+                        if (alt && (!timeTo || timeTo === timeFrom)) {
+                          setTimeTo(alt.time);
+                        }
+                      }}
+                      className="mt-0.5 accent-[#E85C9C]"
+                    />
+                    <span className="text-sm text-[#444] leading-snug">
+                      <span className="font-bold text-[#222]">
+                        Nhận và trả khác khung giờ
+                      </span>
+                      <span className="block text-[#666] font-medium mt-0.5">
+                        Chọn giờ nhận và giờ trả riêng (ví dụ nhận tối, trả sáng).
+                        Shop sẽ căn theo hai mốc bạn chọn.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
                 <div className="text-sm text-[#666] font-semibold">
                   Giờ nhận máy
                 </div>
@@ -518,7 +609,9 @@ export default function BookingPrefsForm({
                           setPickupType(option.pickupType);
                           setPickupSlot(option.time);
                           setTimeFrom(option.time);
-                          setTimeTo(option.time);
+                          if (sameReturnTime) {
+                            setTimeTo(option.time);
+                          }
                         }}
                         className={`px-2 py-2 rounded-xl border-2 text-xs font-bold transition-all ${
                           active
@@ -531,6 +624,33 @@ export default function BookingPrefsForm({
                     );
                   })}
                 </div>
+
+                {!sameReturnTime && (
+                  <>
+                    <div className="text-sm text-[#666] font-semibold pt-1">
+                      Giờ trả máy
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 min-w-0">
+                      {ONE_DAY_PICKUP_OPTIONS.map((option) => {
+                        const active = timeTo === option.time;
+                        return (
+                          <button
+                            key={`ret-${option.id}`}
+                            type="button"
+                            onClick={() => setTimeTo(option.time)}
+                            className={`px-2 py-2 rounded-xl border-2 text-xs font-bold transition-all ${
+                              active
+                                ? "bg-[#222] text-[#FF9FCA] border-[#222]"
+                                : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             </MotionDiv>
           )}

@@ -25,7 +25,6 @@ import BookingPrefsForm, {
   getDefaultBranchId,
   computeAvailabilityRange,
   getAvailabilityRangeError,
-  getSixHourAutoReturnTime,
 } from "../../components/BookingPrefsForm";
 import {
   computeDiscountBreakdown,
@@ -695,19 +694,6 @@ function AvailabilityGate({
   );
   const MotionDiv = motion.div;
 
-  useEffect(() => {
-    if (durationType === "SIX_HOURS") {
-      const autoTimeTo = getSixHourAutoReturnTime(timeFrom);
-      if (timeTo !== autoTimeTo) setTimeTo(autoTimeTo);
-    }
-  }, [durationType, timeFrom, timeTo, setTimeTo]);
-
-  useEffect(() => {
-    if (durationType === "ONE_DAY" && timeFrom && timeTo !== timeFrom) {
-      setTimeTo(timeFrom);
-    }
-  }, [durationType, timeFrom, timeTo, setTimeTo]);
-
   const prefs = {
     date,
     endDate,
@@ -896,7 +882,7 @@ export default function DeviceCatalogPage() {
   const initialTimeTo = isValidTimeParam(searchParams.get("timeTo"))
     ? searchParams.get("timeTo")
     : null;
-  const initialPickupType = ["MORNING", "EVENING"].includes(
+  const initialPickupType = ["MORNING", "EVENING", "AFTERNOON"].includes(
     searchParams.get("pickupType"),
   )
     ? searchParams.get("pickupType")
@@ -965,13 +951,14 @@ export default function DeviceCatalogPage() {
     setAvailabilityPrefs((prev) => {
       const nextDate = normalizeDate(suggestion.fromDateTime);
       const nextEndDate = normalizeDate(suggestion.toDateTime);
-      const nextPickupType =
-        suggestion.timeFrom === MORNING_PICKUP_TIME
-          ? "MORNING"
-          : prev.durationType === "ONE_DAY" &&
-              suggestion.timeFrom !== MORNING_PICKUP_TIME
-            ? "EVENING"
-            : "MORNING";
+      let nextPickupType = "MORNING";
+      if (suggestion.timeFrom === MORNING_PICKUP_TIME) {
+        nextPickupType = "MORNING";
+      } else if (suggestion.timeFrom === SIX_HOUR_SECOND_PICKUP_TIME) {
+        nextPickupType = "AFTERNOON";
+      } else if (prev.durationType === "ONE_DAY") {
+        nextPickupType = "EVENING";
+      }
 
       return {
         ...prev,
@@ -983,7 +970,9 @@ export default function DeviceCatalogPage() {
         pickupSlot:
           prev.durationType === "ONE_DAY" && nextPickupType === "EVENING"
             ? suggestion.timeFrom
-            : DEFAULT_EVENING_SLOT,
+            : nextPickupType === "AFTERNOON"
+              ? SIX_HOUR_SECOND_PICKUP_TIME
+              : DEFAULT_EVENING_SLOT,
       };
     });
 
@@ -1675,7 +1664,7 @@ export default function DeviceCatalogPage() {
     const nextTimeTo = isValidTimeParam(searchParams.get("timeTo"))
       ? searchParams.get("timeTo")
       : null;
-    const nextPickupType = ["MORNING", "EVENING"].includes(
+    const nextPickupType = ["MORNING", "EVENING", "AFTERNOON"].includes(
       searchParams.get("pickupType"),
     )
       ? searchParams.get("pickupType")
