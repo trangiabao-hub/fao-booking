@@ -79,6 +79,7 @@ import {
   pointsPerEarnBlock,
 } from "../utils/loyaltyEarn";
 import { calculateRentalInfo, roundDownToThousand } from "../utils/pricing";
+import { formatTimeVi } from "../utils/formatTimeVi";
 import BookingPrefsForm, {
   computeAvailabilityRange,
   getAvailabilityRangeError,
@@ -1167,8 +1168,8 @@ export default function QuickBookModal({
                 </div>
                 {t1 && t2 && (
                   <div className="text-[10px] text-[#888] font-bold mt-0.5 uppercase tracking-wide">
-                    {format(t1, "dd/MM HH:mm", { locale: vi })} -{" "}
-                    {format(t2, "dd/MM HH:mm", { locale: vi })}
+                    {format(t1, "dd/MM", { locale: vi })} {formatTimeVi(t1)} —{" "}
+                    {format(t2, "dd/MM", { locale: vi })} {formatTimeVi(t2)}
                   </div>
                 )}
               </div>

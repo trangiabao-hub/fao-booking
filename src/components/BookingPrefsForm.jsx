@@ -4,6 +4,7 @@ import vi from "date-fns/locale/vi";
 import DatePicker from "react-datepicker";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
+import { formatTimeVi, formatTimeViFromString } from "../utils/formatTimeVi";
 
 /* ── Constants ── */
 
@@ -36,13 +37,19 @@ const ONE_DAY_PICKUP_OPTIONS = [
     id: "MORNING_0900",
     pickupType: "MORNING",
     time: MORNING_PICKUP_TIME,
-    label: "Sáng 09:00",
+    label: `Sáng ${formatTimeViFromString(MORNING_PICKUP_TIME)}`,
+  },
+  {
+    id: "AFTERNOON_1500",
+    pickupType: "AFTERNOON",
+    time: SIX_HOUR_SECOND_PICKUP_TIME,
+    label: `Chiều ${formatTimeViFromString(SIX_HOUR_SECOND_PICKUP_TIME)}`,
   },
   ...ONE_DAY_EVENING_SLOTS.map((slot) => ({
     id: `EVENING_${slot.replace(":", "")}`,
     pickupType: "EVENING",
     time: slot,
-    label: `Tối ${slot}`,
+    label: `Tối ${formatTimeViFromString(slot)}`,
   })),
 ];
 
@@ -99,10 +106,7 @@ function formatWeekdayLabel(date) {
 }
 
 function formatTimeShort(date) {
-  if (!date) return "";
-  const hour = format(date, "HH");
-  const minute = format(date, "mm");
-  return minute === "00" ? `${hour}h` : `${hour}:${minute}`;
+  return formatTimeVi(date);
 }
 
 export function formatPickupReturnSummary(date) {
@@ -450,7 +454,7 @@ export default function BookingPrefsForm({
                             : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
                         }`}
                       >
-                        Nhận {slot}
+                        Nhận {formatTimeViFromString(slot)}
                       </button>
                     );
                   },
@@ -461,8 +465,10 @@ export default function BookingPrefsForm({
                 {!pickupType
                   ? "Chưa chọn giờ nhận"
                   : pickupType === "EVENING"
-                    ? `Nhận Tối (${pickupSlot})`
-                    : `Nhận Sáng (${MORNING_PICKUP_TIME})`}
+                    ? `Nhận Tối (${formatTimeViFromString(pickupSlot)})`
+                    : pickupType === "AFTERNOON"
+                      ? `Nhận Chiều (${formatTimeViFromString(pickupSlot || SIX_HOUR_SECOND_PICKUP_TIME)})`
+                      : `Nhận Sáng (${formatTimeViFromString(MORNING_PICKUP_TIME)})`}
               </div>
             )}
           </div>

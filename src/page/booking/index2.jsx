@@ -24,6 +24,7 @@ import {
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
 import { formatDateForAPIPayload } from "../../utils/bookingHelpers";
+import { formatTimeVi } from "../../utils/formatTimeVi";
 import { loadCustomerSession } from "../../utils/storage";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
@@ -700,9 +701,11 @@ function TimeSummaryInline({
         </div>
         <div>
           <b>Thời gian:</b>{" "}
-          {`${format(t1, "dd/MM, HH:mm", {
-            locale: vi,
-          })} - ${format(t2, "dd/MM, HH:mm", { locale: vi })}`}
+          {`${format(t1, "dd/MM", { locale: vi })}, ${formatTimeVi(t1)} — ${format(
+            t2,
+            "dd/MM",
+            { locale: vi },
+          )}, ${formatTimeVi(t2)}`}
           {isSixHours && " (Gói tối đa 6 tiếng)"}
         </div>
       </div>
@@ -773,11 +776,7 @@ function Summary({
         )}
         {renderInfoRow(
           "Giờ",
-          t1 && t2
-            ? `${format(t1, "HH:mm", {
-                locale: vi,
-              })} - ${format(t2, "HH:mm", { locale: vi })}`
-            : "—"
+          t1 && t2 ? `${formatTimeVi(t1)} — ${formatTimeVi(t2)}` : "—",
         )}
       </div>
 

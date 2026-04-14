@@ -32,6 +32,7 @@ import {
   roundDownToThousand,
 } from "../../utils/pricing";
 import { formatPriceK } from "../../utils/bookingHelpers";
+import { formatTimeVi, formatTimeViFromString } from "../../utils/formatTimeVi";
 import { saveBookingPrefs } from "../../utils/storage";
 import useBookingSocket from "../../lib/useBookingSocket";
 import "react-datepicker/dist/react-datepicker.css";
@@ -205,10 +206,7 @@ function formatWeekdayLabel(date) {
 }
 
 function formatTimeShort(date) {
-  if (!date) return "";
-  const hour = format(date, "HH");
-  const minute = format(date, "mm");
-  return minute === "00" ? `${hour}h` : `${hour}:${minute}`;
+  return formatTimeVi(date);
 }
 
 function formatPickupReturnSummary(date) {
@@ -392,8 +390,10 @@ function ChicCard({
                   <div className="text-[11px] font-bold text-emerald-900 leading-tight">
                     Máy sẽ trống nếu bạn đổi thành:
                     <div className="mt-1 text-[#E85C9C] bg-white px-2 py-1 rounded-md border border-emerald-100 shadow-sm inline-block">
-                      {format(suggestedSlot.fromDateTime, "HH:mm dd/MM")} -{" "}
-                      {format(suggestedSlot.toDateTime, "HH:mm dd/MM")}
+                      {formatTimeVi(suggestedSlot.fromDateTime)}{" "}
+                      {format(suggestedSlot.fromDateTime, "dd/MM")} —{" "}
+                      {formatTimeVi(suggestedSlot.toDateTime)}{" "}
+                      {format(suggestedSlot.toDateTime, "dd/MM")}
                     </div>
                   </div>
                 </div>
@@ -883,7 +883,7 @@ export default function DeviceCatalogPage() {
   const initialTimeTo = isValidTimeParam(searchParams.get("timeTo"))
     ? searchParams.get("timeTo")
     : null;
-  const initialPickupType = ["MORNING", "EVENING"].includes(
+  const initialPickupType = ["MORNING", "EVENING", "AFTERNOON"].includes(
     searchParams.get("pickupType"),
   )
     ? searchParams.get("pickupType")
@@ -956,9 +956,12 @@ export default function DeviceCatalogPage() {
         suggestion.timeFrom === MORNING_PICKUP_TIME
           ? "MORNING"
           : prev.durationType === "ONE_DAY" &&
-              suggestion.timeFrom !== MORNING_PICKUP_TIME
-            ? "EVENING"
-            : "MORNING";
+              suggestion.timeFrom === SIX_HOUR_SECOND_PICKUP_TIME
+            ? "AFTERNOON"
+            : prev.durationType === "ONE_DAY" &&
+                suggestion.timeFrom !== MORNING_PICKUP_TIME
+              ? "EVENING"
+              : "MORNING";
 
       return {
         ...prev,
@@ -968,7 +971,8 @@ export default function DeviceCatalogPage() {
         timeTo: suggestion.timeTo,
         pickupType: nextPickupType,
         pickupSlot:
-          prev.durationType === "ONE_DAY" && nextPickupType === "EVENING"
+          prev.durationType === "ONE_DAY" &&
+          (nextPickupType === "EVENING" || nextPickupType === "AFTERNOON")
             ? suggestion.timeFrom
             : DEFAULT_EVENING_SLOT,
       };
@@ -1663,7 +1667,7 @@ export default function DeviceCatalogPage() {
     const nextTimeTo = isValidTimeParam(searchParams.get("timeTo"))
       ? searchParams.get("timeTo")
       : null;
-    const nextPickupType = ["MORNING", "EVENING"].includes(
+    const nextPickupType = ["MORNING", "EVENING", "AFTERNOON"].includes(
       searchParams.get("pickupType"),
     )
       ? searchParams.get("pickupType")
@@ -1836,9 +1840,17 @@ export default function DeviceCatalogPage() {
     const from = availabilityRange.fromDateTime;
     const to = availabilityRange.toDateTime;
     return {
-      fromTime: from ? format(from, "HH:mm") : availabilityPrefs.timeFrom,
+      fromTime: from
+        ? formatTimeVi(from)
+        : availabilityPrefs.timeFrom
+          ? formatTimeViFromString(availabilityPrefs.timeFrom)
+          : "",
       fromDate: from ? format(from, "dd/MM") : "",
-      toTime: to ? format(to, "HH:mm") : availabilityPrefs.timeTo,
+      toTime: to
+        ? formatTimeVi(to)
+        : availabilityPrefs.timeTo
+          ? formatTimeViFromString(availabilityPrefs.timeTo)
+          : "",
       toDate: to ? format(to, "dd/MM") : "",
     };
   }, [availabilityRange, availabilityPrefs]);

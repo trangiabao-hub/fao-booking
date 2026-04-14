@@ -36,6 +36,7 @@ import {
   EVENING_SLOTS,
   SIX_HOUR_MAX_HOURS,
 } from "../../data/bookingConstants";
+import { formatTimeVi } from "../../utils/formatTimeVi";
 import {
   normalizeDate,
   normalizePhone,
@@ -191,9 +192,7 @@ function getDayPartLabel(date) {
 }
 
 function formatTimeLabel(date) {
-  const h = format(date, "HH");
-  const m = format(date, "mm");
-  return m === "00" ? `${h}h` : `${h}:${m}`;
+  return formatTimeVi(date);
 }
 
 function formatWeekdayShort(date) {
@@ -205,7 +204,7 @@ function formatWeekdayShort(date) {
 function formatBookingSummaryDate(date) {
   const tetLabel = getTetDayLabel(date);
   if (!tetLabel) {
-    return format(date, "dd/MM HH:mm", { locale: vi });
+    return `${format(date, "dd/MM", { locale: vi })} ${formatTimeVi(date)}`;
   }
   const timeLabel = formatTimeLabel(date);
   const dayPart = getDayPartLabel(date);

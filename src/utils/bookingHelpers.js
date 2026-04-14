@@ -135,7 +135,12 @@ export function getTimeRange(
   const days = getDurationDays(durationId);
   const baseDate =
     pickupType === "EVENING" ? addDays(selectedDate, -1) : selectedDate;
-  const timeFrom = pickupType === "EVENING" ? pickupSlot : MORNING_PICKUP_TIME;
+  const timeFrom =
+    pickupType === "EVENING"
+      ? pickupSlot
+      : pickupType === "AFTERNOON"
+        ? pickupSlot || "15:00"
+        : MORNING_PICKUP_TIME;
   const t1 = combineDateWithTime(baseDate, timeFrom);
   if (!t1) {
     return { startDate: null, endDate: null, timeFrom: null, timeTo: null };
