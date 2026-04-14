@@ -19,6 +19,7 @@ import {
 import api from "../../config/axios";
 import FloatingContactButton from "../../components/FloatingContactButton";
 import QuickBookModal from "../../components/QuickBookModal";
+import { trackCatalogBookClick } from "../../lib/bookingAnalytics";
 import SlideNav from "../../components/SlideNav";
 import BookingPrefsForm, {
   normalizeDate,
@@ -940,6 +941,7 @@ export default function DeviceCatalogPage() {
 
   const handleQuickBook = (device) => {
     if (device?.isAvailable === false) return;
+    trackCatalogBookClick(device, "quick_single");
     setQuickBookDevice(device);
     setQuickBookDevices([device]);
     setShowQuickBookModal(true);
@@ -978,6 +980,7 @@ export default function DeviceCatalogPage() {
       };
     });
 
+    trackCatalogBookClick(device, "quick_suggested");
     setQuickBookDevice(device);
     setQuickBookDevices([device]);
     setShowQuickBookModal(true);
@@ -986,6 +989,7 @@ export default function DeviceCatalogPage() {
   const handleQuickBookMulti = () => {
     const selected = filteredDevices.filter((d) => selectedDeviceIds.has(d.id));
     if (selected.length === 0) return;
+    selected.forEach((d) => trackCatalogBookClick(d, "quick_multi"));
     setQuickBookDevice(null);
     setQuickBookDevices(selected);
     setShowQuickBookModal(true);

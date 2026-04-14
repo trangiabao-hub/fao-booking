@@ -10,9 +10,13 @@ import Menu from "./page/menu";
 import PhotoBoothPage from "./page/photobooth";
 import FeedbackPage from "./page/feedback";
 import SeoMeta from "./components/SeoMeta";
+import AnalyticsShell from "./components/AnalyticsShell";
 
 const App = () => {
   const router = createBrowserRouter([
+    {
+      element: <AnalyticsShell />,
+      children: [
     {
       path: "/",
       element: (
@@ -162,6 +166,8 @@ const App = () => {
           <FeedbackPage />
         </SeoMeta>
       ),
+    },
+      ],
     },
   ]);
   return <RouterProvider router={router} />;

@@ -54,6 +54,7 @@ import {
   memberTierKeyFromTotalSpent,
   pointsPerEarnBlock,
 } from "../../utils/loyaltyEarn";
+import { trackBookingCheckoutStart } from "../../lib/bookingAnalytics";
 import { calculateRentalInfo, roundDownToThousand } from "../../utils/pricing";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
@@ -1338,6 +1339,11 @@ export default function BookingPage() {
       const response = await api.post("/create-payment-link", payload);
       const paymentUrl = response.data?.deepLink || response.data?.checkoutUrl;
       if (paymentUrl) {
+        trackBookingCheckoutStart(selectedDevice, {
+          days,
+          branchId: selectedBranchId,
+          total,
+        });
         window.location.href = paymentUrl;
       } else {
         throw new Error("Không nhận được link thanh toán từ server.");
