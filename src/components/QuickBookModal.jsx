@@ -32,6 +32,8 @@ import {
   saveBookingPrefs,
 } from "../utils/storage";
 import { auth, googleProvider } from "../config/firebase";
+import { resolveGoogleSignInError } from "../utils/googleSignInEnvironment";
+import EmbeddedBrowserGoogleHint from "./EmbeddedBrowserGoogleHint";
 import {
   BRANCHES,
   DURATION_OPTIONS,
@@ -1112,7 +1114,9 @@ export default function QuickBookModal({
         ig: account.ig || account.fb || c.ig,
       }));
     } catch (err) {
-      setError(extractApiErrorMessage(err, "Không thể đăng nhập Google"));
+      setError(
+        resolveGoogleSignInError(err, "Không thể đăng nhập Google"),
+      );
     } finally {
       setIsGoogleLoading(false);
       setIsMemberDataLoading(false);
@@ -1457,23 +1461,26 @@ export default function QuickBookModal({
 
                 {/* Google: login or status */}
                 {checkoutMode === "GOOGLE" && !hasGoogleSession && (
-                  <button
-                    type="button"
-                    onClick={handleGoogleLogin}
-                    disabled={isGoogleLoading}
-                    className="w-full rounded-2xl border-2 border-[#FF9FCA] bg-gradient-to-r from-[#FFF0F8] via-white to-[#FFF7FB] px-3 sm:px-4 py-3 text-sm font-black text-[#E85C9C] hover:brightness-[0.98] disabled:opacity-50 transition-colors"
-                  >
-                    {isGoogleLoading ? (
-                      "Đang đăng nhập..."
-                    ) : (
-                      <>
-                        Đăng nhập Google mở ưu đãi đến{" "}
-                        <span className="text-base sm:text-lg text-[#D61F7A]">
-                          {formatPriceK(firstOrderPreviewDiscount)}
-                        </span>
-                      </>
-                    )}
-                  </button>
+                  <div className="space-y-3">
+                    <EmbeddedBrowserGoogleHint />
+                    <button
+                      type="button"
+                      onClick={handleGoogleLogin}
+                      disabled={isGoogleLoading}
+                      className="w-full rounded-2xl border-2 border-[#FF9FCA] bg-gradient-to-r from-[#FFF0F8] via-white to-[#FFF7FB] px-3 sm:px-4 py-3 text-sm font-black text-[#E85C9C] hover:brightness-[0.98] disabled:opacity-50 transition-colors"
+                    >
+                      {isGoogleLoading ? (
+                        "Đang đăng nhập..."
+                      ) : (
+                        <>
+                          Đăng nhập Google mở ưu đãi đến{" "}
+                          <span className="text-base sm:text-lg text-[#D61F7A]">
+                            {formatPriceK(firstOrderPreviewDiscount)}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 )}
 
                 {checkoutMode === "GOOGLE" &&

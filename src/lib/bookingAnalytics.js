@@ -44,6 +44,29 @@ export function trackBookingEvent(payload) {
   void api.post("v1/booking-analytics/events", body).catch(() => {});
 }
 
+const PRESENCE_INTERVAL_MS = 45_000;
+let presenceTimer = null;
+
+/** Báo “đang mở web” cho backend (ADMIN xem tại /reports/booking-live-viewers). */
+export function startBookingPresencePing() {
+  if (presenceTimer != null) return;
+  const tick = () => {
+    const clientSessionId = getBookingVisitorId();
+    void api
+      .post("v1/booking-analytics/presence", { clientSessionId })
+      .catch(() => {});
+  };
+  tick();
+  presenceTimer = setInterval(tick, PRESENCE_INTERVAL_MS);
+}
+
+export function stopBookingPresencePing() {
+  if (presenceTimer != null) {
+    clearInterval(presenceTimer);
+    presenceTimer = null;
+  }
+}
+
 export function trackCatalogBookClick(device, source) {
   if (!device) return;
   trackBookingEvent({

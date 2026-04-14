@@ -9,6 +9,8 @@ import {
   saveCustomerSession,
 } from "../../utils/storage";
 import { computeTotalSpentFromBookings } from "../../utils/loyaltyEarn";
+import { resolveGoogleSignInError } from "../../utils/googleSignInEnvironment";
+import EmbeddedBrowserGoogleHint from "../../components/EmbeddedBrowserGoogleHint";
 
 function getMemberTier(totalSpent = 0) {
   const spent = Number(totalSpent) || 0;
@@ -163,7 +165,7 @@ export default function AccountPage() {
       await fetchAccount();
       await fetchTotalSpent();
     } catch (err) {
-      setError(err?.response?.data?.message || "Đăng nhập Google thất bại.");
+      setError(resolveGoogleSignInError(err, "Đăng nhập Google thất bại."));
     } finally {
       setIsLoginLoading(false);
     }
@@ -206,6 +208,8 @@ export default function AccountPage() {
                 bạn.
               </p>
             </div>
+
+            <EmbeddedBrowserGoogleHint className="mt-4" />
 
             <button
               type="button"

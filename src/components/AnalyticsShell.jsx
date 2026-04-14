@@ -1,6 +1,10 @@
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { trackBookingEvent } from "../lib/bookingAnalytics";
+import {
+  startBookingPresencePing,
+  stopBookingPresencePing,
+  trackBookingEvent,
+} from "../lib/bookingAnalytics";
 
 /**
  * Bọc toàn bộ route fao-booking: gửi PAGE_VIEW mỗi khi đổi URL.
@@ -14,6 +18,11 @@ export default function AnalyticsShell() {
       path: `${location.pathname}${location.search || ""}`,
     });
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    startBookingPresencePing();
+    return () => stopBookingPresencePing();
+  }, []);
 
   return <Outlet />;
 }

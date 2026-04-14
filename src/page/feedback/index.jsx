@@ -249,15 +249,16 @@ function normalizeFromCatalogPath(value = "") {
 }
 
 /** Quay catalog: giữ query (ngày, chi nhánh, giá…), bỏ lọc/scroll theo từng máy; đồng bộ tab category. */
-function buildCatalogBackHref(fromCatalogPath, categoryKey) {
+function buildCatalogBackHref(fromCatalogPath, categoryKey, apiCategories) {
   const base = normalizeFromCatalogPath(fromCatalogPath);
   try {
     const url = new URL(base, "https://fao.local");
     const params = url.searchParams;
     params.delete("q");
     params.delete("focusModel");
-    if (categoryKey && categoryKey !== DEFAULT_CATEGORY_KEY) {
-      params.set("category", categoryKey);
+    const catParam = catalogCategoryKeyToParam(categoryKey, apiCategories);
+    if (catParam && categoryKey !== DEFAULT_CATEGORY_KEY) {
+      params.set("category", catParam);
     } else {
       params.delete("category");
     }
