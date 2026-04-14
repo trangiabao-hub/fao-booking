@@ -28,6 +28,12 @@ function formatVNDateTime(dateStr) {
   return dayjs(dateStr).tz("Asia/Ho_Chi_Minh").format("HH:mm, dddd, DD/MM/YYYY");
 }
 
+/** Đồng bộ với note sau thanh toán (PaymentService): PayOS#123 | MãĐơn:uuid */
+function parsePayOsCodeFromNote(note) {
+  const m = String(note || "").match(/PayOS#(\d+)/);
+  return m ? m[1] : null;
+}
+
 function LoadingState({ message }) {
   return (
     <div className="text-center py-20">
@@ -97,10 +103,11 @@ export default function OrderInfoPage() {
             b.orderIdNew != null && String(b.orderIdNew).trim() !== ""
               ? String(b.orderIdNew).trim()
               : null;
+          const payosFromNote = parsePayOsCodeFromNote(b.note);
           setOrderDetails({
             orderIdNew: oid,
-            orderCode: null,
-            refFallback: !oid && b.id ? `Đặt chỗ #${b.id}` : null,
+            orderCode: payosFromNote,
+            refFallback: !oid && !payosFromNote && b.id ? `Đặt chỗ #${b.id}` : null,
             bookingFrom: b.bookingFrom,
             bookingTo: b.bookingTo,
             total: b.total ?? 0,
@@ -140,6 +147,12 @@ export default function OrderInfoPage() {
 
         const first = bookings[0];
         const totalSum = bookings.reduce((s, b) => s + (b.total || 0), 0);
+        const oidFromBooking =
+          first?.orderIdNew != null && String(first.orderIdNew).trim() !== ""
+            ? String(first.orderIdNew).trim()
+            : null;
+        const payosFromNote = parsePayOsCodeFromNote(first?.note);
+        const payosDisplay = byCode ? String(orderCode) : payosFromNote;
 
         const devices = await Promise.all(
           bookings.map(async (b) => {
@@ -159,8 +172,8 @@ export default function OrderInfoPage() {
         );
 
         setOrderDetails({
-          orderIdNew: byCode ? null : orderIdNew,
-          orderCode: byCode ? orderCode : null,
+          orderIdNew: oidFromBooking || (!byCode ? orderIdNew : null),
+          orderCode: payosDisplay || null,
           refFallback: null,
           bookingFrom: first.bookingFrom,
           bookingTo: first.bookingTo,
@@ -264,14 +277,37 @@ export default function OrderInfoPage() {
             </div>
 
             <div className="p-5 sm:p-6 space-y-5">
-              <div className="rounded-xl border border-[#FFE4F0] bg-white px-4 py-3">
-                <p className="text-xs uppercase tracking-wider text-slate-500">Mã đơn</p>
-                <p className="font-bold text-[#E85C9C] break-all">
-                  {orderDetails.orderCode ||
-                    orderDetails.orderIdNew ||
-                    orderDetails.refFallback ||
-                    "—"}
-                </p>
+              <div className="rounded-xl border border-[#FFE4F0] bg-white px-4 py-3 space-y-3">
+                {orderDetails.orderCode ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-slate-500">
+                      Mã thanh toán (PayOS)
+                    </p>
+                    <p className="font-bold text-[#E85C9C] font-mono tabular-nums">
+                      {orderDetails.orderCode}
+                    </p>
+                  </div>
+                ) : null}
+                {orderDetails.orderIdNew ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-slate-500">
+                      Mã đơn hàng
+                    </p>
+                    <p className="font-bold text-slate-800 break-all text-sm sm:text-base">
+                      {orderDetails.orderIdNew}
+                    </p>
+                  </div>
+                ) : null}
+                {!orderDetails.orderCode && !orderDetails.orderIdNew ? (
+                  <div>
+                    <p className="text-xs uppercase tracking-wider text-slate-500">
+                      Mã tham chiếu
+                    </p>
+                    <p className="font-bold text-[#E85C9C] break-all">
+                      {orderDetails.refFallback || "—"}
+                    </p>
+                  </div>
+                ) : null}
               </div>
 
               {/* Devices */}

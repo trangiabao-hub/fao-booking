@@ -1,27 +1,49 @@
 {
-  "description": "Danh sách các ngày lễ/nghỉ (không áp dụng discount, xử lý như cuối tuần). Đồng bộ với fao manage.",
+  "description": "Danh sách các ngày lễ/nghỉ hoán đổi trong năm 2026 (không áp dụng discount, xử lý như cuối tuần). Lưu ý: Thứ Bảy/Chủ Nhật không cần liệt kê ở đây nếu hệ thống đã tự xử lý cuối tuần. Đồng bộ với fao/src/data/holidays.json.",
   "holidays": [
-    { "date": "2025-01-01", "name": "Tết Dương lịch" },
-    { "date": "2025-01-27", "name": "Tết Nguyên đán" },
-    { "date": "2025-01-28", "name": "Tết Nguyên đán (mùng 1 Tết)" },
-    { "date": "2025-01-29", "name": "Tết Nguyên đán (mùng 2 Tết)" },
-    { "date": "2025-01-30", "name": "Tết Nguyên đán (mùng 3 Tết)" },
-    { "date": "2025-01-31", "name": "Tết Nguyên đán (mùng 4 Tết)" },
-    { "date": "2025-04-30", "name": "Ngày Giải phóng miền Nam" },
-    { "date": "2025-05-01", "name": "Ngày Quốc tế Lao động" },
-    { "date": "2025-08-31", "name": "Lễ Quốc khánh" },
-    { "date": "2025-09-01", "name": "Lễ Quốc khánh" },
-    { "date": "2025-09-02", "name": "Lễ Quốc khánh" },
-    { "date": "2026-01-01", "name": "Tết Dương lịch" },
-    { "date": "2026-02-16", "name": "Tết Nguyên đán" },
-    { "date": "2026-02-17", "name": "Tết Nguyên đán (mùng 1 Tết)" },
-    { "date": "2026-02-18", "name": "Tết Nguyên đán (mùng 2 Tết)" },
-    { "date": "2026-02-19", "name": "Tết Nguyên đán (mùng 3 Tết)" },
-    { "date": "2026-02-20", "name": "Tết Nguyên đán (mùng 4 Tết)" },
-    { "date": "2026-04-30", "name": "Ngày Giải phóng miền Nam" },
-    { "date": "2026-05-01", "name": "Ngày Quốc tế Lao động" },
-    { "date": "2026-08-31", "name": "Lễ Quốc khánh" },
-    { "date": "2026-09-01", "name": "Lễ Quốc khánh" },
-    { "date": "2026-09-02", "name": "Lễ Quốc khánh" }
+    {
+      "date": "2026-01-01",
+      "name": "Tết Dương lịch"
+    },
+    {
+      "date": "2026-02-16",
+      "name": "Tết Nguyên đán"
+    },
+    {
+      "date": "2026-02-17",
+      "name": "Tết Nguyên đán (mùng 1 Tết)"
+    },
+    {
+      "date": "2026-02-18",
+      "name": "Tết Nguyên đán (mùng 2 Tết)"
+    },
+    {
+      "date": "2026-02-19",
+      "name": "Tết Nguyên đán (mùng 3 Tết)"
+    },
+    {
+      "date": "2026-02-20",
+      "name": "Tết Nguyên đán (mùng 4 Tết)"
+    },
+    {
+      "date": "2026-04-30",
+      "name": "Ngày Giải phóng miền Nam"
+    },
+    {
+      "date": "2026-05-01",
+      "name": "Ngày Quốc tế Lao động"
+    },
+    {
+      "date": "2026-08-31",
+      "name": "Lễ Quốc khánh"
+    },
+    {
+      "date": "2026-09-01",
+      "name": "Lễ Quốc khánh"
+    },
+    {
+      "date": "2026-09-02",
+      "name": "Lễ Quốc khánh"
+    }
   ]
 }

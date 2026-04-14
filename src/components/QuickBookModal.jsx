@@ -49,13 +49,36 @@ import {
   computeDiscountedPrice,
   computeDiscountBreakdown,
 } from "../utils/bookingHelpers";
+
+/** Đồng bộ fao-booking với trang /booking và fao (noteVoucher). */
+function buildQuickBookNoteVoucher({
+  isFirstOrderVoucherSelected,
+  price,
+  t1,
+  t2,
+  pointToUse,
+}) {
+  const parts = [];
+  if (isFirstOrderVoucherSelected) {
+    parts.push("FIRST_ORDER_30_MAX200K");
+  } else if (price > 0 && t1 && t2) {
+    const b = computeDiscountBreakdown(price, t1, t2);
+    if (b && b.discount > 0) {
+      parts.push("WEEKDAY_20_PCT");
+    }
+  }
+  if (pointToUse > 0) {
+    parts.push(`POINT_${pointToUse}`);
+  }
+  return parts.length > 0 ? parts.join(" | ") : "NONE";
+}
 import {
   computeEarnedPoints,
   computeTotalSpentFromBookings,
   memberTierKeyFromTotalSpent,
   pointsPerEarnBlock,
 } from "../utils/loyaltyEarn";
-import { calculateRentalInfo } from "../utils/pricing";
+import { calculateRentalInfo, roundDownToThousand } from "../utils/pricing";
 import BookingPrefsForm, {
   computeAvailabilityRange,
   getAvailabilityRangeError,
@@ -441,10 +464,14 @@ export default function QuickBookModal({
   // Base price từ khoảng thời gian thực tế (t1, t2) - đồng bộ manage
   const rentalInfoPerDevice = useMemo(() => {
     if (!t1 || !t2) return [];
-    return effectiveDevices.map((d) => ({
-      device: d,
-      ...calculateRentalInfo([t1, t2], d),
-    }));
+    return effectiveDevices.map((d) => {
+      const info = calculateRentalInfo([t1, t2], d);
+      return {
+        device: d,
+        ...info,
+        price: roundDownToThousand(info.price || 0),
+      };
+    });
   }, [effectiveDevices, t1, t2]);
 
   const rentalInfo = rentalInfoPerDevice[0] || { price: 0, chargeableDays: 0 };
@@ -933,6 +960,14 @@ export default function QuickBookModal({
       const note =
         `${normalizedCustomer.fullName} ${phone} ${branchLabel}`.slice(0, 80);
 
+      const noteVoucherForRequests = buildQuickBookNoteVoucher({
+        isFirstOrderVoucherSelected,
+        price,
+        t1,
+        t2,
+        pointToUse,
+      });
+
       if (isMulti) {
         const perDeviceAmounts = rentalInfoPerDevice.map((r) =>
           Math.round(computeDiscountedPrice(r?.price || 0, t1, t2)),
@@ -974,9 +1009,7 @@ export default function QuickBookModal({
             note,
             dayOfRent: chargeableDays,
             originalPrice: devPrice,
-            noteVoucher: isFirstOrderVoucherSelected
-              ? "FIRST_ORDER_30_MAX200K"
-              : "NONE",
+            noteVoucher: noteVoucherForRequests,
             usedPoint: pointToUse,
           };
         });
@@ -1012,9 +1045,7 @@ export default function QuickBookModal({
           note,
           dayOfRent: chargeableDays,
           originalPrice: price,
-          noteVoucher: isFirstOrderVoucherSelected
-            ? "FIRST_ORDER_30_MAX200K"
-            : "NONE",
+          noteVoucher: noteVoucherForRequests,
           usedPoint: pointToUse,
         };
 

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { format, addDays, isWeekend } from "date-fns";
+import { format, addDays } from "date-fns";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import vi from "date-fns/locale/vi";
 
@@ -45,6 +45,7 @@ import {
   getTimeRange,
   getSlotButtonClasses,
   formatDateForAPIPayload,
+  computeDiscountBreakdown,
 } from "../../utils/bookingHelpers";
 import {
   computeEarnedPoints,
@@ -52,6 +53,7 @@ import {
   memberTierKeyFromTotalSpent,
   pointsPerEarnBlock,
 } from "../../utils/loyaltyEarn";
+import { calculateRentalInfo, roundDownToThousand } from "../../utils/pricing";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
 
@@ -60,7 +62,7 @@ const TET_START_OFFSET = -6; // 25 Tết
 const TET_END_OFFSET = 9; // Mùng 10
 
 const FIRST_ORDER_VOUCHER_RATE = 0.3;
-const FIRST_ORDER_VOUCHER_CAP = 300000;
+const FIRST_ORDER_VOUCHER_CAP = 200000;
 const POINT_TO_VND = 1000;
 
 /** Một voucher shop mỗi đơn — style chọn giống Shopee */
@@ -75,13 +77,14 @@ const BOOKING_VOUCHER_OPTIONS = [
     id: "WEEKDAY20",
     percentBadge: "20%",
     title: "Giảm 20% ngày trong tuần",
-    subtitle: "Áp dụng phần ngày T2–T6 trong lịch thuê",
+    subtitle:
+      "Theo từng ngày lịch (T2–T6, trừ lễ); slot tối/sáng như catalog — không phải 20% cả đơn",
   },
   {
     id: "FIRST30",
     percentBadge: "30%",
     title: "Giảm 30% đơn đầu tiên",
-    subtitle: "Tối đa 300.000đ • Thành viên, đơn đầu",
+    subtitle: "Tối đa 200.000đ • Thành viên, đơn đầu",
   },
 ];
 
@@ -116,21 +119,6 @@ function parseDeposit(desc) {
 }
 
 const diffHours = (d1, d2) => (d2.getTime() - d1.getTime()) / (1000 * 60 * 60);
-
-function countWeekdaysBetweenAligned(t1, t2) {
-  let days = 0;
-  let weekdays = 0;
-  let cur = new Date(t1.getTime());
-  cur.setHours(0, 0, 0, 0);
-  const end = new Date(t2.getTime());
-  end.setHours(0, 0, 0, 0);
-  while (cur < end) {
-    days += 1;
-    if (!isWeekend(cur)) weekdays += 1;
-    cur = addDays(cur, 1);
-  }
-  return { days, weekdays };
-}
 
 function safeDesc(s) {
   if (!s) return "Thanh toan don hang";
@@ -364,42 +352,38 @@ function useBookingPricing(
       days = 0.5;
       subTotal = device.priceSixHours || device.priceOneDay || 0;
     } else {
-      const rawDays = Math.ceil(hours / 24);
-      days = rawDays <= 0 ? 1 : rawDays;
-
-      if (days === 1) subTotal = device.priceOneDay || 0;
-      else if (days === 2) subTotal = device.priceTwoDay || 0;
-      else if (days === 3) subTotal = device.priceThreeDay || 0;
-      else {
-        subTotal =
-          (device.priceThreeDay || 0) + (days - 3) * (device.priceNextDay || 0);
+      const rental = calculateRentalInfo([t1, t2], device);
+      if (rental.price > 0) {
+        days = rental.chargeableDays;
+        subTotal = roundDownToThousand(rental.price);
+      } else {
+        const rawDays = Math.ceil(hours / 24);
+        days = rawDays <= 0 ? 1 : rawDays;
+        if (days === 1) subTotal = device.priceOneDay || 0;
+        else if (days === 2) subTotal = device.priceTwoDay || 0;
+        else if (days === 3) subTotal = device.priceThreeDay || 0;
+        else {
+          subTotal =
+            (device.priceThreeDay || 0) +
+            (days - 3) * (device.priceNextDay || 0);
+        }
       }
     }
 
     let voucherDiscount = 0;
     let voucherLabel = null;
     let voucherHint = null;
-    const rateWeekday = 0.2;
 
     if (selectedVoucherId === "WEEKDAY20") {
-      if (isSixHours && sameDay) {
-        if (!isWeekend(t1)) {
-          voucherDiscount = Math.round(subTotal * rateWeekday);
-          voucherLabel = "Giảm 20% ngày trong tuần (T2–T6)";
-        } else {
-          voucherHint =
-            "Gói rơi vào cuối tuần — voucher ngày trong tuần không áp dụng.";
-        }
-      } else {
-        const { days: dCount, weekdays } = countWeekdaysBetweenAligned(t1, t2);
-        const ratio = dCount > 0 ? weekdays / dCount : 0;
-        voucherDiscount = Math.round(subTotal * rateWeekday * ratio);
-        if (voucherDiscount > 0 && dCount > 0) {
-          voucherLabel = `Giảm 20% ngày trong tuần (${weekdays}/${dCount} ngày T2–T6)`;
-        } else {
-          voucherHint =
-            "Lịch thuê không có ngày T2–T6 — voucher chưa được trừ tiền.";
-        }
+      const breakdown =
+        subTotal > 0 ? computeDiscountBreakdown(subTotal, t1, t2) : null;
+      if (breakdown && breakdown.discounted < subTotal) {
+        voucherDiscount = subTotal - breakdown.discounted;
+        voucherLabel =
+          breakdown.discountLabel || "Giảm ngày trong tuần (T2–T6, trừ lễ)";
+      } else if (subTotal > 0) {
+        voucherHint =
+          "Không có ngày được giảm trong lịch (T7/CN/ngày lễ hoặc cách tính ngày theo slot tối/sáng) — mã không trừ tiền.";
       }
     } else if (selectedVoucherId === "FIRST30") {
       if (firstOrderPromoEligible) {
@@ -407,7 +391,7 @@ function useBookingPricing(
           Math.round(subTotal * FIRST_ORDER_VOUCHER_RATE),
           FIRST_ORDER_VOUCHER_CAP,
         );
-        voucherLabel = "Giảm 30% đơn đầu (tối đa 300k)";
+          voucherLabel = "Giảm 30% đơn đầu (tối đa 200k)";
       } else if (!hasSession) {
         voucherHint =
           "Đăng nhập thành viên — voucher dành cho đơn thuê đầu tiên.";
@@ -911,7 +895,8 @@ export default function BookingPage() {
   const [memberTotalSpent, setMemberTotalSpent] = useState(0);
   const [isMemberLoading, setIsMemberLoading] = useState(false);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
-  const [selectedVoucherId, setSelectedVoucherId] = useState("NONE");
+  /** Mặc định WEEKDAY20 để khớp KM “ngày trong tuần” và lưu noteVoucher khi thanh toán */
+  const [selectedVoucherId, setSelectedVoucherId] = useState("WEEKDAY20");
 
   // Calculate current step for progress indicator
   const currentStep = useMemo(() => {
@@ -1105,7 +1090,7 @@ export default function BookingPage() {
 
   useEffect(() => {
     if (selectedVoucherId === "FIRST30" && firstOrderVoucherBlocked) {
-      setSelectedVoucherId("NONE");
+      setSelectedVoucherId("WEEKDAY20");
     }
   }, [selectedVoucherId, firstOrderVoucherBlocked]);
 
@@ -1333,7 +1318,7 @@ export default function BookingPage() {
             ? "WEEKDAY_20_PCT"
             : null,
           voucherDiscount > 0 && selectedVoucherId === "FIRST30"
-            ? "FIRST_ORDER_30_MAX300K"
+            ? "FIRST_ORDER_30_MAX200K"
             : null,
           pointDiscount > 0 ? `POINT_${pointsToRedeem}` : null,
         ]

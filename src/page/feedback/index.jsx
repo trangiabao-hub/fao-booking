@@ -651,9 +651,7 @@ export default function FeedbackPage() {
         ? p.get("timeFrom")
         : null;
       const timeTo = isValidTimeParam(p.get("timeTo")) ? p.get("timeTo") : null;
-      const pickupType = ["MORNING", "EVENING", "AFTERNOON"].includes(
-        p.get("pickupType"),
-      )
+      const pickupType = ["MORNING", "EVENING"].includes(p.get("pickupType"))
         ? p.get("pickupType")
         : null;
       const pickupSlot = isValidTimeParam(p.get("pickupSlot"))

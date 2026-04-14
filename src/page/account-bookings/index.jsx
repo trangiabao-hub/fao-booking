@@ -398,9 +398,7 @@ export default function AccountBookingsPage() {
               </div>
 
               <p className="mb-4 text-[13px] leading-relaxed text-[#777] md:text-sm">
-                {
-                  MAIN_TABS.find((t) => t.id === mainTab)?.hint
-                }
+                {MAIN_TABS.find((t) => t.id === mainTab)?.hint}
               </p>
 
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-4">
@@ -531,7 +529,7 @@ export default function AccountBookingsPage() {
                         </div>
                       </div>
 
-                      <div className="border-t border-[#F5E9EF] px-3.5 py-3 md:px-5 md:py-3.5">
+                      <div className="flex flex-col gap-2 border-t border-[#F5E9EF] px-3.5 py-3 sm:flex-row sm:flex-wrap md:px-5 md:py-3.5">
                         <Link
                           to={
                             booking.orderIdNew

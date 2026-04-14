@@ -52,7 +52,13 @@ function SuccessCard({ details }) {
     const title = `Thuê máy ảnh: ${deviceLabel}`;
     const startTime = formatGCALDate(details.bookingFrom);
     const endTime = formatGCALDate(details.bookingTo);
-    const description = `Cảm ơn bạn đã đặt lịch thuê máy ảnh!\n\nMã đơn hàng: ${details.orderCode}\nTổng tiền: ${details.total.toLocaleString("vi-VN")} đ\n\nVui lòng có mặt đúng giờ để nhận máy.\nLiên hệ: 0901355198`;
+    const refLines = [
+      details.orderCode != null ? `Mã thanh toán (PayOS): ${details.orderCode}` : null,
+      details.orderIdNew ? `Mã đơn hệ thống: ${details.orderIdNew}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const description = `Cảm ơn bạn đã đặt lịch thuê máy ảnh!\n\n${refLines}\nTổng tiền: ${details.total.toLocaleString("vi-VN")} đ\n\nVui lòng có mặt đúng giờ để nhận máy.\nLiên hệ: 0901355198`;
     const location = "330/22 Đ. Phan Đình Phùng, Phường 1, Phú Nhuận, Hồ Chí Minh, Việt Nam";
 
     const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${startTime}/${endTime}&details=${encodeURIComponent(description)}&location=${encodeURIComponent(location)}`;
@@ -98,14 +104,21 @@ function SuccessCard({ details }) {
     return [
       `📋 TÓM TẮT ĐƠN HÀNG`,
       ``,
-      `Mã đơn: #${details.orderCode}`,
+      details.orderCode != null
+        ? `Mã thanh toán (PayOS): ${details.orderCode}`
+        : null,
+      details.orderIdNew
+        ? `Mã đơn hàng: ${details.orderIdNew}`
+        : null,
       `Thiết bị: ${deviceNames}`,
       `Ngày nhận: ${formatVNDateTime(details.bookingFrom)}`,
       `Ngày trả: ${formatVNDateTime(details.bookingTo)}`,
       `Tổng tiền: ${details.total.toLocaleString("vi-VN")} đ`,
       ``,
       `Chào shop, mình vừa đặt đơn trên và đã thanh toán thành công. Mong shop xác nhận ạ!`,
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
   };
 
   const handleCopyOrder = async () => {
@@ -161,6 +174,39 @@ function SuccessCard({ details }) {
           <p className="text-slate-600 text-sm lg:text-base mt-1.5 max-w-md lg:max-w-xl mx-auto leading-relaxed">
             Shop đã nhận thanh toán. Bạn cần thêm một bước để shop xác nhận đơn.
           </p>
+
+          {(details.orderCode != null || details.orderIdNew) && (
+            <div className="mt-5 mx-auto max-w-lg lg:max-w-2xl rounded-2xl border border-pink-200/90 bg-white px-4 py-3.5 text-left shadow-sm">
+              <p className="text-[10px] font-black uppercase tracking-wider text-pink-800/80">
+                Mã đơn hàng — lưu hoặc gửi kèm cho shop
+              </p>
+              {details.orderCode != null && (
+                <p className="mt-2 text-sm text-slate-600">
+                  <span className="font-semibold text-slate-700">
+                    Mã thanh toán (PayOS):{" "}
+                  </span>
+                  <span className="font-mono font-bold text-pink-900 tabular-nums">
+                    {details.orderCode}
+                  </span>
+                </p>
+              )}
+              {details.orderIdNew ? (
+                <p className="mt-1.5 text-sm text-slate-600">
+                  <span className="font-semibold text-slate-700">
+                    Mã đơn hệ thống:{" "}
+                  </span>
+                  <span className="font-mono text-xs font-bold text-slate-900 break-all sm:text-sm">
+                    {details.orderIdNew}
+                  </span>
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">
+                  Mã đơn hệ thống sẽ hiển thị sau khi shop xác nhận; bạn vẫn có thể
+                  tra cứu bằng mã PayOS ở trên.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="mt-5 lg:mt-8 lg:grid lg:grid-cols-2 lg:gap-6 lg:items-stretch text-left">
             <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3.5 lg:px-5 lg:py-4 h-full flex flex-col justify-center">

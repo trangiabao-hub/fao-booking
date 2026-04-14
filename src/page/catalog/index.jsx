@@ -29,6 +29,7 @@ import BookingPrefsForm, {
 import {
   computeDiscountBreakdown,
   calculateRentalInfo,
+  roundDownToThousand,
 } from "../../utils/pricing";
 import { formatPriceK } from "../../utils/bookingHelpers";
 import { saveBookingPrefs } from "../../utils/storage";
@@ -882,7 +883,7 @@ export default function DeviceCatalogPage() {
   const initialTimeTo = isValidTimeParam(searchParams.get("timeTo"))
     ? searchParams.get("timeTo")
     : null;
-  const initialPickupType = ["MORNING", "EVENING", "AFTERNOON"].includes(
+  const initialPickupType = ["MORNING", "EVENING"].includes(
     searchParams.get("pickupType"),
   )
     ? searchParams.get("pickupType")
@@ -951,14 +952,13 @@ export default function DeviceCatalogPage() {
     setAvailabilityPrefs((prev) => {
       const nextDate = normalizeDate(suggestion.fromDateTime);
       const nextEndDate = normalizeDate(suggestion.toDateTime);
-      let nextPickupType = "MORNING";
-      if (suggestion.timeFrom === MORNING_PICKUP_TIME) {
-        nextPickupType = "MORNING";
-      } else if (suggestion.timeFrom === SIX_HOUR_SECOND_PICKUP_TIME) {
-        nextPickupType = "AFTERNOON";
-      } else if (prev.durationType === "ONE_DAY") {
-        nextPickupType = "EVENING";
-      }
+      const nextPickupType =
+        suggestion.timeFrom === MORNING_PICKUP_TIME
+          ? "MORNING"
+          : prev.durationType === "ONE_DAY" &&
+              suggestion.timeFrom !== MORNING_PICKUP_TIME
+            ? "EVENING"
+            : "MORNING";
 
       return {
         ...prev,
@@ -970,9 +970,7 @@ export default function DeviceCatalogPage() {
         pickupSlot:
           prev.durationType === "ONE_DAY" && nextPickupType === "EVENING"
             ? suggestion.timeFrom
-            : nextPickupType === "AFTERNOON"
-              ? SIX_HOUR_SECOND_PICKUP_TIME
-              : DEFAULT_EVENING_SLOT,
+            : DEFAULT_EVENING_SLOT,
       };
     });
 
@@ -1346,13 +1344,14 @@ export default function DeviceCatalogPage() {
           ? Math.max(1, pricingContext.totalDays || 1)
           : 0;
 
-      const { price: original } = calculateRentalInfo(
+      const { price: rawPrice } = calculateRentalInfo(
         fromDateTime && toDateTime ? [fromDateTime, toDateTime] : [],
         device || {},
       );
+      const original = roundDownToThousand(rawPrice || 0);
 
       if (original <= 0) {
-        const oneDayPrice = device?.priceOneDay || 0;
+        const oneDayPrice = roundDownToThousand(device?.priceOneDay || 0);
         return {
           original: oneDayPrice,
           discounted: oneDayPrice,
@@ -1664,7 +1663,7 @@ export default function DeviceCatalogPage() {
     const nextTimeTo = isValidTimeParam(searchParams.get("timeTo"))
       ? searchParams.get("timeTo")
       : null;
-    const nextPickupType = ["MORNING", "EVENING", "AFTERNOON"].includes(
+    const nextPickupType = ["MORNING", "EVENING"].includes(
       searchParams.get("pickupType"),
     )
       ? searchParams.get("pickupType")
