@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { format, addDays } from "date-fns";
-import { useSearchParams, Link, useNavigate } from "react-router-dom";
+import { useSearchParams, Link, useNavigate, useMatch } from "react-router-dom";
 import vi from "date-fns/locale/vi";
 
 import {
@@ -37,6 +37,7 @@ import {
   SIX_HOUR_MAX_HOURS,
 } from "../../data/bookingConstants";
 import { formatTimeVi } from "../../utils/formatTimeVi";
+import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
 import {
   normalizeDate,
   normalizePhone,
@@ -830,28 +831,34 @@ function AlternativeDevices({ currentDevice, allDevices, onSelect }) {
 export default function BookingPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const isQ9Entry = Boolean(useMatch({ path: "/q9", end: true }));
   const hasSession = !!loadCustomerSession()?.token;
 
   const initialPrefs = useMemo(() => {
     const prefs = loadBookingPrefs();
-    const branchId = BRANCHES.some((b) => b.id === prefs?.branchId)
-      ? prefs.branchId
-      : getDefaultBranchId();
+    let branchId;
+    if (isQ9Entry) {
+      branchId = "Q9";
+    } else if (BRANCHES.some((b) => b.id === prefs?.branchId)) {
+      branchId = prefs.branchId;
+    } else {
+      branchId = getDefaultBranchId();
+    }
     const safeBranchId =
       BRANCHES.find((b) => b.id === branchId && !b.disabled)?.id ||
       getDefaultBranchId();
-    
-    return { 
-      branchId: safeBranchId, 
+
+    return {
+      branchId: safeBranchId,
       durationId: prefs?.durationId || "ONE_DAY",
       date: prefs?.date ? normalizeDate(new Date(prefs.date)) : normalizeDate(new Date()),
       endDate: prefs?.endDate ? normalizeDate(new Date(prefs.endDate)) : addDays(normalizeDate(new Date()), 1),
       timeFrom: prefs?.timeFrom || MORNING_PICKUP_TIME,
       timeTo: prefs?.timeTo || SIX_HOUR_RETURN_TIME,
       pickupType: prefs?.pickupType || "MORNING",
-      pickupSlot: prefs?.pickupSlot || DEFAULT_EVENING_SLOT
+      pickupSlot: prefs?.pickupSlot || DEFAULT_EVENING_SLOT,
     };
-  }, []);
+  }, [isQ9Entry]);
 
   // Get device from URL params
   const urlDeviceId = searchParams.get("deviceId");
@@ -874,6 +881,22 @@ export default function BookingPage() {
   const [selectedBranchId, setSelectedBranchId] = useState(initialPrefs.branchId);
   const [endDateState, setEndDateState] = useState(initialPrefs.endDate);
   const [availabilityByBranch, setAvailabilityByBranch] = useState({});
+
+  useEffect(() => {
+    if (isQ9Entry) {
+      setSelectedBranchId("Q9");
+      return;
+    }
+    const prefs = loadBookingPrefs();
+    const fromPrefs =
+      prefs?.branchId && BRANCHES.some((b) => b.id === prefs.branchId)
+        ? prefs.branchId
+        : getDefaultBranchId();
+    const safe =
+      BRANCHES.find((b) => b.id === fromPrefs && !b.disabled)?.id ||
+      getDefaultBranchId();
+    setSelectedBranchId(safe);
+  }, [isQ9Entry]);
 
   // Initialize customer from localStorage
   const [customer, setCustomer] = useState(() => {
@@ -1191,7 +1214,14 @@ export default function BookingPage() {
         const resp = await api.get("v1/devices/booking", { params });
         if (cancelled) return;
 
-        const data = resp.data || [];
+        const data = (resp.data || []).map((d) => ({
+          ...d,
+          bookingDtos: filterBookingsOverlappingSlot(
+            Array.isArray(d.bookingDtos) ? d.bookingDtos : [],
+            fromDateTime,
+            toDateTime,
+          ),
+        }));
         const selectedModelIdentity = getModelIdentity(selectedDevice);
         const isBusy = (d) =>
           Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
@@ -1324,6 +1354,7 @@ export default function BookingPage() {
         ]
           .filter(Boolean)
           .join(" | ") || "NONE",
+        ...(selectedBranchId === "Q9" ? { location: "Thủ Đức" } : {}),
       };
 
       const rawDesc = `Thue ${selectedDevice.displayName}`;

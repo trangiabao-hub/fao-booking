@@ -41,6 +41,7 @@ import {
   SIX_HOUR_RETURN_TIME,
   DEFAULT_EVENING_SLOT,
 } from "../data/bookingConstants";
+import { filterBookingsOverlappingSlot } from "../utils/bookingOverlap";
 import {
   normalizeDate,
   normalizePhone,
@@ -679,6 +680,14 @@ export default function QuickBookModal({
       return;
     setIsCheckingAvailability(true);
     try {
+      const filterRowBySlot = (row) => ({
+        ...row,
+        bookingDtos: filterBookingsOverlappingSlot(
+          Array.isArray(row?.bookingDtos) ? row.bookingDtos : [],
+          t1,
+          t2,
+        ),
+      });
       if (canPickSameModelQuantity) {
         const rep = baseDevicesForProps[0];
         const fromStr = formatLocalDateTimeForDeviceApi(t1);
@@ -693,7 +702,7 @@ export default function QuickBookModal({
             branchId: selectedBranch,
           },
         });
-        const data = resp.data || [];
+        const data = (resp.data || []).map(filterRowBySlot);
         const selectedModelIdentity = getModelIdentity(rep);
         const isBusy = (d) =>
           Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
@@ -737,7 +746,7 @@ export default function QuickBookModal({
             branchId: selectedBranch,
           },
         });
-        const data = resp.data || [];
+        const data = (resp.data || []).map(filterRowBySlot);
         const isBusy = (d) =>
           Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
         const allAvailable = baseDevicesForProps.every((dev) => {
@@ -762,7 +771,7 @@ export default function QuickBookModal({
           branchId: selectedBranch,
         },
       });
-      const data = resp.data || [];
+      const data = (resp.data || []).map(filterRowBySlot);
       const selectedModelIdentity = getModelIdentity(device);
       const isBusy = (d) =>
         Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
@@ -1200,6 +1209,7 @@ export default function QuickBookModal({
             originalPrice: devPrice,
             noteVoucher: noteVoucherForRequests,
             usedPoint: pointToUse,
+            ...(selectedBranch === "Q9" ? { location: "Thủ Đức" } : {}),
           };
         });
 
@@ -1236,6 +1246,7 @@ export default function QuickBookModal({
           originalPrice: price,
           noteVoucher: noteVoucherForRequests,
           usedPoint: pointToUse,
+          ...(selectedBranch === "Q9" ? { location: "Thủ Đức" } : {}),
         };
 
         const payload = {

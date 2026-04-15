@@ -37,6 +37,8 @@ import {
   roundDownToThousand,
 } from "../../utils/pricing";
 import { formatPriceK } from "../../utils/bookingHelpers";
+import { BRANCHES } from "../../data/bookingConstants";
+import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
 import { formatTimeVi, formatTimeViFromString } from "../../utils/formatTimeVi";
 import { saveBookingPrefs } from "../../utils/storage";
 import useBookingSocket from "../../lib/useBookingSocket";
@@ -62,16 +64,6 @@ const SIX_HOUR_MAX_HOURS = 12;
 const DURATION_TYPES = [
   { id: "SIX_HOURS", label: "6 tiếng" },
   { id: "ONE_DAY", label: "Thuê theo ngày" },
-];
-
-const BRANCHES = [
-  {
-    id: "PHU_NHUAN",
-    label: "FAO Phú Nhuận",
-    address: "475 Huỳnh Văn Bánh, Phú Nhuận",
-    mapUrl: "https://maps.app.goo.gl/CSeEPhMGUNZsYCNZ7",
-  },
-  { id: "Q9", label: "FAO Q9 (Vinhomes)", disabled: true, comingSoon: true },
 ];
 
 // --- CSS NOISE TEXTURE (from Menu) ---
@@ -187,6 +179,7 @@ function expandCartLinesToPhysicalDevices(
     processedDevices.map((d) => [d.modelKey, d]),
   );
   const out = [];
+  const usedPhysicalIds = new Set();
   const isBusy = (d) =>
     Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
   for (const line of cartLines) {
@@ -199,11 +192,14 @@ function expandCartLinesToPhysicalDevices(
       rawDevices,
       deviceBookingsById,
     );
-    const free = members.filter((d) => !isBusy(d));
+    const free = members.filter(
+      (d) => !isBusy(d) && !usedPhysicalIds.has(d.id),
+    );
     const pick = free.slice(0, line.quantity);
     if (pick.length < line.quantity) {
       return { ok: false, modelKey: line.modelKey };
     }
+    pick.forEach((d) => usedPhysicalIds.add(d.id));
     out.push(...pick);
   }
   return { ok: true, devices: out };
@@ -1214,8 +1210,14 @@ export default function DeviceCatalogPage() {
         const busySet = new Set();
         const bookingMap = {};
         data.forEach((d) => {
-          bookingMap[d.id] = Array.isArray(d.bookingDtos) ? d.bookingDtos : [];
-          if (Array.isArray(d.bookingDtos) && d.bookingDtos.length > 0) {
+          const raw = Array.isArray(d.bookingDtos) ? d.bookingDtos : [];
+          const overlapping = filterBookingsOverlappingSlot(
+            raw,
+            fromDateTime,
+            toDateTime,
+          );
+          bookingMap[d.id] = overlapping;
+          if (overlapping.length > 0) {
             busySet.add(d.id);
           }
         });

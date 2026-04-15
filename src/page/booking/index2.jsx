@@ -24,6 +24,7 @@ import {
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
 import { formatDateForAPIPayload } from "../../utils/bookingHelpers";
+import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
 import { formatTimeVi } from "../../utils/formatTimeVi";
 import { loadCustomerSession } from "../../utils/storage";
 
@@ -1074,13 +1075,14 @@ export default function BookingPage() {
 
         const data = resp.data || [];
 
-        // Giả định response là list device, mỗi device có bookingDtos trong khoảng thời gian đó
         const ids = new Set();
         data.forEach((device) => {
-          if (
-            Array.isArray(device.bookingDtos) &&
-            device.bookingDtos.length > 0
-          ) {
+          const overlapping = filterBookingsOverlappingSlot(
+            Array.isArray(device.bookingDtos) ? device.bookingDtos : [],
+            fromDateTime,
+            toDateTime,
+          );
+          if (overlapping.length > 0) {
             ids.add(device.id);
           }
         });

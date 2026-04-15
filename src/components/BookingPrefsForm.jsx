@@ -5,6 +5,8 @@ import DatePicker from "react-datepicker";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { formatTimeVi, formatTimeViFromString } from "../utils/formatTimeVi";
+import { BRANCHES } from "../data/bookingConstants";
+import { getDefaultBranchId as getDefaultBranchIdFromHelpers } from "../utils/bookingHelpers";
 
 /* ── Constants ── */
 
@@ -25,11 +27,6 @@ const SIX_HOUR_MAX_HOURS = 12;
 const DURATION_TYPES = [
   { id: "SIX_HOURS", label: "6 tiếng" },
   { id: "ONE_DAY", label: "Thuê theo ngày" },
-];
-
-const BRANCHES = [
-  { id: "PHU_NHUAN", label: "FAO Phú Nhuận" },
-  { id: "Q9", label: "FAO Q9 (Vinhomes)", disabled: true, comingSoon: true },
 ];
 
 const ONE_DAY_PICKUP_OPTIONS = [
@@ -63,7 +60,7 @@ export function normalizeDate(date) {
 }
 
 export function getDefaultBranchId() {
-  return BRANCHES.find((b) => !b.disabled)?.id || BRANCHES[0]?.id;
+  return getDefaultBranchIdFromHelpers();
 }
 
 function combineDateWithTimeString(dateOnly, timeStr) {
