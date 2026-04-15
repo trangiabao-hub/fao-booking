@@ -15,6 +15,10 @@ import {
   X,
   SlidersHorizontal,
   Check,
+  ShoppingBag,
+  Trash2,
+  Minus,
+  Plus,
 } from "lucide-react";
 import api from "../../config/axios";
 import FloatingContactButton from "../../components/FloatingContactButton";
@@ -135,6 +139,74 @@ function getDeviceNameIndex(name = "") {
   const match = String(name).match(/\((\d+)\)\s*$/);
   if (!match) return Number.POSITIVE_INFINITY;
   return Number(match[1]);
+}
+
+/** Máy vật lý cùng model (đúng thứ tự ưu tiên như catalog) — dùng trong modal để đặt nhiều máy cùng mã. */
+function buildModelGroupDevicesForModal(modelRow, rawDevices, deviceBookingsById) {
+  if (!modelRow?.groupDeviceIds?.size) return [];
+  const idSet = new Set(
+    [...modelRow.groupDeviceIds].map((id) => String(id)),
+  );
+  const list = [];
+  for (const d of rawDevices) {
+    if (String(d.type || "").toUpperCase() !== "DEVICE") continue;
+    if (!idSet.has(String(d.id))) continue;
+    const bookingDtos = deviceBookingsById[d.id] || [];
+    list.push({ ...d, bookingDtos });
+  }
+  list.sort((a, b) => {
+    const indexA = getDeviceNameIndex(a.name);
+    const indexB = getDeviceNameIndex(b.name);
+    if (indexA !== indexB) return indexA - indexB;
+    const orderA = a.orderNumber ?? Number.POSITIVE_INFINITY;
+    const orderB = b.orderNumber ?? Number.POSITIVE_INFINITY;
+    if (orderA !== orderB) return orderA - orderB;
+    return String(a.id).localeCompare(String(b.id));
+  });
+  return list;
+}
+
+function getMaxQtyForCartLine(deviceRow, availabilityConfirmed) {
+  if (!deviceRow) return 0;
+  if (!availabilityConfirmed) {
+    return Math.max(1, deviceRow.unitCount || 1);
+  }
+  return Math.max(0, deviceRow.availableCount ?? 0);
+}
+
+/**
+ * @returns {{ ok: true, devices: object[] } | { ok: false, modelKey?: string }}
+ */
+function expandCartLinesToPhysicalDevices(
+  cartLines,
+  processedDevices,
+  rawDevices,
+  deviceBookingsById,
+) {
+  const processedByKey = new Map(
+    processedDevices.map((d) => [d.modelKey, d]),
+  );
+  const out = [];
+  const isBusy = (d) =>
+    Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
+  for (const line of cartLines) {
+    const row = processedByKey.get(line.modelKey);
+    if (!row) {
+      return { ok: false, modelKey: line.modelKey };
+    }
+    const members = buildModelGroupDevicesForModal(
+      row,
+      rawDevices,
+      deviceBookingsById,
+    );
+    const free = members.filter((d) => !isBusy(d));
+    const pick = free.slice(0, line.quantity);
+    if (pick.length < line.quantity) {
+      return { ok: false, modelKey: line.modelKey };
+    }
+    out.push(...pick);
+  }
+  return { ok: true, devices: out };
 }
 
 function parseSearchKeywords(query = "") {
@@ -936,8 +1008,11 @@ export default function DeviceCatalogPage() {
   const [showQuickBookModal, setShowQuickBookModal] = useState(false);
   const [deviceBookingsById, setDeviceBookingsById] = useState({});
 
-  // Chọn nhiều món - Set of device ids đã chọn
-  const [selectedDeviceIds, setSelectedDeviceIds] = useState(new Set());
+  /** Giỏ hàng: mỗi dòng = một modelKey + số lượng máy vật lý */
+  const [cartLines, setCartLines] = useState([]);
+  const [showCartDrawer, setShowCartDrawer] = useState(false);
+  const [cartCheckoutError, setCartCheckoutError] = useState("");
+  const [conflictInfo, setConflictInfo] = useState(null);
 
   const handleQuickBook = (device) => {
     if (device?.isAvailable === false) return;
@@ -986,29 +1061,64 @@ export default function DeviceCatalogPage() {
     setShowQuickBookModal(true);
   };
 
-  const handleQuickBookMulti = () => {
-    const selected = filteredDevices.filter((d) => selectedDeviceIds.has(d.id));
-    if (selected.length === 0) return;
-    selected.forEach((d) => trackCatalogBookClick(d, "quick_multi"));
-    setQuickBookDevice(null);
-    setQuickBookDevices(selected);
-    setShowQuickBookModal(true);
-  };
-
   const handleToggleSelect = (device) => {
-    setSelectedDeviceIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(device.id)) next.delete(device.id);
-      else next.add(device.id);
-      return next;
+    const mk = device.modelKey;
+    if (!mk) return;
+    setCartLines((prev) => {
+      const idx = prev.findIndex((l) => l.modelKey === mk);
+      if (idx >= 0) {
+        return prev.filter((_, i) => i !== idx);
+      }
+      return [...prev, { modelKey: mk, quantity: 1 }];
     });
   };
+
+  const cartQtyByModelKey = useMemo(() => {
+    const m = new Map();
+    for (const l of cartLines) m.set(l.modelKey, l.quantity);
+    return m;
+  }, [cartLines]);
+
+  const cartTotalQty = useMemo(
+    () => cartLines.reduce((s, l) => s + l.quantity, 0),
+    [cartLines],
+  );
+
+  useEffect(() => {
+    if (cartLines.length === 0) setShowCartDrawer(false);
+  }, [cartLines.length]);
+
+  const handleCartIncrement = useCallback((modelKey, maxAllowed) => {
+    setCartLines((prev) =>
+      prev.map((l) => {
+        if (l.modelKey !== modelKey) return l;
+        if (l.quantity >= maxAllowed) return l;
+        return { ...l, quantity: l.quantity + 1 };
+      }),
+    );
+  }, []);
+
+  const handleCartDecrement = useCallback((modelKey) => {
+    setCartLines((prev) => {
+      const next = prev
+        .map((l) => {
+          if (l.modelKey !== modelKey) return l;
+          if (l.quantity <= 1) return null;
+          return { ...l, quantity: l.quantity - 1 };
+        })
+        .filter(Boolean);
+      return next;
+    });
+  }, []);
+
+  const handleCartRemoveLine = useCallback((modelKey) => {
+    setCartLines((prev) => prev.filter((l) => l.modelKey !== modelKey));
+  }, []);
 
   const handleCloseQuickBook = () => {
     setShowQuickBookModal(false);
     setQuickBookDevice(null);
     setQuickBookDevices([]);
-    setSelectedDeviceIds(new Set());
   };
 
   // Auto-save prefs
@@ -1143,85 +1253,6 @@ export default function DeviceCatalogPage() {
     },
   );
 
-  // --- Conflict detection: detect when someone books a device the user is selecting ---
-  const [conflictInfo, setConflictInfo] = useState(null);
-
-  const quickBookDevicesRef = React.useRef(quickBookDevices);
-  quickBookDevicesRef.current = quickBookDevices;
-  const selectedDeviceIdsRef = React.useRef(selectedDeviceIds);
-  selectedDeviceIdsRef.current = selectedDeviceIds;
-  const showQuickBookModalRef = React.useRef(showQuickBookModal);
-  showQuickBookModalRef.current = showQuickBookModal;
-
-  useEffect(() => {
-    if (!wsLastEvent) return;
-    if (!["CREATE", "BATCH_CREATE"].includes(wsLastEvent.type)) return;
-
-    const eventDeviceName = wsLastEvent.deviceName || "";
-    if (!eventDeviceName) return;
-
-    const isModalOpen = showQuickBookModalRef.current;
-    const modalDevices = quickBookDevicesRef.current;
-    const selectedIds = selectedDeviceIdsRef.current;
-
-    if (!isModalOpen && selectedIds.size === 0) return;
-
-    const eventNames = eventDeviceName
-      .split(",")
-      .map((n) => normalizeDeviceName(n.trim()).toLowerCase())
-      .filter(Boolean);
-
-    if (eventNames.length === 0) return;
-
-    const activeDevices = [];
-    if (isModalOpen && modalDevices.length > 0) {
-      activeDevices.push(...modalDevices);
-    }
-    if (selectedIds.size > 0) {
-      devices
-        .filter((d) => selectedIds.has(d.id))
-        .forEach((d) => {
-          const normalized = normalizeDeviceName(d.name).toLowerCase();
-          if (
-            !activeDevices.some(
-              (a) => (a.displayName || "").toLowerCase() === normalized,
-            )
-          ) {
-            activeDevices.push({
-              ...d,
-              displayName: normalizeDeviceName(d.name),
-            });
-          }
-        });
-    }
-
-    const conflicted = activeDevices.filter((d) => {
-      const display = (d.displayName || d.name || "").toLowerCase();
-      const hasRealtimeConflict = eventNames.some((en) => en === display);
-      if (!hasRealtimeConflict) return false;
-
-      const modelState = processedDevices.find(
-        (p) =>
-          normalizeDeviceName(p.displayName || p.name || "").toLowerCase() ===
-          display,
-      );
-      // Only show conflict when this model is truly out of stock.
-      return modelState?.isAvailable === false;
-    });
-
-    if (conflicted.length > 0) {
-      setConflictInfo({ devices: conflicted });
-    }
-  }, [wsLastEvent, devices]);
-
-  const handleConflictDismiss = useCallback(() => {
-    setConflictInfo(null);
-    setShowQuickBookModal(false);
-    setQuickBookDevice(null);
-    setQuickBookDevices([]);
-    setSelectedDeviceIds(new Set());
-  }, []);
-
   const availabilityRange = useMemo(
     () => computeAvailabilityRange(availabilityPrefs),
     [availabilityPrefs],
@@ -1330,6 +1361,142 @@ export default function DeviceCatalogPage() {
     availabilityConfirmed,
     deviceBookingsById,
   ]);
+
+  const processedByModelKey = useMemo(() => {
+    const m = new Map();
+    for (const d of processedDevices) m.set(d.modelKey, d);
+    return m;
+  }, [processedDevices]);
+
+  useEffect(() => {
+    setCartLines((prev) => {
+      const next = prev
+        .map((line) => {
+          const row = processedDevices.find(
+            (p) => p.modelKey === line.modelKey,
+          );
+          if (!row) return line;
+          const max = getMaxQtyForCartLine(row, availabilityConfirmed);
+          const q = Math.min(line.quantity, max);
+          if (q <= 0) return null;
+          return q === line.quantity ? line : { ...line, quantity: q };
+        })
+        .filter(Boolean);
+      if (next.length === prev.length) {
+        const same = next.every(
+          (l, i) =>
+            l.modelKey === prev[i]?.modelKey &&
+            l.quantity === prev[i]?.quantity,
+        );
+        if (same) return prev;
+      }
+      return next;
+    });
+  }, [processedDevices, availabilityConfirmed]);
+
+  const handleCheckoutFromCart = useCallback(() => {
+    setCartCheckoutError("");
+    if (cartLines.length === 0) return;
+    const expanded = expandCartLinesToPhysicalDevices(
+      cartLines,
+      processedDevices,
+      devices,
+      deviceBookingsById,
+    );
+    if (!expanded.ok) {
+      setCartCheckoutError(
+        "Không đủ máy trống cho số lượng trong giỏ (có thể vừa có người đặt). Hãy giảm số lượng hoặc đổi khung giờ.",
+      );
+      return;
+    }
+    expanded.devices.forEach((d) =>
+      trackCatalogBookClick(
+        {
+          ...d,
+          displayName: normalizeDeviceName(d.name),
+          modelKey: d.modelKey,
+        },
+        "quick_multi",
+      ),
+    );
+    setQuickBookDevice(null);
+    setQuickBookDevices(expanded.devices);
+    setShowCartDrawer(false);
+    setShowQuickBookModal(true);
+  }, [cartLines, processedDevices, devices, deviceBookingsById]);
+
+  const quickBookDevicesRef = React.useRef(quickBookDevices);
+  quickBookDevicesRef.current = quickBookDevices;
+  const cartLinesRef = React.useRef(cartLines);
+  cartLinesRef.current = cartLines;
+  const showQuickBookModalRef = React.useRef(showQuickBookModal);
+  showQuickBookModalRef.current = showQuickBookModal;
+
+  useEffect(() => {
+    if (!wsLastEvent) return;
+    if (!["CREATE", "BATCH_CREATE"].includes(wsLastEvent.type)) return;
+
+    const eventDeviceName = wsLastEvent.deviceName || "";
+    if (!eventDeviceName) return;
+
+    const isModalOpen = showQuickBookModalRef.current;
+    const modalDevices = quickBookDevicesRef.current;
+    const lines = cartLinesRef.current;
+
+    if (!isModalOpen && lines.length === 0) return;
+
+    const eventNames = eventDeviceName
+      .split(",")
+      .map((n) => normalizeDeviceName(n.trim()).toLowerCase())
+      .filter(Boolean);
+
+    if (eventNames.length === 0) return;
+
+    const activeDevices = [];
+    if (isModalOpen && modalDevices.length > 0) {
+      activeDevices.push(...modalDevices);
+    }
+    if (lines.length > 0) {
+      for (const line of lines) {
+        const p = processedDevices.find((x) => x.modelKey === line.modelKey);
+        if (!p) continue;
+        const normalized = (p.displayName || p.name || "").toLowerCase();
+        if (
+          !activeDevices.some(
+            (a) => (a.displayName || a.name || "").toLowerCase() === normalized,
+          )
+        ) {
+          activeDevices.push(p);
+        }
+      }
+    }
+
+    const conflicted = activeDevices.filter((d) => {
+      const display = (d.displayName || d.name || "").toLowerCase();
+      const hasRealtimeConflict = eventNames.some((en) => en === display);
+      if (!hasRealtimeConflict) return false;
+
+      const modelState = processedDevices.find(
+        (p) =>
+          normalizeDeviceName(p.displayName || p.name || "").toLowerCase() ===
+          display,
+      );
+      return modelState?.isAvailable === false;
+    });
+
+    if (conflicted.length > 0) {
+      setConflictInfo({ devices: conflicted });
+    }
+  }, [wsLastEvent, devices, processedDevices, cartLines.length]);
+
+  const handleConflictDismiss = useCallback(() => {
+    setConflictInfo(null);
+    setShowQuickBookModal(false);
+    setQuickBookDevice(null);
+    setQuickBookDevices([]);
+    setCartLines([]);
+    setShowCartDrawer(false);
+  }, []);
 
   const pricingContext = useMemo(() => {
     const { fromDateTime: from, toDateTime: to } =
@@ -1894,7 +2061,13 @@ export default function DeviceCatalogPage() {
   }, [focusModelParam, filteredDevices]);
 
   return (
-    <div className="min-h-screen font-sans relative text-[#333] overflow-x-hidden flex flex-col pb-32 md:pb-36 selection:bg-[#FF9FCA] selection:text-white">
+    <div
+      className={`min-h-screen font-sans relative text-[#333] overflow-x-hidden flex flex-col selection:bg-[#FF9FCA] selection:text-white ${
+        cartLines.length > 0
+          ? "pb-44 md:pb-48"
+          : "pb-32 md:pb-36"
+      }`}
+    >
       <NoiseOverlay />
       <PageBackground />
       <PinkTapeMarquee />
@@ -2133,7 +2306,7 @@ export default function DeviceCatalogPage() {
                         pricing={getDevicePricing(device)}
                         onQuickBook={handleQuickBook}
                         onSuggestedQuickBook={handleSuggestedQuickBook}
-                        isSelected={selectedDeviceIds.has(device.id)}
+                        isSelected={(cartQtyByModelKey.get(device.modelKey) || 0) > 0}
                         onToggleSelect={handleToggleSelect}
                         feedbackHref={buildFeedbackHref(
                           device.displayName,
@@ -2170,7 +2343,7 @@ export default function DeviceCatalogPage() {
                   pricing={getDevicePricing(device)}
                   onQuickBook={handleQuickBook}
                   onSuggestedQuickBook={handleSuggestedQuickBook}
-                  isSelected={selectedDeviceIds.has(device.id)}
+                  isSelected={(cartQtyByModelKey.get(device.modelKey) || 0) > 0}
                   onToggleSelect={handleToggleSelect}
                   feedbackHref={buildFeedbackHref(
                     device.displayName,
@@ -2264,35 +2437,234 @@ export default function DeviceCatalogPage() {
         error={availabilityError}
       />
 
-      {/* Floating bar - Đặt nhiều món */}
       <AnimatePresence>
-        {selectedDeviceIds.size > 0 && (
+        {cartLines.length > 0 && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-20 left-4 right-4 z-40 max-w-2xl lg:max-w-5xl xl:max-w-6xl mx-auto"
+            className="fixed inset-x-0 z-40 px-3 bottom-[calc(4rem+max(12px,env(safe-area-inset-bottom,0px))+0.75rem)] md:bottom-[calc(5rem+max(12px,env(safe-area-inset-bottom,0px))+0.75rem)]"
           >
-            <div className="bg-[#222] text-white rounded-xl shadow-xl border-2 border-[#E85C9C] p-4 flex items-center justify-between gap-4">
-              <span className="font-bold text-[#FF9FCA] uppercase tracking-wide">
-                Đã chọn {selectedDeviceIds.size} món
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedDeviceIds(new Set())}
-                  className="px-4 py-2 rounded-lg border border-[#FF9FCA] text-[#FF9FCA] font-bold text-sm uppercase hover:bg-[#FF9FCA]/20 transition-colors"
-                >
-                  Xóa
-                </button>
-                <button
-                  onClick={handleQuickBookMulti}
-                  className="px-6 py-2 rounded-lg bg-[#E85C9C] text-white font-black text-sm uppercase hover:opacity-90 transition-opacity"
-                >
-                  Đặt tất cả
-                </button>
+            <div className="mx-auto w-full max-w-md md:max-w-5xl">
+              <div className="bg-[#222] text-white rounded-2xl md:rounded-3xl shadow-xl border-2 border-[#E85C9C] p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setCartCheckoutError("");
+                  setShowCartDrawer(true);
+                }}
+                className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3 text-left rounded-lg hover:bg-white/5 transition-colors py-2 px-2 sm:px-3"
+              >
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#E85C9C]/30 border border-[#FF9FCA]/40 flex items-center justify-center shrink-0">
+                  <ShoppingBag className="w-5 h-5 text-[#FF9FCA]" />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-black text-[#FF9FCA] text-xs uppercase tracking-wider">
+                    Giỏ hàng
+                  </div>
+                  <div className="text-sm font-bold truncate">
+                    {cartTotalQty} máy · {cartLines.length} mẫu
+                  </div>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCartLines([]);
+                  setShowCartDrawer(false);
+                  setCartCheckoutError("");
+                }}
+                className="shrink-0 rounded-lg border border-[#FF9FCA]/50 text-[#FF9FCA] text-[10px] sm:text-[11px] font-bold uppercase tracking-wide hover:bg-[#FF9FCA]/15 transition-colors py-1.5 px-2.5 sm:py-2 sm:px-3 whitespace-nowrap leading-tight"
+              >
+                Xóa giỏ
+              </button>
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showCartDrawer && cartLines.length > 0 && (
+          <>
+            <motion.button
+              type="button"
+              aria-label="Đóng giỏ hàng"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] bg-black/50"
+              onClick={() => setShowCartDrawer(false)}
+            />
+            <motion.div
+              role="dialog"
+              aria-labelledby="cart-drawer-title"
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 320 }}
+              className="fixed top-0 right-0 bottom-0 z-[101] w-full max-w-md bg-[#FFFBF5] shadow-2xl flex flex-col border-l-2 border-[#E85C9C]/30"
+            >
+              <div className="flex items-center justify-between gap-3 p-4 border-b border-[#222]/10 bg-white/80 backdrop-blur-sm">
+                <h2
+                  id="cart-drawer-title"
+                  className="text-lg font-black text-[#222] uppercase tracking-tight"
+                >
+                  Giỏ hàng
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setShowCartDrawer(false)}
+                  className="p-2 rounded-full hover:bg-[#FFE4F0] transition-colors"
+                  aria-label="Đóng"
+                >
+                  <X size={22} className="text-[#555]" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {cartLines.map((line) => {
+                  const row = processedByModelKey.get(line.modelKey);
+                  const maxQ = row
+                    ? getMaxQtyForCartLine(row, availabilityConfirmed)
+                    : 0;
+                  const pricing = row ? getDevicePricing(row) : null;
+                  const unit = pricing?.discounted ?? 0;
+                  const lineTotal = unit * line.quantity;
+                  const plusDisabled =
+                    !row || line.quantity >= maxQ || maxQ <= 0;
+                  return (
+                    <div
+                      key={line.modelKey}
+                      className="rounded-xl border-2 border-[#FAD6E8] bg-white p-3 shadow-sm"
+                    >
+                      <div className="flex gap-3">
+                        <img
+                          src={row?.img || FALLBACK_IMG}
+                          alt=""
+                          className="w-16 h-16 rounded-lg object-cover shrink-0 bg-[#FFE4F0]"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-black text-[#222] text-sm uppercase leading-tight line-clamp-2">
+                            {row?.displayName || "Mẫu máy"}
+                          </div>
+                          {!row && (
+                            <p className="text-xs text-amber-700 mt-1">
+                              Không thấy trong danh sách hiện tại — bạn có thể xóa
+                              dòng này.
+                            </p>
+                          )}
+                          <div className="mt-1 text-xs text-[#666]">
+                            {unit > 0 ? (
+                              <>
+                                {formatPriceK(unit)} × {line.quantity} ={" "}
+                                <span className="font-bold text-[#E85C9C]">
+                                  {formatPriceK(lineTotal)}
+                                </span>
+                              </>
+                            ) : (
+                              "Chọn lịch ở bước đặt để xem giá chính xác."
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCartRemoveLine(line.modelKey)}
+                          className="shrink-0 p-2 rounded-lg text-[#999] hover:bg-red-50 hover:text-red-600 transition-colors self-start"
+                          aria-label="Xóa khỏi giỏ"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase text-[#C94B86] tracking-wider">
+                          Số lượng
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={line.quantity <= 1}
+                            onClick={() => handleCartDecrement(line.modelKey)}
+                            className="w-9 h-9 rounded-lg border-2 border-[#222] flex items-center justify-center font-black text-[#222] hover:bg-[#222]/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Minus size={16} strokeWidth={2.5} />
+                          </button>
+                          <span className="min-w-8 text-center font-black text-[#222]">
+                            {line.quantity}
+                          </span>
+                          <span
+                            className="inline-flex rounded-lg"
+                            title={
+                              plusDisabled
+                                ? "Không đủ số lượng máy để thêm"
+                                : undefined
+                            }
+                          >
+                            <button
+                              type="button"
+                              disabled={plusDisabled}
+                              onClick={() =>
+                                handleCartIncrement(line.modelKey, maxQ)
+                              }
+                              className={`w-9 h-9 rounded-lg border-2 border-[#222] flex items-center justify-center font-black text-[#222] hover:bg-[#222]/5 disabled:opacity-30 disabled:cursor-not-allowed ${
+                                plusDisabled ? "pointer-events-none" : ""
+                              }`}
+                              aria-label={
+                                plusDisabled
+                                  ? "Không đủ số lượng máy để thêm"
+                                  : "Tăng số lượng"
+                              }
+                            >
+                              <Plus size={16} strokeWidth={2.5} />
+                            </button>
+                          </span>
+                        </div>
+                      </div>
+                      {availabilityConfirmed && row && maxQ > 0 && (
+                        <p className="mt-2 text-[10px] text-[#777] font-medium">
+                          Tối đa {maxQ} máy trống cho khung giờ đã chọn.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {cartCheckoutError ? (
+                <div className="px-4 pb-2">
+                  <p className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {cartCheckoutError}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="p-4 border-t border-[#222]/10 bg-white space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-bold text-[#555] uppercase text-xs tracking-wider">
+                    Tạm tính
+                  </span>
+                  <span className="font-black text-lg text-[#E85C9C]">
+                    {formatPriceK(
+                      cartLines.reduce((sum, line) => {
+                        const r = processedByModelKey.get(line.modelKey);
+                        if (!r) return sum;
+                        const p = getDevicePricing(r);
+                        return sum + (p?.discounted || 0) * line.quantity;
+                      }, 0),
+                    )}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCheckoutFromCart}
+                  disabled={cartTotalQty === 0}
+                  className="w-full py-3.5 rounded-xl bg-[#222] text-[#FF9FCA] font-black text-sm uppercase tracking-wider hover:bg-[#333] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Tiến hành đặt & thanh toán
+                </button>
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
@@ -2300,6 +2672,15 @@ export default function DeviceCatalogPage() {
       <QuickBookModal
         device={quickBookDevices.length === 1 ? quickBookDevices[0] : null}
         devices={quickBookDevices}
+        modelGroupDevices={
+          quickBookDevices.length === 1 && quickBookDevices[0]?.groupDeviceIds?.size > 1
+            ? buildModelGroupDevicesForModal(
+                quickBookDevices[0],
+                devices,
+                deviceBookingsById,
+              )
+            : []
+        }
         isOpen={showQuickBookModal}
         onClose={handleCloseQuickBook}
         initialPrefs={

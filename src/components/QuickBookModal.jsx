@@ -177,6 +177,24 @@ function getModelIdentity(device) {
   return normalizeDeviceName(device?.name || device?.displayName || "").toLowerCase();
 }
 
+function getDeviceNameIndexForPick(name = "") {
+  const match = String(name).match(/\((\d+)\)\s*$/);
+  if (!match) return Number.POSITIVE_INFINITY;
+  return Number(match[1]);
+}
+
+function sortDevicesSameModelPick(devices) {
+  return [...devices].sort((a, b) => {
+    const indexA = getDeviceNameIndexForPick(a.name);
+    const indexB = getDeviceNameIndexForPick(b.name);
+    if (indexA !== indexB) return indexA - indexB;
+    const orderA = a.orderNumber ?? Number.POSITIVE_INFINITY;
+    const orderB = b.orderNumber ?? Number.POSITIVE_INFINITY;
+    if (orderA !== orderB) return orderA - orderB;
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
 function getOrderCodeFromPaymentResponse(data) {
   if (data?.orderCode) return data.orderCode;
   try {
@@ -265,17 +283,80 @@ function allocateDiscountByRatio(amounts, discount) {
 export default function QuickBookModal({
   device,
   devices = [],
+  modelGroupDevices = [],
   isOpen,
   onClose,
   initialPrefs,
   pricing,
 }) {
   const hasInitialPrefs = !!initialPrefs;
-  const effectiveDevices = useMemo(
+  const baseDevicesForProps = useMemo(
     () => (devices?.length ? devices : device ? [device] : []),
     [devices, device],
   );
+  const canPickSameModelQuantity =
+    modelGroupDevices.length > 1 && baseDevicesForProps.length === 1;
+  const isTrueMultiModelSelection = baseDevicesForProps.length > 1;
+
+  const [sameModelQuantity, setSameModelQuantity] = useState(1);
+  const [bookingRowsForModel, setBookingRowsForModel] = useState([]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSameModelQuantity(1);
+      setBookingRowsForModel([]);
+    }
+  }, [isOpen]);
+
+  const effectiveDevices = useMemo(() => {
+    if (!canPickSameModelQuantity) return baseDevicesForProps;
+    const rep = baseDevicesForProps[0];
+    if (!bookingRowsForModel.length) return [rep];
+    const isBusy = (d) =>
+      Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
+    const free = bookingRowsForModel.filter((d) => !isBusy(d));
+    const picked = free.slice(0, sameModelQuantity);
+    if (picked.length >= sameModelQuantity && sameModelQuantity > 0) {
+      return picked;
+    }
+    return [rep];
+  }, [
+    canPickSameModelQuantity,
+    baseDevicesForProps,
+    bookingRowsForModel,
+    sameModelQuantity,
+  ]);
+
+  const sameModelFreeCount = useMemo(() => {
+    if (!bookingRowsForModel.length) return null;
+    const isBusy = (d) =>
+      Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
+    return bookingRowsForModel.filter((d) => !isBusy(d)).length;
+  }, [bookingRowsForModel]);
+
+  const sameModelAvailabilityReady =
+    !canPickSameModelQuantity || bookingRowsForModel.length > 0;
+
+  const sameModelMaxPick = sameModelFreeCount ?? modelGroupDevices.length;
+
+  useEffect(() => {
+    if (!canPickSameModelQuantity || sameModelFreeCount == null) return;
+    if (sameModelQuantity > sameModelFreeCount) {
+      setSameModelQuantity(Math.max(1, sameModelFreeCount));
+    }
+  }, [canPickSameModelQuantity, sameModelFreeCount, sameModelQuantity]);
+
   const isMulti = effectiveDevices.length > 1;
+
+  const paymentDeviceKey = useMemo(
+    () => effectiveDevices.map((d) => String(d.id)).sort().join(","),
+    [effectiveDevices],
+  );
+
+  useEffect(() => {
+    cccdConfirmedRef.current = false;
+    setAgreeCccdPerDevice(false);
+  }, [paymentDeviceKey]);
 
   // Load initial state from storage or defaults
   const getInitialPrefs = useCallback(() => {
@@ -354,19 +435,25 @@ export default function QuickBookModal({
   const [agreeNoResellOrPawn, setAgreeNoResellOrPawn] = useState(false);
   const [agreeConfirmPickupReturnTime, setAgreeConfirmPickupReturnTime] =
     useState(false);
+  const [agreeCccdPerDevice, setAgreeCccdPerDevice] = useState(false);
   const [agreementErrors, setAgreementErrors] = useState({
     noResellOrPawn: false,
     confirmPickupReturnTime: false,
+    cccdPerDevice: false,
   });
   const agreementSectionRef = useRef(null);
+  const cccdConfirmedRef = useRef(false);
   /** Tránh reset step khi parent re-render: initialPrefs là object mới mỗi lần render. */
   const quickBookWasOpenRef = useRef(false);
+  const [showCccdConfirmDialog, setShowCccdConfirmDialog] = useState(false);
   // showGuestCheckout removed — both options always visible now
 
   // Chỉ áp initial prefs / reset form khi vừa mở modal (không chạy lại trong lúc đang mở)
   useLayoutEffect(() => {
     if (!isOpen) {
       quickBookWasOpenRef.current = false;
+      setShowCccdConfirmDialog(false);
+      cccdConfirmedRef.current = false;
       return;
     }
 
@@ -381,9 +468,11 @@ export default function QuickBookModal({
     setPointToUse(0);
     setAgreeNoResellOrPawn(false);
     setAgreeConfirmPickupReturnTime(false);
+    setAgreeCccdPerDevice(false);
     setAgreementErrors({
       noResellOrPawn: false,
       confirmPickupReturnTime: false,
+      cccdPerDevice: false,
     });
     if (hasInitialPrefs && initialPrefs) {
       const p = initialPrefs;
@@ -565,26 +654,33 @@ export default function QuickBookModal({
     return getAvailabilityRangeError(prefsForRange, t1, t2);
   }, [prefsForRange, t1, t2]);
 
+  const step1AvailabilityMessage = useMemo(() => {
+    if (timeSelectionError) return "";
+    if (isAvailable) return "";
+    if (
+      canPickSameModelQuantity &&
+      sameModelFreeCount != null &&
+      sameModelQuantity > sameModelFreeCount
+    ) {
+      return `⚠️ Chỉ còn ${sameModelFreeCount} máy trống cho mẫu này. Giảm số lượng hoặc đổi khung giờ.`;
+    }
+    return "⚠️ Máy đã được đặt trong khung giờ này. Vui lòng chọn ngày khác.";
+  }, [
+    timeSelectionError,
+    isAvailable,
+    canPickSameModelQuantity,
+    sameModelFreeCount,
+    sameModelQuantity,
+  ]);
+
   // Check availability
   const checkAvailability = useCallback(async () => {
-    if (effectiveDevices.length === 0 || !t1 || !t2 || timeSelectionError)
+    if (baseDevicesForProps.length === 0 || !t1 || !t2 || timeSelectionError)
       return;
     setIsCheckingAvailability(true);
     try {
-      if (isMulti) {
-        const fromStr = formatLocalDateTimeForDeviceApi(t1);
-        const toStr = formatLocalDateTimeForDeviceApi(t2);
-        if (!fromStr || !toStr) return;
-        const modelResp = await api.get("v1/devices/model-availability", {
-          params: { from: fromStr, to: toStr },
-        });
-        const apiModel = modelResp.data || {};
-        const allAvailable = effectiveDevices.every(
-          (d) => apiModel[d.modelKey] === true,
-        );
-        setIsAvailable(allAvailable);
-      } else {
-        const device = effectiveDevices[0];
+      if (canPickSameModelQuantity) {
+        const rep = baseDevicesForProps[0];
         const fromStr = formatLocalDateTimeForDeviceApi(t1);
         const lookupTo =
           selectedDuration === "ONE_DAY" ? addDays(t2, 1) : t2;
@@ -598,27 +694,106 @@ export default function QuickBookModal({
           },
         });
         const data = resp.data || [];
-        const selectedModelIdentity = getModelIdentity(device);
+        const selectedModelIdentity = getModelIdentity(rep);
         const isBusy = (d) =>
           Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
-        const sameModelDevices = data.filter(
-          (d) => getModelIdentity(d) === selectedModelIdentity,
+        const sameFromApi = sortDevicesSameModelPick(
+          data.filter((d) => getModelIdentity(d) === selectedModelIdentity),
         );
-        const soldOut =
-          sameModelDevices.length > 0
-            ? sameModelDevices.every(isBusy)
-            : data.some((d) => d.id === device.id && isBusy(d));
-        setIsAvailable(!soldOut);
+        let merged = sameFromApi.map((apiRow) => {
+          const full = modelGroupDevices.find(
+            (m) => String(m.id) === String(apiRow.id),
+          );
+          return {
+            ...(full || {}),
+            ...apiRow,
+            modelKey: rep.modelKey ?? full?.modelKey ?? apiRow.modelKey,
+            bookingDtos: Array.isArray(apiRow.bookingDtos)
+              ? apiRow.bookingDtos
+              : [],
+          };
+        });
+        if (!merged.length && modelGroupDevices.length) {
+          merged = modelGroupDevices.map((row) => ({ ...row }));
+        }
+        setBookingRowsForModel(merged);
+        const freeCount = merged.filter((d) => !isBusy(d)).length;
+        setIsAvailable(
+          freeCount >= sameModelQuantity && sameModelQuantity >= 1,
+        );
+        return;
       }
+
+      if (isTrueMultiModelSelection) {
+        const fromStr = formatLocalDateTimeForDeviceApi(t1);
+        const lookupTo =
+          selectedDuration === "ONE_DAY" ? addDays(t2, 1) : t2;
+        const toStr = formatLocalDateTimeForDeviceApi(lookupTo);
+        if (!fromStr || !toStr) return;
+        const resp = await api.get("v1/devices/booking", {
+          params: {
+            startDate: fromStr.slice(0, 10),
+            endDate: toStr.slice(0, 10),
+            branchId: selectedBranch,
+          },
+        });
+        const data = resp.data || [];
+        const isBusy = (d) =>
+          Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
+        const allAvailable = baseDevicesForProps.every((dev) => {
+          const row = data.find((r) => String(r.id) === String(dev.id));
+          if (!row) return false;
+          return !isBusy(row);
+        });
+        setIsAvailable(allAvailable);
+        return;
+      }
+
+      const device = baseDevicesForProps[0];
+      const fromStr = formatLocalDateTimeForDeviceApi(t1);
+      const lookupTo =
+        selectedDuration === "ONE_DAY" ? addDays(t2, 1) : t2;
+      const toStr = formatLocalDateTimeForDeviceApi(lookupTo);
+      if (!fromStr || !toStr) return;
+      const resp = await api.get("v1/devices/booking", {
+        params: {
+          startDate: fromStr.slice(0, 10),
+          endDate: toStr.slice(0, 10),
+          branchId: selectedBranch,
+        },
+      });
+      const data = resp.data || [];
+      const selectedModelIdentity = getModelIdentity(device);
+      const isBusy = (d) =>
+        Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
+      const sameModelDevices = data.filter(
+        (d) => getModelIdentity(d) === selectedModelIdentity,
+      );
+      const soldOut =
+        sameModelDevices.length > 0
+          ? sameModelDevices.every(isBusy)
+          : data.some((d) => d.id === device.id && isBusy(d));
+      setIsAvailable(!soldOut);
     } catch (err) {
       console.error("Availability check failed:", err);
-      setIsAvailable(true);
+      if (canPickSameModelQuantity && modelGroupDevices.length) {
+        setBookingRowsForModel(modelGroupDevices.map((r) => ({ ...r })));
+        const isBusy = (d) =>
+          Array.isArray(d?.bookingDtos) && d.bookingDtos.length > 0;
+        const freeCount = modelGroupDevices.filter((d) => !isBusy(d)).length;
+        setIsAvailable(freeCount >= sameModelQuantity);
+      } else {
+        setIsAvailable(true);
+      }
     } finally {
       setIsCheckingAvailability(false);
     }
   }, [
-    effectiveDevices,
-    isMulti,
+    baseDevicesForProps,
+    canPickSameModelQuantity,
+    isTrueMultiModelSelection,
+    modelGroupDevices,
+    sameModelQuantity,
     t1,
     t2,
     selectedBranch,
@@ -627,12 +802,13 @@ export default function QuickBookModal({
   ]);
 
   useEffect(() => {
-    if (isOpen && effectiveDevices.length > 0) {
+    if (isOpen && baseDevicesForProps.length > 0) {
       checkAvailability();
     }
   }, [
     isOpen,
-    effectiveDevices,
+    baseDevicesForProps,
+    sameModelQuantity,
     selectedDate,
     selectedDuration,
     selectedBranch,
@@ -891,13 +1067,16 @@ export default function QuickBookModal({
     const nextAgreementErrors = {
       noResellOrPawn: !agreeNoResellOrPawn,
       confirmPickupReturnTime: !agreeConfirmPickupReturnTime,
+      cccdPerDevice:
+        effectiveDevices.length >= 2 && !agreeCccdPerDevice,
     };
     if (
       nextAgreementErrors.noResellOrPawn ||
-      nextAgreementErrors.confirmPickupReturnTime
+      nextAgreementErrors.confirmPickupReturnTime ||
+      nextAgreementErrors.cccdPerDevice
     ) {
       setAgreementErrors(nextAgreementErrors);
-      setError("Vui lòng xác nhận đủ 2 cam kết trước khi thanh toán.");
+      setError("Vui lòng xác nhận đủ các cam kết trước khi thanh toán.");
       window.requestAnimationFrame(() => {
         agreementSectionRef.current?.scrollIntoView({
           behavior: "smooth",
@@ -910,7 +1089,14 @@ export default function QuickBookModal({
     setAgreementErrors({
       noResellOrPawn: false,
       confirmPickupReturnTime: false,
+      cccdPerDevice: false,
     });
+
+    if (effectiveDevices.length > 2 && !cccdConfirmedRef.current) {
+      setShowCccdConfirmDialog(true);
+      return;
+    }
+
     setIsSubmitting(true);
     setError("");
 
@@ -1125,7 +1311,14 @@ export default function QuickBookModal({
 
   if (!isOpen || effectiveDevices.length === 0) return null;
 
+  const handleCccdDialogConfirm = () => {
+    cccdConfirmedRef.current = true;
+    setShowCccdConfirmDialog(false);
+    void handleSubmit();
+  };
+
   return (
+    <>
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
@@ -1241,13 +1434,76 @@ export default function QuickBookModal({
                   setDurationType={setSelectedDuration}
                   setPickupType={setPickupType}
                   setPickupSlot={setPickupSlot}
-                  error={
-                    timeSelectionError ||
-                    (!isAvailable
-                      ? "⚠️ Máy đã được đặt trong khung giờ này. Vui lòng chọn ngày khác."
-                      : "")
-                  }
+                  error={timeSelectionError || step1AvailabilityMessage}
                 />
+
+                {canPickSameModelQuantity && (
+                  <div className="mt-3 rounded-xl border border-[#FAD6E8] bg-[#FFF8FB] p-3 sm:p-3.5">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C94B86] mb-2">
+                      Số lượng (cùng mẫu máy)
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={sameModelQuantity <= 1 || isCheckingAvailability}
+                          onClick={() =>
+                            setSameModelQuantity((q) => Math.max(1, q - 1))
+                          }
+                          className="w-10 h-10 rounded-lg border-2 border-[#222] text-[#222] font-black text-lg leading-none hover:bg-[#222]/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          −
+                        </button>
+                        <span className="min-w-[2rem] text-center text-lg font-black text-[#222]">
+                          {sameModelQuantity}
+                        </span>
+                        <span
+                          className="inline-flex rounded-lg"
+                          title={
+                            isCheckingAvailability
+                              ? "Đang kiểm tra số máy còn trống..."
+                              : sameModelQuantity >= sameModelMaxPick
+                                ? "Không đủ số lượng máy để thêm"
+                                : undefined
+                          }
+                        >
+                          <button
+                            type="button"
+                            disabled={
+                              sameModelQuantity >= sameModelMaxPick ||
+                              isCheckingAvailability
+                            }
+                            onClick={() =>
+                              setSameModelQuantity((q) =>
+                                Math.min(sameModelMaxPick, q + 1),
+                              )
+                            }
+                            className={`w-10 h-10 rounded-lg border-2 border-[#222] text-[#222] font-black text-lg leading-none hover:bg-[#222]/5 disabled:opacity-40 disabled:cursor-not-allowed ${
+                              sameModelQuantity >= sameModelMaxPick ||
+                              isCheckingAvailability
+                                ? "pointer-events-none"
+                                : ""
+                            }`}
+                            aria-label={
+                              isCheckingAvailability
+                                ? "Đang kiểm tra số máy còn trống"
+                                : sameModelQuantity >= sameModelMaxPick
+                                  ? "Không đủ số lượng máy để thêm"
+                                  : "Tăng số lượng"
+                            }
+                          >
+                            +
+                          </button>
+                        </span>
+                      </div>
+                      <p className="text-xs font-medium text-[#555] max-w-[14rem] sm:max-w-none sm:text-right">
+                        {sameModelFreeCount != null
+                          ? `Còn ${sameModelFreeCount} máy trống trong khung giờ này.`
+                          : "Đang kiểm tra số máy còn trống..."}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Availability Check */}
                 <div className="min-h-[44px] mt-3">
@@ -2142,6 +2398,37 @@ export default function QuickBookModal({
                       nhắn trực tiếp cho page.
                     </span>
                   </label>
+                  {effectiveDevices.length >= 2 && (
+                    <label
+                      className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
+                        agreementErrors.cccdPerDevice
+                          ? "border-red-300 bg-red-50 text-red-800"
+                          : "border-stone-100 bg-stone-50/80 text-stone-700"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={agreeCccdPerDevice}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setAgreeCccdPerDevice(checked);
+                          setAgreementErrors((prev) => ({
+                            ...prev,
+                            cccdPerDevice:
+                              !checked && prev.cccdPerDevice,
+                          }));
+                        }}
+                        className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
+                      />
+                      <span>
+                        Tôi sẽ cung cấp{" "}
+                        <strong className="text-stone-900">
+                          {effectiveDevices.length} CCCD
+                        </strong>{" "}
+                        cho shop (mỗi máy tương đương 1 CCCD).
+                      </span>
+                    </label>
+                  )}
                 </div>
                 {error && (
                   <div className="p-3.5 bg-red-50 text-red-800 rounded-xl text-[13px] font-semibold leading-relaxed border border-red-200/90">
@@ -2197,7 +2484,8 @@ export default function QuickBookModal({
                     (step === 1 &&
                       (!isAvailable ||
                         isCheckingAvailability ||
-                        !!timeSelectionError)) ||
+                        !!timeSelectionError ||
+                        !sameModelAvailabilityReady)) ||
                     (step === 2 && !isCustomerValid)
                   }
                   className="min-w-0 py-3 rounded-xl bg-[#222] text-[#FF9FCA] text-sm sm:text-base font-black uppercase tracking-wider hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999] order-1 sm:order-2"
@@ -2224,5 +2512,72 @@ export default function QuickBookModal({
         </motion.div>
       </motion.div>
     </AnimatePresence>
+
+    <AnimatePresence>
+      {showCccdConfirmDialog && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[125] bg-black/55 backdrop-blur-[2px]"
+            onClick={() => setShowCccdConfirmDialog(false)}
+            aria-hidden
+          />
+          <motion.div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="cccd-confirm-title"
+            aria-describedby="cccd-confirm-desc"
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 12 }}
+            transition={{ type: "spring", damping: 26, stiffness: 320 }}
+            className="fixed left-3 right-3 top-1/2 z-[126] mx-auto max-w-md -translate-y-1/2 rounded-2xl border-2 border-[#FAD6E8] bg-[#FFFBF5] p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id="cccd-confirm-title"
+              className="text-base font-black uppercase tracking-tight text-[#222] mb-2"
+            >
+              Xác nhận CCCD / giấy tờ
+            </h3>
+            <p
+              id="cccd-confirm-desc"
+              className="text-[13px] text-[#444] leading-relaxed mb-4"
+            >
+              Đơn của bạn gồm{" "}
+              <strong className="text-[#222]">{effectiveDevices.length} máy</strong>{" "}
+              (trên 2 máy). Khi nhận máy, bạn{" "}
+              <strong className="text-[#222]">
+                cần cung cấp số lượng CCCD (căn cước công dân) tương ứng với số
+                máy thuê
+              </strong>
+              — mỗi máy một giấy tờ chính chủ (hoặc VNeID định danh mức 2 theo
+              quy định cửa hàng). Bạn xác nhận đã hiểu và đồng ý tiếp tục thanh
+              toán?
+            </p>
+            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCccdConfirmDialog(false)}
+                className="flex-1 min-h-[44px] rounded-xl border-2 border-[#222] text-[#222] text-sm font-black uppercase tracking-wider hover:bg-[#f5f5f5] transition-colors"
+              >
+                Quay lại
+              </button>
+              <button
+                type="button"
+                onClick={handleCccdDialogConfirm}
+                disabled={isSubmitting}
+                className="flex-1 min-h-[44px] rounded-xl bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white text-sm font-black uppercase tracking-wider hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                Đồng ý & thanh toán
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+    </>
   );
 }
