@@ -21,7 +21,7 @@ function Q9BookingEntry() {
   return (
     <SeoMeta
       title="Đặt lịch FAO Q9 (Thủ Đức)"
-      description="Đặt thuê máy ảnh tại FAO Q9 Vinhomes Grand Park — mặc định nhận trả Thủ Đức."
+      description="Đặt thuê máy ảnh tại FAO Q9 — 465 Lê Văn Việt (Elan Cafe), nhận trả Thủ Đức."
       path="/q9"
     >
       <BookingPage />

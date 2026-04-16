@@ -9,12 +9,13 @@ export const BRANCHES = [
   },
   {
     id: "Q9",
-    label: "FAO Q9 (Vinhomes)",
-    address: "Vinhomes Grand Park, Q.9 (Thủ Đức)",
+    label: "FAO Q9",
+    address: "465 Lê Văn Việt (Elan Cafe), Q.9 (Thủ Đức)",
     distanceText: "18.4km",
     mapUrl:
-      "https://www.google.com/maps/search/?api=1&query=Vinhomes+Grand+Park+District+9",
+      "https://www.google.com/maps/search/?api=1&query=465+L%C3%AA+V%C4%83n+Vi%E1%BB%87t+Elan+Cafe+Th%E1%BB%A7+%C4%90%E1%BB%A9c",
     disabled: true,
+    comingSoon: true,
   },
 ];
 

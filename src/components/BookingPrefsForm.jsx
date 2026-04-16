@@ -587,25 +587,91 @@ export default function BookingPrefsForm({
           <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-2 block">
             Chi nhánh
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            {BRANCHES.map((branch) => (
-              <button
-                key={branch.id}
-                type="button"
-                disabled={branch.disabled}
-                onClick={() => !branch.disabled && setBranchId(branch.id)}
-                className={`px-3 py-2 rounded-xl text-sm font-bold uppercase tracking-wider border-2 transition-all ${
-                  branch.disabled
-                    ? "bg-[#f5f5f5] text-[#bbb] border-[#eee] cursor-not-allowed"
-                    : branchId === branch.id
-                      ? "bg-[#222] text-[#FF9FCA] border-[#222]"
-                      : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                }`}
-              >
-                {branch.label}
-                {branch.comingSoon ? " (Sắp ra mắt)" : ""}
-              </button>
-            ))}
+          <div className="space-y-2">
+            {BRANCHES.map((branch) => {
+              const comingSoon = Boolean(branch.disabled && branch.comingSoon);
+              if (comingSoon) {
+                return (
+                  <div
+                    key={branch.id}
+                    role="status"
+                    aria-label={`${branch.label} — sắp mở cửa`}
+                    className="relative w-full overflow-hidden rounded-xl border-2 border-dashed border-[#f5b8d4]/90 bg-gradient-to-br from-[#fff8fc] via-[#fff5f9] to-[#ffecf5] px-3 py-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
+                  >
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-[#E85C9C]/10 blur-2xl"
+                    />
+                    <div className="relative flex items-start justify-between gap-2">
+                      <p className="min-w-0 flex-1 text-sm font-black uppercase tracking-wide text-[#c2185b] leading-tight">
+                        {branch.label}
+                      </p>
+                      <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-[#E85C9C] to-[#ff7eb3] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-sm ring-2 ring-white/80">
+                        <Sparkles className="h-2.5 w-2.5" strokeWidth={2.5} />
+                        Sắp mở
+                      </span>
+                    </div>
+                    {branch.address ? (
+                      <p className="relative mt-1.5 text-[11px] font-medium leading-snug text-[#a8557c]/90 break-words">
+                        {branch.address}
+                      </p>
+                    ) : null}
+                    <p className="relative mt-1.5 text-[10px] font-semibold text-[#d9468c]/80">
+                      Đang hoàn thiện — sẽ mở đặt lịch sớm
+                    </p>
+                  </div>
+                );
+              }
+
+              const selected = branchId === branch.id;
+              return (
+                <button
+                  key={branch.id}
+                  type="button"
+                  disabled={branch.disabled}
+                  onClick={() => !branch.disabled && setBranchId(branch.id)}
+                  className={`relative w-full overflow-hidden rounded-xl border-2 px-3 py-2.5 text-left transition-all ${
+                    branch.disabled
+                      ? "cursor-not-allowed border-[#eee] bg-[#f5f5f5] text-[#bbb]"
+                      : selected
+                        ? "border-[#222] bg-[#222] shadow-md"
+                        : "border-[#eee] bg-white hover:border-[#FF9FCA]"
+                  }`}
+                >
+                  <div className="relative flex items-start justify-between gap-2">
+                    <p
+                      className={`min-w-0 flex-1 text-sm font-black uppercase tracking-wide leading-tight ${
+                        branch.disabled
+                          ? "text-[#bbb]"
+                          : selected
+                            ? "text-[#FF9FCA]"
+                            : "text-[#222]"
+                      }`}
+                    >
+                      {branch.label}
+                    </p>
+                    {selected && !branch.disabled ? (
+                      <span className="shrink-0 rounded-full bg-[#FF9FCA]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#FF9FCA] ring-1 ring-[#FF9FCA]/30">
+                        Đã chọn
+                      </span>
+                    ) : null}
+                  </div>
+                  {branch.address ? (
+                    <p
+                      className={`relative mt-1.5 text-[11px] font-medium leading-snug break-words ${
+                        branch.disabled
+                          ? "text-[#ccc]"
+                          : selected
+                            ? "text-[#f5c0dc]"
+                            : "text-[#666]"
+                      }`}
+                    >
+                      {branch.address}
+                    </p>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         </div>
 

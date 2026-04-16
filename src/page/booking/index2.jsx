@@ -27,14 +27,7 @@ import { formatDateForAPIPayload } from "../../utils/bookingHelpers";
 import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
 import { formatTimeVi } from "../../utils/formatTimeVi";
 import { loadCustomerSession } from "../../utils/storage";
-
-/* ========= HẰNG SỐ & DỮ LIỆU ===== */
-
-// Chi nhánh
-const BRANCHES = [
-  { id: "PHU_NHUAN", label: "FAO Phú Nhuận" },
-  { id: "Q9", label: "FAO Q9 (Vinhomes)", disabled: true },
-];
+import { BRANCHES } from "../../data/bookingConstants";
 
 // Hình thức nhận máy
 const RECEIVE_METHODS = [
@@ -331,24 +324,61 @@ function Card({ title, children, note }) {
 
 function BranchChips({ value, onChange }) {
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className="flex w-full flex-col gap-3">
       {BRANCHES.map((b) => {
         const active = value === b.id;
+        const comingSoon = Boolean(b.disabled && b.comingSoon);
+        if (comingSoon) {
+          return (
+            <div
+              key={b.id}
+              role="status"
+              className="relative w-full min-w-0 overflow-hidden rounded-2xl border-2 border-dashed border-pink-200/90 bg-gradient-to-br from-pink-50 via-white to-rose-50 px-4 py-3 text-left"
+            >
+              <span className="absolute right-3 top-3 rounded-full bg-gradient-to-r from-pink-500 to-rose-400 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-white shadow-sm">
+                Sắp mở
+              </span>
+              <p className="pr-20 text-sm font-bold text-pink-900">{b.label}</p>
+              {b.address ? (
+                <p className="mt-1 text-xs leading-snug text-pink-700/75 break-words">{b.address}</p>
+              ) : null}
+              <p className="mt-2 text-[10px] font-semibold text-pink-600/80">
+                Đang hoàn thiện — sẽ mở đặt lịch sớm
+              </p>
+            </div>
+          );
+        }
         return (
           <button
             key={b.id}
             type="button"
             disabled={b.disabled}
             onClick={() => !b.disabled && onChange(b.id)}
-            className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium border-2 transition-transform active:scale-95 ${
+            className={`w-full min-w-0 overflow-hidden rounded-2xl border-2 px-4 py-3 text-left transition active:scale-[0.99] ${
               b.disabled
-                ? "bg-neutral-100 text-neutral-400 border-neutral-200 cursor-not-allowed"
+                ? "cursor-not-allowed border-neutral-200 bg-neutral-100 text-neutral-400"
                 : active
-                  ? "bg-pink-600 text-white border-pink-600 shadow-lg shadow-pink-500/30"
-                  : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50 hover:border-pink-300"
+                  ? "border-pink-600 bg-pink-600 text-white shadow-lg shadow-pink-500/25"
+                  : "border-pink-200 bg-white text-pink-800 hover:border-pink-300 hover:bg-pink-50/80"
             }`}
           >
-            {b.label}
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-sm font-bold">{b.label}</span>
+              {active && !b.disabled ? (
+                <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-white ring-1 ring-white/40">
+                  Đã chọn
+                </span>
+              ) : null}
+            </div>
+            {b.address ? (
+              <p
+                className={`mt-1 text-xs leading-snug break-words ${
+                  b.disabled ? "text-neutral-400" : active ? "text-pink-50" : "text-pink-700/80"
+                }`}
+              >
+                {b.address}
+              </p>
+            ) : null}
           </button>
         );
       })}
