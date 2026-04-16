@@ -59,7 +59,8 @@ function SuccessCard({ details }) {
       .filter(Boolean)
       .join("\n");
     const description = `Cảm ơn bạn đã đặt lịch thuê máy ảnh!\n\n${refLines}\nTổng tiền: ${details.total.toLocaleString("vi-VN")} đ\n\nVui lòng có mặt đúng giờ để nhận máy.\nLiên hệ: 0901355198`;
-    const location = "330/22 Đ. Phan Đình Phùng, Phường 1, Phú Nhuận, Hồ Chí Minh, Việt Nam";
+    const location =
+      "Lầu 1, 475 Huỳnh Văn Bánh, Quận Phú Nhuận, Hồ Chí Minh, Việt Nam";
 
     const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${startTime}/${endTime}&details=${encodeURIComponent(description)}&location=${encodeURIComponent(location)}`;
 

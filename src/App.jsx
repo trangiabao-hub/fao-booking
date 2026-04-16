@@ -1,4 +1,5 @@
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import { BRANCHES } from "./data/bookingConstants";
 import HomePage from "./page/home";
 import DeviceCatalogPage from "./page/catalog";
 import BookingPage from "./page/booking";
@@ -11,6 +12,22 @@ import PhotoBoothPage from "./page/photobooth";
 import FeedbackPage from "./page/feedback";
 import SeoMeta from "./components/SeoMeta";
 import AnalyticsShell from "./components/AnalyticsShell";
+
+function Q9BookingEntry() {
+  const q9 = BRANCHES.find((b) => b.id === "Q9");
+  if (q9?.disabled) {
+    return <Navigate to="/booking" replace />;
+  }
+  return (
+    <SeoMeta
+      title="Đặt lịch FAO Q9 (Thủ Đức)"
+      description="Đặt thuê máy ảnh tại FAO Q9 Vinhomes Grand Park — mặc định nhận trả Thủ Đức."
+      path="/q9"
+    >
+      <BookingPage />
+    </SeoMeta>
+  );
+}
 
 const App = () => {
   const router = createBrowserRouter([
@@ -55,15 +72,7 @@ const App = () => {
     },
     {
       path: "/q9",
-      element: (
-        <SeoMeta
-          title="Đặt lịch FAO Q9 (Thủ Đức)"
-          description="Đặt thuê máy ảnh tại FAO Q9 Vinhomes Grand Park — mặc định nhận trả Thủ Đức."
-          path="/q9"
-        >
-          <BookingPage />
-        </SeoMeta>
-      ),
+      element: <Q9BookingEntry />,
     },
     {
       path: "/payment-status",

@@ -500,24 +500,13 @@ const ChicCameraMenu = () => {
         <div className="inline-block bg-[#FFFBF5]/95 border border-[#E85C9C]/20 px-4 py-3 md:px-8 md:py-4 rounded-full shadow-lg backdrop-blur-md w-full md:w-auto">
           <div className="flex flex-wrap md:flex-nowrap gap-x-4 gap-y-2 items-center justify-center text-[10px] md:text-xs font-bold text-[#555] uppercase tracking-wide">
             <a
-              href="https://maps.google.com"
+              href="https://maps.app.goo.gl/Lg6KoXzXWrdiurWj9?g_st=ic"
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1.5 hover:text-[#E85C9C]"
             >
-              <MapPin size={14} className="text-[#E85C9C]" /> PN, Phan Đình
-              Phùng
-            </a>
-
-            <div className="h-3 w-px bg-gray-300 hidden md:block"></div>
-
-            <a
-              href="https://maps.google.com"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 hover:text-[#E85C9C]"
-            >
-              <MapPin size={14} className="text-[#E85C9C]" /> Q9, Vinhome
+              <MapPin size={14} className="text-[#E85C9C]" /> PN, 475 Huỳnh Văn
+              Bánh
             </a>
 
             {/* Nút Gọi: Làm to ra cho dễ bấm trên mobile */}

@@ -33,7 +33,7 @@ import { loadCustomerSession } from "../../utils/storage";
 // Chi nhánh
 const BRANCHES = [
   { id: "PHU_NHUAN", label: "FAO Phú Nhuận" },
-  { id: "Q9", label: "FAO Q9 (Vinhomes)" },
+  { id: "Q9", label: "FAO Q9 (Vinhomes)", disabled: true },
 ];
 
 // Hình thức nhận máy
@@ -337,11 +337,15 @@ function BranchChips({ value, onChange }) {
         return (
           <button
             key={b.id}
-            onClick={() => onChange(b.id)}
+            type="button"
+            disabled={b.disabled}
+            onClick={() => !b.disabled && onChange(b.id)}
             className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium border-2 transition-transform active:scale-95 ${
-              active
-                ? "bg-pink-600 text-white border-pink-600 shadow-lg shadow-pink-500/30"
-                : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50 hover:border-pink-300"
+              b.disabled
+                ? "bg-neutral-100 text-neutral-400 border-neutral-200 cursor-not-allowed"
+                : active
+                  ? "bg-pink-600 text-white border-pink-600 shadow-lg shadow-pink-500/30"
+                  : "bg-white text-pink-700 border-pink-200 hover:bg-pink-50 hover:border-pink-300"
             }`}
           >
             {b.label}
@@ -916,9 +920,14 @@ export default function BookingPage() {
     const rawStep = parseInt(params.get("step") || "1", 10);
     const safeStep = isNaN(rawStep) ? 1 : Math.min(Math.max(rawStep, 1), 4);
 
+    const rawBranch = params.get("branch") || "PHU_NHUAN";
+    const branchMeta = BRANCHES.find((b) => b.id === rawBranch);
+    const branch =
+      branchMeta && !branchMeta.disabled ? rawBranch : "PHU_NHUAN";
+
     return {
       step: safeStep,
-      branch: params.get("branch") || "PHU_NHUAN",
+      branch,
       receiveMethod: params.get("receive") || "AT_SHOP",
       category: params.get("category") || null,
       deviceId: params.get("device")

@@ -3,9 +3,9 @@ export const BRANCHES = [
   {
     id: "PHU_NHUAN",
     label: "FAO Phú Nhuận",
-    address: "330/22 Phan Đình Phùng, P.1",
+    address: "Lầu 1, 475 Huỳnh Văn Bánh, Q.Phú Nhuận",
     distanceText: "3.2km",
-    mapUrl: "https://maps.app.goo.gl/CSeEPhMGUNZsYCNZ7",
+    mapUrl: "https://maps.app.goo.gl/Lg6KoXzXWrdiurWj9?g_st=ic",
   },
   {
     id: "Q9",
@@ -14,6 +14,7 @@ export const BRANCHES = [
     distanceText: "18.4km",
     mapUrl:
       "https://www.google.com/maps/search/?api=1&query=Vinhomes+Grand+Park+District+9",
+    disabled: true,
   },
 ];
 

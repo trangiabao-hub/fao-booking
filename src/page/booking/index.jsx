@@ -371,6 +371,27 @@ function useBookingPricing(
       }
     }
 
+    /* Tránh subTotal kẹt 0: gói 6h không khớp cửa sổ giờ, hoặc thiếu priceSixHours/priceOneDay trên device. */
+    if (subTotal === 0 && device && hours > 0 && t2 > t1) {
+      isSixHours = false;
+      const rental = calculateRentalInfo([t1, t2], device);
+      if (rental.price > 0) {
+        days = rental.chargeableDays;
+        subTotal = roundDownToThousand(rental.price);
+      } else {
+        const rawDays = Math.ceil(hours / 24);
+        days = rawDays <= 0 ? 1 : rawDays;
+        if (days === 1) subTotal = device.priceOneDay || 0;
+        else if (days === 2) subTotal = device.priceTwoDay || 0;
+        else if (days === 3) subTotal = device.priceThreeDay || 0;
+        else {
+          subTotal =
+            (device.priceThreeDay || 0) +
+            (days - 3) * (device.priceNextDay || 0);
+        }
+      }
+    }
+
     let voucherDiscount = 0;
     let voucherLabel = null;
     let voucherHint = null;
@@ -836,8 +857,10 @@ export default function BookingPage() {
 
   const initialPrefs = useMemo(() => {
     const prefs = loadBookingPrefs();
+    const q9Branch = BRANCHES.find((b) => b.id === "Q9");
+    const q9Bookable = Boolean(q9Branch && !q9Branch.disabled);
     let branchId;
-    if (isQ9Entry) {
+    if (isQ9Entry && q9Bookable) {
       branchId = "Q9";
     } else if (BRANCHES.some((b) => b.id === prefs?.branchId)) {
       branchId = prefs.branchId;
@@ -883,7 +906,8 @@ export default function BookingPage() {
   const [availabilityByBranch, setAvailabilityByBranch] = useState({});
 
   useEffect(() => {
-    if (isQ9Entry) {
+    const q9Branch = BRANCHES.find((b) => b.id === "Q9");
+    if (isQ9Entry && q9Branch && !q9Branch.disabled) {
       setSelectedBranchId("Q9");
       return;
     }
