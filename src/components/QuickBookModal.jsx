@@ -82,6 +82,7 @@ import {
   pointsPerEarnBlock,
 } from "../utils/loyaltyEarn";
 import { calculateRentalInfo, roundDownToThousand } from "../utils/pricing";
+import { getStrictestReleaseDate } from "../utils/deviceReleaseDate";
 import { formatTimeVi } from "../utils/formatTimeVi";
 import BookingPrefsForm, {
   computeAvailabilityRange,
@@ -348,6 +349,32 @@ export default function QuickBookModal({
   }, [canPickSameModelQuantity, sameModelFreeCount, sameModelQuantity]);
 
   const isMulti = effectiveDevices.length > 1;
+
+  const strictestDeviceRelease = useMemo(
+    () => getStrictestReleaseDate(effectiveDevices),
+    [effectiveDevices],
+  );
+  const strictestReleaseMs = strictestDeviceRelease?.getTime() ?? null;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const today = normalizeDate(new Date());
+    const release =
+      strictestReleaseMs != null
+        ? normalizeDate(new Date(strictestReleaseMs))
+        : null;
+    const minP =
+      release && release.getTime() > today.getTime() ? release : today;
+    setSelectedDate((prev) => {
+      const nextD = !prev || prev < minP ? minP : prev;
+      setEndDateState((prevEnd) => {
+        if (!prevEnd || prevEnd <= nextD) return addDays(nextD, 1);
+        const minEnd = addDays(nextD, 1);
+        return prevEnd < minEnd ? minEnd : prevEnd;
+      });
+      return nextD;
+    });
+  }, [isOpen, strictestReleaseMs]);
 
   const paymentDeviceKey = useMemo(
     () => effectiveDevices.map((d) => String(d.id)).sort().join(","),
@@ -1445,6 +1472,7 @@ export default function QuickBookModal({
                   setDurationType={setSelectedDuration}
                   setPickupType={setPickupType}
                   setPickupSlot={setPickupSlot}
+                  minPickupDate={strictestDeviceRelease}
                   error={timeSelectionError || step1AvailabilityMessage}
                 />
 

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { format, addDays } from "date-fns";
+import { format, addDays, isSameDay } from "date-fns";
 import { useSearchParams, Link, useNavigate, useMatch } from "react-router-dom";
 import vi from "date-fns/locale/vi";
 
@@ -57,6 +57,11 @@ import {
 } from "../../utils/loyaltyEarn";
 import { trackBookingCheckoutStart } from "../../lib/bookingAnalytics";
 import { calculateRentalInfo, roundDownToThousand } from "../../utils/pricing";
+import {
+  parseDeviceReleaseDate,
+  getStrictestReleaseDate,
+  formatDateOnlyLocal,
+} from "../../utils/deviceReleaseDate";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
 
@@ -554,6 +559,50 @@ function ShopeeVoucherStrip({
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function DateStrip({ selectedDate, onSelect, minDate }) {
+  const start = useMemo(() => {
+    const t = normalizeDate(new Date());
+    const m = minDate ? normalizeDate(minDate) : null;
+    return m && m.getTime() > t.getTime() ? m : t;
+  }, [minDate]);
+
+  const days = useMemo(
+    () => Array.from({ length: 21 }, (_, i) => addDays(start, i)),
+    [start],
+  );
+
+  return (
+    <div className="sticky top-[3.5rem] z-20 border-b border-[#FFE4F0] bg-[#FEF5ED]/95 py-2 backdrop-blur">
+      <div className="mx-auto max-w-md">
+        <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-1 scrollbar-thin">
+          {days.map((d) => {
+            const active =
+              selectedDate &&
+              isSameDay(normalizeDate(d), normalizeDate(selectedDate));
+            return (
+              <button
+                key={d.getTime()}
+                type="button"
+                onClick={() => onSelect(d)}
+                className={`flex min-w-[3.25rem] shrink-0 snap-start flex-col items-center justify-center rounded-xl border-2 px-2 py-2 transition-all ${
+                  active
+                    ? "border-[#222] bg-[#222] text-[#FF9FCA]"
+                    : "border-[#eee] bg-white text-[#555] hover:border-[#FF9FCA]"
+                }`}
+              >
+                <span className="text-[10px] font-bold uppercase opacity-80">
+                  {format(d, "EEE", { locale: vi })}
+                </span>
+                <span className="text-sm font-black">{format(d, "dd/MM")}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1065,14 +1114,24 @@ export default function BookingPage() {
 
   const DERIVED = useMemo(() => {
     if (!allDevices) return [];
-    const seen = new Set();
-    const result = [];
+    const byName = new Map();
     for (const it of allDevices) {
       const normalized = normalizeDeviceName(it.name);
-      if (seen.has(normalized)) continue;
-      seen.add(normalized);
+      if (!byName.has(normalized)) byName.set(normalized, []);
+      byName.get(normalized).push(it);
+    }
+    const result = [];
+    for (const [normalized, group] of byName) {
+      const sorted = [...group].sort((a, b) =>
+        String(a.id).localeCompare(String(b.id)),
+      );
+      const it = sorted[0];
+      const strictest = getStrictestReleaseDate(group);
       result.push({
         ...it,
+        ...(strictest
+          ? { releaseDate: formatDateOnlyLocal(strictest) }
+          : {}),
         brand: inferBrand(it.name),
         img: it.images?.[0] || FALLBACK_IMG,
         pricePerDay: it.priceOneDay || 0,
@@ -1101,6 +1160,29 @@ export default function BookingPage() {
     () => DERIVED.find((i) => i.id === selectedDeviceId) || null,
     [DERIVED, selectedDeviceId]
   );
+
+  const deviceReleaseDate = useMemo(
+    () => parseDeviceReleaseDate(selectedDevice),
+    [selectedDevice],
+  );
+
+  useEffect(() => {
+    if (!selectedDevice) return;
+    const today = normalizeDate(new Date());
+    const minP =
+      deviceReleaseDate && deviceReleaseDate.getTime() > today.getTime()
+        ? deviceReleaseDate
+        : today;
+    setSelectedDate((prev) => {
+      const nextD = !prev || prev < minP ? minP : prev;
+      setEndDateState((prevEnd) => {
+        if (!prevEnd || prevEnd <= nextD) return addDays(nextD, 1);
+        const minEnd = addDays(nextD, 1);
+        return prevEnd < minEnd ? minEnd : prevEnd;
+      });
+      return nextD;
+    });
+  }, [selectedDevice?.id, deviceReleaseDate?.getTime()]);
 
   // Compute availability range using the same shared logic
   const prefsForRange = useMemo(() => ({
@@ -1298,6 +1380,11 @@ export default function BookingPage() {
     if (timeSelectionError) return false;
     if (!validInfo) return false;
 
+    if (deviceReleaseDate) {
+      const pickupDay = normalizeDate(t1);
+      if (pickupDay.getTime() < deviceReleaseDate.getTime()) return false;
+    }
+
     const av = availabilityByBranch[selectedBranchId];
     if (!av || av.loading || av.soldOut) return false;
 
@@ -1311,6 +1398,7 @@ export default function BookingPage() {
     timeSelectionError,
     validInfo,
     availabilityByBranch,
+    deviceReleaseDate,
   ]);
 
   /* ==== Submit payment ==== */
@@ -1466,6 +1554,7 @@ export default function BookingPage() {
       <DateStrip
         selectedDate={selectedDate}
         onSelect={(d) => setSelectedDate(normalizeDate(d))}
+        minDate={deviceReleaseDate}
       />
 
       {/* CONTENT */}
@@ -1563,6 +1652,7 @@ export default function BookingPage() {
                   setDurationType={setDurationOptionId}
                   setPickupType={setPickupType}
                   setPickupSlot={setPickupSlot}
+                  minPickupDate={deviceReleaseDate}
                   error={timeSelectionError || (availabilityByBranch[selectedBranchId]?.soldOut ? "⚠️ Máy đã hết trong khung giờ này." : "")}
                 />
               </div>

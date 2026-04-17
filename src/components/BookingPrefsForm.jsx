@@ -195,6 +195,7 @@ export function getAvailabilityRangeError(prefs, fromDateTime, toDateTime) {
  *  - branchId, date, endDate, timeFrom, timeTo, durationType, pickupType, pickupSlot
  *  - setBranchId, setDate, setEndDate, setTimeFrom, setTimeTo, setDurationType, setPickupType, setPickupSlot
  *  - error (optional string)
+ *  - minPickupDate (optional Date) — releaseDate máy: không chọn nhận máy trước ngày này (vẫn không trước hôm nay)
  */
 export default function BookingPrefsForm({
   branchId,
@@ -214,7 +215,23 @@ export default function BookingPrefsForm({
   setPickupType,
   setPickupSlot,
   error,
+  minPickupDate = null,
 }) {
+  const effectiveMinPickup = useMemo(() => {
+    const today = normalizeDate(new Date());
+    if (!minPickupDate) return today;
+    const r = normalizeDate(minPickupDate);
+    if (!r) return today;
+    return r.getTime() > today.getTime() ? r : today;
+  }, [minPickupDate]);
+
+  const showFutureReleaseNotice = useMemo(() => {
+    if (!minPickupDate) return false;
+    const r = normalizeDate(minPickupDate);
+    const today = normalizeDate(new Date());
+    return Boolean(r && r.getTime() > today.getTime());
+  }, [minPickupDate]);
+
   const { fromDateTime, toDateTime } = useMemo(
     () =>
       computeAvailabilityRange({
@@ -310,6 +327,15 @@ export default function BookingPrefsForm({
       </div>
 
       <div className="space-y-4">
+        {showFutureReleaseNotice && minPickupDate ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-900 font-medium">
+            Máy mở đặt lịch từ{" "}
+            <span className="font-black text-amber-950">
+              {format(normalizeDate(minPickupDate), "dd/MM/yyyy")}
+            </span>
+            .
+          </div>
+        ) : null}
         {/* Gói thuê */}
         <div>
           <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-2 block">
@@ -363,7 +389,7 @@ export default function BookingPrefsForm({
               onChange={(nextDate) => setDate(normalizeDate(nextDate))}
               dateFormat="dd/MM/yyyy"
               locale="vi"
-              minDate={normalizeDate(new Date())}
+              minDate={effectiveMinPickup}
               placeholderText="Chọn ngày nhận"
               className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-base font-medium focus:border-[#FF9FCA] focus:outline-none"
             />
@@ -390,8 +416,8 @@ export default function BookingPrefsForm({
                     durationType === "ONE_DAY"
                       ? date
                         ? addDays(date, 1)
-                        : addDays(new Date(), 1)
-                      : date || normalizeDate(new Date())
+                        : addDays(effectiveMinPickup, 1)
+                      : date || effectiveMinPickup
                   }
                   placeholderText="Chọn ngày trả"
                   className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-base font-medium focus:border-[#FF9FCA] focus:outline-none"

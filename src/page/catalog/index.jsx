@@ -40,6 +40,11 @@ import { formatPriceK } from "../../utils/bookingHelpers";
 import { BRANCHES } from "../../data/bookingConstants";
 import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
 import { formatTimeVi, formatTimeViFromString } from "../../utils/formatTimeVi";
+import {
+  getStrictestReleaseDate,
+  formatDateOnlyLocal,
+  parseDeviceReleaseDate,
+} from "../../utils/deviceReleaseDate";
 import { saveBookingPrefs, loadCustomerSession, saveCustomerSession } from "../../utils/storage";
 import { signInWithPopup } from "firebase/auth";
 import { auth, googleProvider } from "../../config/firebase";
@@ -164,6 +169,9 @@ function getMaxQtyForCartLine(deviceRow, availabilityConfirmed) {
   if (!deviceRow) return 0;
   if (!availabilityConfirmed) {
     return Math.max(1, deviceRow.unitCount || 1);
+  }
+  if (deviceRow.isAvailable === false || deviceRow.blockedBeforeRelease) {
+    return 0;
   }
   return Math.max(0, deviceRow.availableCount ?? 0);
 }
@@ -352,6 +360,10 @@ function ChicCard({
         : discountedLabel;
   const isHot = device.bookingCount > 5 || device.priceOneDay >= 400000;
   const isAvailable = device.isAvailable !== false;
+  const blockedBeforeRelease = device.blockedBeforeRelease === true;
+  const releaseDay = blockedBeforeRelease
+    ? parseDeviceReleaseDate(device)
+    : null;
   const suggestedSlot = device.availabilitySuggestion || null;
   const hasSuggestedSlot = !isAvailable && !!suggestedSlot;
 
@@ -383,15 +395,21 @@ function ChicCard({
         delay: Math.min(index * 0.03, 0.3),
       }}
       className={`relative group select-none h-full z-10 ${
-        isAvailable || hasSuggestedSlot ? "" : "cursor-not-allowed"
+        isAvailable || hasSuggestedSlot || blockedBeforeRelease
+          ? ""
+          : "cursor-not-allowed"
       }`}
       id={cardAnchorId}
     >
       <div
-        className={`bg-[#FFFBF5] rounded-xl overflow-hidden relative border-2 shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-all duration-200 flex flex-col h-full touch-manipulation ${
+        className={`rounded-xl overflow-hidden relative border-2 shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-all duration-200 flex flex-col h-full touch-manipulation ${
+          blockedBeforeRelease
+            ? "border-[#ffb8dc] bg-gradient-to-b from-[#fff5fb] via-[#FFFBF5] to-[#fff8fc] shadow-[0_8px_28px_rgba(232,92,156,0.18)] ring-2 ring-[#E85C9C]/25"
+            : "bg-[#FFFBF5] border-transparent"
+        } ${
           isFocused
             ? "border-[#E85C9C] ring-2 ring-[#FFB6D7]/70"
-            : "border-transparent"
+            : ""
         }`}
       >
         {/* PROMO BADGE - top right */}
@@ -409,7 +427,7 @@ function ChicCard({
         </div>
 
         {/* HOT BADGE */}
-        {isHot && (
+        {isHot && !blockedBeforeRelease && (
           <div
             className={`absolute top-2 ${isAvailable && onToggleSelect ? "left-11" : "left-2"} z-20 flex flex-col items-center transform rotate-6 transition-all`}
           >
@@ -449,7 +467,13 @@ function ChicCard({
           />
           {!isAvailable && (
             <div
-              className={`absolute inset-0 z-10 flex items-center justify-center p-2 ${hasSuggestedSlot ? "bg-emerald-900/20" : "bg-black/40"}`}
+              className={`absolute inset-0 z-10 flex items-center justify-center p-2 ${
+                hasSuggestedSlot
+                  ? "bg-emerald-900/20"
+                  : blockedBeforeRelease
+                    ? "bg-transparent"
+                    : "bg-black/40"
+              }`}
             >
               {hasSuggestedSlot ? (
                 <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3 shadow-xl transform -rotate-1 animate-in fade-in zoom-in duration-300">
@@ -468,6 +492,15 @@ function ChicCard({
                       {format(suggestedSlot.toDateTime, "dd/MM")}
                     </div>
                   </div>
+                </div>
+              ) : blockedBeforeRelease && releaseDay ? (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/75 to-transparent px-2 py-2.5">
+                  <p className="text-center text-[11px] font-bold leading-snug text-white drop-shadow-md">
+                    Bạn có thể đặt lịch từ{" "}
+                    <span className="whitespace-nowrap font-black text-[#ffc8e8]">
+                      {format(releaseDay, "dd/MM/yyyy")}
+                    </span>
+                  </p>
                 </div>
               ) : (
                 <div
@@ -515,7 +548,7 @@ function ChicCard({
             </div>
           </div>
 
-          {!isAvailable && !hasSuggestedSlot ? (
+          {!isAvailable && !hasSuggestedSlot && !blockedBeforeRelease ? (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -526,6 +559,14 @@ function ChicCard({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
               Nhận thông báo khi trống
             </button>
+          ) : !isAvailable && blockedBeforeRelease ? (
+            <p className="mt-3 rounded-lg border border-[#ffd0e8] bg-[#fff8fc] px-2.5 py-2 text-center text-[11px] font-semibold leading-snug text-[#444]">
+              Bạn có thể đặt lịch từ{" "}
+              <span className="font-black text-[#E85C9C]">
+                {releaseDay ? format(releaseDay, "dd/MM/yyyy") : "—"}
+              </span>
+              .
+            </p>
           ) : (
             <button
               onClick={
@@ -1356,11 +1397,39 @@ export default function DeviceCatalogPage() {
       const hasModelAvailability =
         availabilityConfirmed &&
         Object.keys(modelAvailabilitySuggestions).length > 0;
-      const isAvailable = hasModelAvailability
+      const strictestRelease = getStrictestReleaseDate(
+        group.map((g) => g.device),
+      );
+
+      let isAvailable = hasModelAvailability
         ? modelAvailabilityInfo?.available === true
         : totalAvailable > 0;
+
+      let blockedBeforeRelease = false;
+      if (
+        availabilityConfirmed &&
+        isAvailable &&
+        strictestRelease
+      ) {
+        const { fromDateTime, toDateTime } =
+          computeAvailabilityRange(availabilityPrefs);
+        const rangeError = getAvailabilityRangeError(
+          availabilityPrefs,
+          fromDateTime,
+          toDateTime,
+        );
+        if (!rangeError && fromDateTime) {
+          const pickupDay = normalizeDate(fromDateTime);
+          if (pickupDay.getTime() < strictestRelease.getTime()) {
+            isAvailable = false;
+            blockedBeforeRelease = true;
+          }
+        }
+      }
+
       const availabilitySuggestion =
         availabilityConfirmed &&
+        !blockedBeforeRelease &&
         availabilityPrefs.durationType !== "SIX_HOURS" &&
         !isAvailable &&
         modelAvailabilityInfo?.suggestedFrom &&
@@ -1405,6 +1474,9 @@ export default function DeviceCatalogPage() {
 
       result.push({
         ...device,
+        releaseDate: strictestRelease
+          ? formatDateOnlyLocal(strictestRelease)
+          : device.releaseDate,
         orderNumber: minOrderNumber,
         modelKey,
         displayName: normalizedName,
@@ -1416,6 +1488,7 @@ export default function DeviceCatalogPage() {
         isAvailable,
         availabilitySuggestion,
         groupDeviceIds: new Set(group.map((g) => g.device.id)),
+        blockedBeforeRelease,
       });
     }
 
@@ -1425,6 +1498,7 @@ export default function DeviceCatalogPage() {
     busyDeviceIds,
     modelAvailabilitySuggestions,
     availabilityConfirmed,
+    availabilityPrefs,
     deviceBookingsById,
   ]);
 
@@ -1742,9 +1816,11 @@ export default function DeviceCatalogPage() {
       );
     }
 
-    // Sort priority: 0=máy trống, 1=có thể dời lịch, 2=không trống
+    // Sort priority: 0=máy trống hoặc chờ đến release (vẫn theo index trong category),
+    // 1=có thể dời lịch, 2=không trống
     const availPriority = (d) => {
       if (d.isAvailable) return 0;
+      if (d.blockedBeforeRelease) return 0;
       if (d.availabilitySuggestion) return 1;
       return 2;
     };
