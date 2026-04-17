@@ -10,6 +10,7 @@ import AccountPage from "./page/account";
 import Menu from "./page/menu";
 import PhotoBoothPage from "./page/photobooth";
 import FeedbackPage from "./page/feedback";
+import RentalContractSamplePage from "./page/rental-contract-sample";
 import SeoMeta from "./components/SeoMeta";
 import AnalyticsShell from "./components/AnalyticsShell";
 
@@ -187,6 +188,10 @@ const App = () => {
           <FeedbackPage />
         </SeoMeta>
       ),
+    },
+    {
+      path: "/hop-dong-thue-chuan",
+      element: <RentalContractSamplePage />,
     },
       ],
     },

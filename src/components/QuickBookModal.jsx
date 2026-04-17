@@ -82,6 +82,7 @@ import {
   pointsPerEarnBlock,
 } from "../utils/loyaltyEarn";
 import { calculateRentalInfo, roundDownToThousand } from "../utils/pricing";
+import { getFaoStandardRentalContractUrl } from "../config/externalUrls";
 import { getStrictestReleaseDate } from "../utils/deviceReleaseDate";
 import { formatTimeVi } from "../utils/formatTimeVi";
 import BookingPrefsForm, {
@@ -471,6 +472,10 @@ export default function QuickBookModal({
   });
   const agreementSectionRef = useRef(null);
   const cccdConfirmedRef = useRef(false);
+  const faoStandardContractUrl = useMemo(
+    () => getFaoStandardRentalContractUrl(),
+    [],
+  );
   /** Tránh reset step khi parent re-render: initialPrefs là object mới mỗi lần render. */
   const quickBookWasOpenRef = useRef(false);
   const [showCccdConfirmDialog, setShowCccdConfirmDialog] = useState(false);
@@ -2392,23 +2397,24 @@ export default function QuickBookModal({
                       hoặc cho thuê lại. Nếu phát hiện vi phạm, tôi đồng ý bồi
                       thường chi phí theo đúng nội dung đã nêu trong hợp đồng.{" "}
                       <a
-                        href="https://example.com/hop-dong-thue-may"
+                        href={faoStandardContractUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="font-semibold underline"
+                        title="Mẫu hợp đồng chuẩn (cùng domain trang hiện tại)"
                       >
-                        Xem hợp đồng
+                        Xem hợp đồng chuẩn
                       </a>{" "}
-                      và{" "}
+                      (kèm{" "}
                       <a
-                        href="https://example.com/chinh-sach-boi-thuong"
+                        href={`${faoStandardContractUrl}#dieu-4`}
                         target="_blank"
                         rel="noreferrer"
                         className="font-semibold underline"
                       >
-                        Chính sách bồi thường
+                        Điều 4 — bồi thường
                       </a>
-                      .
+                      ).
                     </span>
                   </label>
                   <label

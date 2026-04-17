@@ -62,6 +62,7 @@ import {
   getStrictestReleaseDate,
   formatDateOnlyLocal,
 } from "../../utils/deviceReleaseDate";
+import { getFaoStandardRentalContractUrl } from "../../config/externalUrls";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
 
@@ -1007,6 +1008,11 @@ export default function BookingPage() {
     customer.phone,
   ]);
 
+  const faoStandardContractUrl = useMemo(
+    () => getFaoStandardRentalContractUrl(),
+    [],
+  );
+
   // Save customer info when it changes
   useEffect(() => {
     if (customer.fullName && customer.phone) {
@@ -1739,21 +1745,44 @@ export default function BookingPage() {
                     pointsEarnRuleLabel={pointsEarnRuleLabel}
                   />
                   {selectedDevice && t1 && t2 && total > 0 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        printContract({
-                          device: selectedDevice,
-                          total,
-                          t1,
-                          t2,
-                        })
-                      }
-                      className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-[#FF9FCA] bg-[#FFF5F8] text-[#222] font-bold uppercase tracking-wider hover:bg-[#FFE4F0] transition-colors"
-                    >
-                      <PrinterIcon className="h-5 w-5 text-[#E85C9C]" />
-                      In hợp đồng
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          printContract({
+                            device: selectedDevice,
+                            total,
+                            t1,
+                            t2,
+                          })
+                        }
+                        className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-[#FF9FCA] bg-[#FFF5F8] text-[#222] font-bold uppercase tracking-wider hover:bg-[#FFE4F0] transition-colors"
+                      >
+                        <PrinterIcon className="h-5 w-5 text-[#E85C9C]" />
+                        In hợp đồng
+                      </button>
+                      {currentStep >= 3 ? (
+                        <p className="mt-3 text-center text-[11px] text-[#666] leading-relaxed">
+                          <a
+                            href={faoStandardContractUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-[#E85C9C] underline"
+                          >
+                            Mẫu hợp đồng chuẩn FAO
+                          </a>
+                          {" · "}
+                          <a
+                            href={`${faoStandardContractUrl}#dieu-4`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold text-[#E85C9C] underline"
+                          >
+                            Điều 4 (bồi thường)
+                          </a>
+                        </p>
+                      ) : null}
+                    </>
                   )}
                   {paymentError && (
                     <div className="mt-4 p-3 rounded-xl bg-red-50 text-sm text-red-600">
