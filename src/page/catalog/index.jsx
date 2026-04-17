@@ -40,7 +40,9 @@ import { formatPriceK } from "../../utils/bookingHelpers";
 import { BRANCHES } from "../../data/bookingConstants";
 import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
 import { formatTimeVi, formatTimeViFromString } from "../../utils/formatTimeVi";
-import { saveBookingPrefs } from "../../utils/storage";
+import { saveBookingPrefs, loadCustomerSession, saveCustomerSession } from "../../utils/storage";
+import { signInWithPopup } from "firebase/auth";
+import { auth, googleProvider } from "../../config/firebase";
 import useBookingSocket from "../../lib/useBookingSocket";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -329,6 +331,7 @@ function ChicCard({
   pricing,
   onQuickBook,
   onSuggestedQuickBook,
+  onNotifyWaitlist,
   isSelected,
   onToggleSelect,
   feedbackHref,
@@ -512,25 +515,38 @@ function ChicCard({
             </div>
           </div>
 
-          <button
-            onClick={
-              hasSuggestedSlot ? handleSuggestedQuickBook : handleQuickBook
-            }
-            disabled={!isAvailable && !hasSuggestedSlot}
-            className={`w-full mt-3 py-2.5 text-[11px] font-bold rounded-lg uppercase tracking-wider transition-all ${
-              isAvailable
-                ? "bg-[#E85C9C] text-white hover:opacity-90 active:scale-[0.98] shadow-md"
+          {!isAvailable && !hasSuggestedSlot ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onNotifyWaitlist?.(device);
+              }}
+              className="w-full mt-3 py-2 text-[11px] font-bold rounded-lg uppercase tracking-wider transition-all bg-[#FFF5FA] text-[#E85C9C] border border-[#FFD3E7] hover:bg-[#FFE9F4] active:scale-[0.98] shadow-sm flex justify-center items-center gap-1.5"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              Nhận thông báo khi trống
+            </button>
+          ) : (
+            <button
+              onClick={
+                hasSuggestedSlot ? handleSuggestedQuickBook : handleQuickBook
+              }
+              disabled={!isAvailable && !hasSuggestedSlot}
+              className={`w-full mt-3 py-2.5 text-[11px] font-bold rounded-lg uppercase tracking-wider transition-all ${
+                isAvailable
+                  ? "bg-[#E85C9C] text-white hover:opacity-90 active:scale-[0.98] shadow-md"
+                  : hasSuggestedSlot
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] shadow-md"
+                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+              }`}
+            >
+              {isAvailable
+                ? "Đặt ngay"
                 : hasSuggestedSlot
-                  ? "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] shadow-md"
-                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
-            }`}
-          >
-            {isAvailable
-              ? "Đặt ngay"
-              : hasSuggestedSlot
-                ? "Dời theo gợi ý & đặt"
-                : "Tạm hết máy"}
-          </button>
+                  ? "Dời theo gợi ý & đặt"
+                  : "Tạm hết máy"}
+            </button>
+          )}
 
           <Link
             to={feedbackHref || "/feedback"}
@@ -1009,6 +1025,54 @@ export default function DeviceCatalogPage() {
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [cartCheckoutError, setCartCheckoutError] = useState("");
   const [conflictInfo, setConflictInfo] = useState(null);
+
+  // Notify Waitlist State
+  const [isNotifyLoading, setIsNotifyLoading] = useState(false);
+  const [notifySuccessModal, setNotifySuccessModal] = useState(false);
+
+  const proceedWithWaitlist = async (device, token) => {
+    try {
+      await api.post("/v1/notifications/subscribe", { 
+        deviceId: device.id, 
+        modelKey: device.modelKey,
+        url: window.location.href
+      });
+    } catch(err) {
+      console.warn("Ghi nhận đăng ký Notify lỗi do API chưa hoàn thiện, bỏ qua lỗi.", err);
+    }
+    setNotifySuccessModal(true);
+  };
+
+  const handleNotifyWaitlistClick = async (device) => {
+    const token = loadCustomerSession()?.token;
+    if (!token) {
+      try {
+        setIsNotifyLoading(true);
+        const result = await signInWithPopup(auth, googleProvider);
+        const user = result.user;
+        const response = await api.post("/login-gg", {
+          email: user?.email,
+          name: user?.displayName,
+          avatar: user?.photoURL,
+        });
+        const newToken = response?.data?.token;
+        if (!newToken) throw new Error("Không nhận được token.");
+        saveCustomerSession({ token: newToken });
+        await proceedWithWaitlist(device, newToken);
+      } catch (err) {
+        console.error("Lỗi đăng nhập Google hoặc API", err);
+      } finally {
+        setIsNotifyLoading(false);
+      }
+    } else {
+      setIsNotifyLoading(true);
+      try {
+        await proceedWithWaitlist(device, token);
+      } finally {
+        setIsNotifyLoading(false);
+      }
+    }
+  };
 
   const handleQuickBook = (device) => {
     if (device?.isAvailable === false) return;
@@ -2308,6 +2372,7 @@ export default function DeviceCatalogPage() {
                         pricing={getDevicePricing(device)}
                         onQuickBook={handleQuickBook}
                         onSuggestedQuickBook={handleSuggestedQuickBook}
+                        onNotifyWaitlist={handleNotifyWaitlistClick}
                         isSelected={(cartQtyByModelKey.get(device.modelKey) || 0) > 0}
                         onToggleSelect={handleToggleSelect}
                         feedbackHref={buildFeedbackHref(
@@ -2345,6 +2410,7 @@ export default function DeviceCatalogPage() {
                   pricing={getDevicePricing(device)}
                   onQuickBook={handleQuickBook}
                   onSuggestedQuickBook={handleSuggestedQuickBook}
+                  onNotifyWaitlist={handleNotifyWaitlistClick}
                   isSelected={(cartQtyByModelKey.get(device.modelKey) || 0) > 0}
                   onToggleSelect={handleToggleSelect}
                   feedbackHref={buildFeedbackHref(
@@ -2667,6 +2733,66 @@ export default function DeviceCatalogPage() {
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* Notify Waitlist Success Modal */}
+      <AnimatePresence>
+        {notifySuccessModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm"
+            onClick={() => setNotifySuccessModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl relative"
+            >
+              <div className="absolute top-0 w-full h-2 bg-[#E85C9C]" />
+              <button
+                onClick={() => setNotifySuccessModal(false)}
+                className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full transition-all"
+              >
+                <X size={18} />
+              </button>
+              <div className="p-8 pb-6 flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-[#FFF5FA] rounded-full flex items-center justify-center mb-4 border-2 border-[#FFD3E7] shadow-sm">
+                  <span className="text-3xl">📧</span>
+                </div>
+                <h3 className="text-xl font-black text-[#222] mb-2">Đăng ký thành công</h3>
+                <p className="text-[14px] text-gray-600 leading-relaxed font-medium">
+                  Shop sẽ gửi mail thông báo cho bạn ngay khi có khách huỷ lịch thiết bị này.
+                </p>
+                <button
+                  onClick={() => setNotifySuccessModal(false)}
+                  className="mt-6 w-full py-3 bg-[#E85C9C] text-white font-bold rounded-xl active:scale-[0.98] transition-all"
+                >
+                  Đóng
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+        {/* Loading overlay cho quá trình xử lý Waitlist / Login */}
+        {isNotifyLoading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-white/50 backdrop-blur-md flex items-center justify-center"
+          >
+            <div className="flex flex-col items-center">
+              <div className="w-10 h-10 border-4 border-[#FFD3E7] border-t-[#E85C9C] rounded-full animate-spin"></div>
+              <p className="mt-4 text-sm font-bold text-[#E85C9C] uppercase tracking-wider animate-pulse">
+                Đang xử lý...
+              </p>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
