@@ -344,6 +344,14 @@ export function calculateFinalPrice(basePrice, rentalPeriod, voucher) {
     }
   }
 
+  // Đồng bộ fao manage: đơn đầu web luôn giới hạn tổng giảm ≤ min(30% giá gốc, 200k), kể cả combo Tết.
+  if (voucher === "FIRST_ORDER_30_WEB") {
+    const firstOrderCap = 200000;
+    const maxDiscount = Math.min(Math.round(basePrice * 0.3), firstOrderCap);
+    const floorPrice = Math.max(0, basePrice - maxDiscount);
+    finalPrice = Math.max(finalPrice, floorPrice);
+  }
+
   return roundDownToThousand(finalPrice);
 }
 
