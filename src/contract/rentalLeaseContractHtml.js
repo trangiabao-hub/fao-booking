@@ -4,6 +4,7 @@
  */
 import dayjs from "dayjs";
 import { formatVND } from "../utils/formatVND";
+import { PRINT_NEUTRAL_BODY, PRINT_NEUTRAL_MUTED } from "../utils/printInkNeutral";
 
 export const CONTRACT_BEN_A = {
   fullName: "Trần Phương Vy",
@@ -172,7 +173,7 @@ export const buildSingleContractPage = ({
 
 export const RENTAL_CONTRACT_PRINT_STYLE_BLOCK = `@page{size:A4;margin:10mm 14mm 12mm 14mm;}
 *{box-sizing:border-box;}
-body{font-family:"Times New Roman",Times,serif;font-size:12.8px;line-height:1.38;padding:0;margin:0;color:#000;display:flex;justify-content:center;}
+body{font-family:"Times New Roman",Times,serif;font-size:12.8px;line-height:1.38;padding:0;margin:0;color:${PRINT_NEUTRAL_BODY};display:flex;justify-content:center;}
 .contract-page{width:100%;max-width:190mm;margin:0 auto;padding:0 7mm;padding-top:12px;padding-bottom:8px;page-break-inside:auto;page-break-after:always;}
 .contract-page{position:relative;}
 .contract-page:last-child{page-break-after:auto;}
@@ -183,7 +184,7 @@ p{margin:0;}
   right:0;
   font-size:10.5px;
   line-height:1.2;
-  color:#666;
+  color:${PRINT_NEUTRAL_MUTED};
   font-weight:400;
   opacity:.95;
   padding:1px 0;
@@ -259,7 +260,11 @@ p{margin:0;}
 .signature-row{display:flex;justify-content:space-between;align-items:flex-start;margin-top:12px;gap:24px;}
 .signature-col{flex:1;min-width:0;text-align:center;}
 @media print{
-  body{padding:0;margin:0;font-size:13.9px;line-height:1.58;display:block;}
+  html,body{
+    -webkit-print-color-adjust:exact!important;
+    print-color-adjust:exact!important;
+  }
+  body{padding:0;margin:0;font-size:13.9px;line-height:1.58;display:block;color:${PRINT_NEUTRAL_BODY};}
   .contract-page{padding:0 7mm;padding-top:12px;padding-bottom:8px;}
   .customer-fixed{
     font-size:10px;
