@@ -478,6 +478,86 @@ function FailureCard() {
   );
 }
 
+/** Tiền đã về shop nhưng hệ thống không tạo được đơn (trùng slot / lỗi sau thanh toán). */
+function OrderCreationFailCard({ details }) {
+  const orderCode = details?.orderCode;
+  const amount = details?.amount;
+
+  const handleMessengerClick = async () => {
+    const lines = [
+      "Xin chào shop,",
+      "",
+      "Em thanh toán PayOS thành công nhưng hệ thống báo không tạo được đơn đặt máy.",
+      orderCode != null ? `Mã thanh toán (PayOS): ${orderCode}` : null,
+      amount != null ? `Số tiền: ${Number(amount).toLocaleString("vi-VN")} đ` : null,
+      "",
+      "Nhờ shop kiểm tra và hỗ trợ em sớm ạ.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(lines);
+    } catch {
+      /* ignore */
+    }
+    window.open(MESSENGER_LINK, "_blank");
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.5 }}
+      className="bg-white rounded-2xl border border-amber-200 shadow-lg shadow-amber-500/10 p-6 sm:p-8 text-center max-w-lg mx-auto"
+    >
+      <XCircleIcon className="w-16 h-16 text-amber-500 mx-auto" />
+      <h2 className="text-xl sm:text-2xl font-bold text-pink-900 mt-4">
+        Tạo đơn thất bại
+      </h2>
+      <p className="text-slate-700 mt-3 text-sm sm:text-base leading-relaxed">
+        Shop đã nhận được thanh toán của bạn, nhưng hệ thống{" "}
+        <strong>không tạo được đơn thuê</strong> (ví dụ khung giờ vừa có người đặt trước). Vui
+        lòng <strong>nhắn Fanpage / Messenger</strong> ngay để shop đối soát và hỗ trợ bạn — đừng
+        thanh toán lại thêm lần nữa.
+      </p>
+      {orderCode != null && (
+        <p className="mt-4 text-sm text-slate-600">
+          Mã thanh toán (PayOS):{" "}
+          <span className="font-mono font-bold text-pink-900 tabular-nums">{orderCode}</span>
+        </p>
+      )}
+      {amount != null && (
+        <p className="mt-1 text-sm text-slate-600">
+          Số tiền:{" "}
+          <span className="font-semibold">{Number(amount).toLocaleString("vi-VN")} đ</span>
+        </p>
+      )}
+      <div className="mt-6 space-y-3">
+        <button
+          type="button"
+          onClick={handleMessengerClick}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-[#0084FF] text-white font-bold text-sm sm:text-base shadow-md shadow-blue-500/25 hover:bg-[#006edc] transition-all active:scale-[0.98]"
+        >
+          <ChatBubbleLeftRightIcon className="w-5 h-5 shrink-0" />
+          Liên hệ Fanpage hỗ trợ ngay
+        </button>
+        <Link
+          to="/my-bookings"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#222] text-[#FF9FCA] font-semibold border border-[#222] hover:bg-[#333] transition-all"
+        >
+          Đơn của tôi
+        </Link>
+        <Link
+          to="/"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-100 text-slate-800 font-semibold border border-slate-200 hover:bg-slate-200 transition-all"
+        >
+          Về trang chủ
+        </Link>
+      </div>
+    </motion.div>
+  );
+}
+
 function LoadingState({ message }) {
   return (
     <div className="text-center py-20">
@@ -489,6 +569,18 @@ function LoadingState({ message }) {
       <p className="text-pink-700 font-medium mt-4">{message}</p>
     </div>
   );
+}
+
+const POLL_INTERVAL_MS = 2000;
+const POLL_MAX = 25;
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchPendingByOrderCode(orderCode) {
+  const pendingRes = await api.get(`/v1/bookings/booking/${orderCode}`);
+  return pendingRes.data;
 }
 
 export default function PaymentStatusPage() {
@@ -504,11 +596,42 @@ export default function PaymentStatusPage() {
 
       if (code === "00" && orderCode && paymentStatus === "PAID") {
         try {
-          const pendingRes = await api.get(`/v1/bookings/booking/${orderCode}`);
-          const pending = pendingRes.data;
+          let pending = await fetchPendingByOrderCode(orderCode);
 
-          // Nếu đã xử lý xong (DONE) và có orderIdNew → fetch theo orderIdNew
-          if (pending.orderIdNew && pending.status === "DONE") {
+          if (pending.status === "FAILED") {
+            setBookingDetails({
+              orderCode: pending.orderCode,
+              amount: pending.amount,
+            });
+            setStatus("order_creation_failed");
+            return;
+          }
+
+          let polls = 0;
+          while (pending.status === "CREATED" && polls < POLL_MAX) {
+            await sleep(POLL_INTERVAL_MS);
+            pending = await fetchPendingByOrderCode(orderCode);
+            polls += 1;
+            if (pending.status === "FAILED") {
+              setBookingDetails({
+                orderCode: pending.orderCode,
+                amount: pending.amount,
+              });
+              setStatus("order_creation_failed");
+              return;
+            }
+          }
+
+          if (pending.status === "FAILED") {
+            setBookingDetails({
+              orderCode: pending.orderCode,
+              amount: pending.amount,
+            });
+            setStatus("order_creation_failed");
+            return;
+          }
+
+          if (pending.status === "DONE" && pending.orderIdNew) {
             const bookingsRes = await api.get(`/v1/bookings/order/${pending.orderIdNew}`);
             const bookings = bookingsRes.data || [];
             if (bookings.length > 0) {
@@ -546,34 +669,38 @@ export default function PaymentStatusPage() {
               setStatus("success");
               return;
             }
-          }
-
-          // Fallback: parse payload (đơn lẻ hoặc webhook chưa chạy)
-          const payload = JSON.parse(pending.bookingPayloadJson || "{}");
-          const items = Array.isArray(payload) ? payload : [payload];
-          const firstItem = items[0];
-          if (!firstItem?.deviceId) {
-            setStatus("failed");
+            setBookingDetails({
+              orderCode: pending.orderCode,
+              amount: pending.amount,
+            });
+            setStatus("order_creation_failed");
             return;
           }
 
-          const deviceRes = await api.get(`/v1/devices/${firstItem.deviceId}`);
-          const deviceData = deviceRes.data;
-          const totalSum = items.reduce((s, i) => s + (i.total || 0), 0);
+          if (pending.status === "DONE" && !pending.orderIdNew) {
+            setBookingDetails({
+              orderCode: pending.orderCode,
+              amount: pending.amount,
+            });
+            setStatus("order_creation_failed");
+            return;
+          }
 
+          if (pending.status === "CREATED") {
+            setBookingDetails({
+              orderCode: Number(orderCode),
+              amount: pending.amount,
+            });
+            setStatus("order_creation_failed");
+            return;
+          }
+
+          /* Không còn nhánh “parse payload = thành công” khi PayOS báo PAID: tránh báo nhầm khi tiền đã về nhưng không có booking. */
           setBookingDetails({
-            orderCode: pending.orderCode,
-            orderIdNew: null,
-            bookingFrom: new Date(firstItem.bookingFrom),
-            bookingTo: new Date(firstItem.bookingTo),
-            total: totalSum,
-            device: {
-              name: deviceData?.name || "Thiết bị",
-              img: deviceData?.images?.[0] || FALLBACK_IMG,
-            },
+            orderCode: pending.orderCode ?? Number(orderCode),
+            amount: pending.amount,
           });
-          saveRecentOrder({ orderCode: pending.orderCode, orderIdNew: null });
-          setStatus("success");
+          setStatus("order_creation_failed");
         } catch (error) {
           console.error("Lỗi khi lấy chi tiết đơn hàng:", error);
           setStatus("failed");
@@ -594,6 +721,9 @@ export default function PaymentStatusPage() {
           <LoadingState message="Đang kiểm tra trạng thái thanh toán..." />
         )}
         {status === "success" && <SuccessCard details={bookingDetails} />}
+        {status === "order_creation_failed" && (
+          <OrderCreationFailCard details={bookingDetails} />
+        )}
         {status === "failed" && <FailureCard />}
       </div>
 
