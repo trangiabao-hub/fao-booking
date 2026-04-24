@@ -39,6 +39,7 @@ import {
 import { formatPriceK } from "../../utils/bookingHelpers";
 import { BRANCHES } from "../../data/bookingConstants";
 import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
+import { findClientCatalogAvailabilitySuggestion } from "../../utils/catalogAvailabilitySuggestion";
 import { formatTimeVi, formatTimeViFromString } from "../../utils/formatTimeVi";
 import {
   getStrictestReleaseDate,
@@ -355,9 +356,11 @@ function ChicCard({
   const discountedDisplayLabel =
     pricing?.durationType === "ONE_DAY"
       ? `${savingLabel ? "Chỉ còn " : ""}${discountedLabel} / ${billableDays} ngày`
-      : savingLabel
-        ? `Chỉ còn ${discountedLabel}`
-        : discountedLabel;
+      : pricing?.durationType === "SIX_HOURS"
+        ? `${savingLabel ? "Chỉ còn " : ""}${discountedLabel} / 6 tiếng`
+        : savingLabel
+          ? `Chỉ còn ${discountedLabel}`
+          : discountedLabel;
   const isHot = device.bookingCount > 5 || device.priceOneDay >= 400000;
   const isAvailable = device.isAvailable !== false;
   const blockedBeforeRelease = device.blockedBeforeRelease === true;
@@ -365,7 +368,16 @@ function ChicCard({
     ? parseDeviceReleaseDate(device)
     : null;
   const suggestedSlot = device.availabilitySuggestion || null;
-  const hasSuggestedSlot = !isAvailable && !!suggestedSlot;
+  const hasSixHourChoices =
+    Array.isArray(suggestedSlot?.sixHourChoices) &&
+    suggestedSlot.sixHourChoices.length > 0;
+  const hasSingleTimeSuggestion =
+    !!suggestedSlot &&
+    !hasSixHourChoices &&
+    !!suggestedSlot.fromDateTime &&
+    !!suggestedSlot.toDateTime;
+  const hasSuggestedSlot =
+    !isAvailable && !!(hasSixHourChoices || hasSingleTimeSuggestion);
 
   const handleQuickBook = (e) => {
     e.stopPropagation();
@@ -376,7 +388,15 @@ function ChicCard({
   const handleSuggestedQuickBook = (e) => {
     e.stopPropagation();
     if (!hasSuggestedSlot) return;
+    if (hasSixHourChoices) return;
     onSuggestedQuickBook?.(device);
+  };
+
+  const handleSixHourChoice = (e, key) => {
+    e.stopPropagation();
+    if (!isAvailable && hasSixHourChoices) {
+      onSuggestedQuickBook?.(device, key);
+    }
   };
 
   const handleToggleSelect = (e) => {
@@ -480,17 +500,35 @@ function ChicCard({
                   <div className="flex items-center gap-1.5 mb-1.5">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-[11px] font-black text-emerald-700 uppercase tracking-wider">
-                      Gợi ý dời lịch
+                      {hasSixHourChoices ? "Gói 6 tiếng" : "Gợi ý dời lịch"}
                     </span>
                   </div>
                   <div className="text-[11px] font-bold text-emerald-900 leading-tight">
-                    Máy sẽ trống nếu bạn đổi thành:
-                    <div className="mt-1 text-[#E85C9C] bg-white px-2 py-1 rounded-md border border-emerald-100 shadow-sm inline-block">
-                      {formatTimeVi(suggestedSlot.fromDateTime)}{" "}
-                      {format(suggestedSlot.fromDateTime, "dd/MM")} —{" "}
-                      {formatTimeVi(suggestedSlot.toDateTime)}{" "}
-                      {format(suggestedSlot.toDateTime, "dd/MM")}
-                    </div>
+                    {hasSixHourChoices ? (
+                      <>
+                        Ngày{" "}
+                        <span className="text-[#E85C9C]">
+                          {suggestedSlot.sixHourLabelDay
+                            ? format(suggestedSlot.sixHourLabelDay, "dd/MM")
+                            : format(
+                                suggestedSlot.sixHourChoices[0].fromDateTime,
+                                "dd/MM",
+                              )}
+                        </span>{" "}
+                        — còn slot 6 tiếng trống (ưu tiên ngày có phần thuê dài
+                        nhất trong lịch của bạn).
+                      </>
+                    ) : (
+                      <>
+                        Máy sẽ trống nếu bạn đổi thành:
+                        <div className="mt-1 text-[#E85C9C] bg-white px-2 py-1 rounded-md border border-emerald-100 shadow-sm inline-block">
+                          {formatTimeVi(suggestedSlot.fromDateTime)}{" "}
+                          {format(suggestedSlot.fromDateTime, "dd/MM")} —{" "}
+                          {formatTimeVi(suggestedSlot.toDateTime)}{" "}
+                          {format(suggestedSlot.toDateTime, "dd/MM")}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : blockedBeforeRelease && releaseDay ? (
@@ -567,6 +605,21 @@ function ChicCard({
               </span>
               .
             </p>
+          ) : !isAvailable && hasSixHourChoices ? (
+            <div className="mt-3 flex flex-col gap-2">
+              {suggestedSlot.sixHourChoices.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={(e) => handleSixHourChoice(e, c.key)}
+                  className="w-full py-2.5 text-[11px] font-bold rounded-lg uppercase tracking-wider transition-all bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[0.98] shadow-md"
+                >
+                  {c.key === "morning"
+                    ? "Thuê 6 tiếng sáng (9h–15h)"
+                    : "Thuê 6 tiếng tối (15h–21h)"}
+                </button>
+              ))}
+            </div>
           ) : (
             <button
               onClick={
@@ -1123,11 +1176,66 @@ export default function DeviceCatalogPage() {
     setShowQuickBookModal(true);
   };
 
-  const handleSuggestedQuickBook = (device) => {
+  const handleSuggestedQuickBook = (device, sixChoiceKey) => {
     const suggestion = device?.availabilitySuggestion;
     if (!suggestion) return;
 
     setAvailabilityPrefs((prev) => {
+      if (suggestion.switchToSixHours && suggestion.sixHourChoices?.length) {
+        const choice = sixChoiceKey
+          ? suggestion.sixHourChoices.find((c) => c.key === sixChoiceKey)
+          : suggestion.sixHourChoices[0];
+        if (!choice) return prev;
+        const day = normalizeDate(choice.fromDateTime);
+        const nextPickupType =
+          choice.timeFrom === MORNING_PICKUP_TIME
+            ? "MORNING"
+            : choice.timeFrom === SIX_HOUR_SECOND_PICKUP_TIME
+              ? "AFTERNOON"
+              : "EVENING";
+        return {
+          ...prev,
+          durationType: "SIX_HOURS",
+          date: day,
+          endDate: day,
+          timeFrom: choice.timeFrom,
+          timeTo: choice.timeTo,
+          pickupType: nextPickupType,
+          pickupSlot:
+            nextPickupType === "EVENING" || nextPickupType === "AFTERNOON"
+              ? choice.timeFrom
+              : DEFAULT_EVENING_SLOT,
+        };
+      }
+
+      if (
+        suggestion.switchToSixHours &&
+        !suggestion.sixHourChoices?.length &&
+        suggestion.fromDateTime &&
+        suggestion.toDateTime
+      ) {
+        const day = normalizeDate(suggestion.fromDateTime);
+        const nextPickupType =
+          suggestion.timeFrom === MORNING_PICKUP_TIME
+            ? "MORNING"
+            : suggestion.timeFrom === SIX_HOUR_SECOND_PICKUP_TIME
+              ? "AFTERNOON"
+              : "EVENING";
+        return {
+          ...prev,
+          durationType: "SIX_HOURS",
+          date: day,
+          endDate: day,
+          timeFrom: suggestion.timeFrom,
+          timeTo: suggestion.timeTo,
+          pickupType: nextPickupType,
+          pickupSlot:
+            nextPickupType === "EVENING" || nextPickupType === "AFTERNOON"
+              ? suggestion.timeFrom
+              : DEFAULT_EVENING_SLOT,
+        };
+      }
+
       const nextDate = normalizeDate(suggestion.fromDateTime);
       const nextEndDate = normalizeDate(suggestion.toDateTime);
       const nextPickupType =
@@ -1156,7 +1264,14 @@ export default function DeviceCatalogPage() {
       };
     });
 
-    trackCatalogBookClick(device, "quick_suggested");
+    trackCatalogBookClick(
+      device,
+      suggestion.switchToSixHours && suggestion.sixHourChoices?.length
+        ? sixChoiceKey === "evening"
+          ? "quick_suggested_six_evening"
+          : "quick_suggested_six_morning"
+        : "quick_suggested",
+    );
     setQuickBookDevice(device);
     setQuickBookDevices([device]);
     setShowQuickBookModal(true);
@@ -1427,10 +1542,21 @@ export default function DeviceCatalogPage() {
         }
       }
 
-      const availabilitySuggestion =
+      const clientAvailabilitySuggestion =
         availabilityConfirmed &&
         !blockedBeforeRelease &&
-        availabilityPrefs.durationType !== "SIX_HOURS" &&
+        availabilityPrefs.durationType === "ONE_DAY" &&
+        !isAvailable
+          ? findClientCatalogAvailabilitySuggestion(
+              group.map((g) => g.device),
+              availabilityPrefs,
+            )
+          : null;
+
+      const apiAvailabilitySuggestion =
+        availabilityConfirmed &&
+        !blockedBeforeRelease &&
+        availabilityPrefs.durationType === "ONE_DAY" &&
         !isAvailable &&
         modelAvailabilityInfo?.suggestedFrom &&
         modelAvailabilityInfo?.suggestedTo
@@ -1446,8 +1572,12 @@ export default function DeviceCatalogPage() {
                 "HH:mm",
               ),
               suggestedDeviceId: modelAvailabilityInfo.suggestedDeviceId,
+              switchToSixHours: false,
             }
           : null;
+
+      const availabilitySuggestion =
+        clientAvailabilitySuggestion || apiAvailabilitySuggestion;
 
       const sortedGroup = [...group].sort((a, b) => {
         const indexA = getDeviceNameIndex(a.device.name);
@@ -1461,7 +1591,10 @@ export default function DeviceCatalogPage() {
         return String(a.device.id).localeCompare(String(b.device.id));
       });
 
-      const preferredDeviceId = modelAvailabilityInfo?.suggestedDeviceId;
+      const preferredDeviceId =
+        availabilitySuggestion?.sixHourChoices?.[0]?.suggestedDeviceId ??
+        availabilitySuggestion?.suggestedDeviceId ??
+        modelAvailabilityInfo?.suggestedDeviceId;
       const rep =
         sortedGroup.find((g) => g.device.id === preferredDeviceId) ||
         sortedGroup.find((g) => g.isAvailable) ||
@@ -1653,6 +1786,87 @@ export default function DeviceCatalogPage() {
 
   const getDevicePricing = useCallback(
     (device) => {
+      const sug = device?.availabilitySuggestion;
+      if (
+        pricingContext.durationType === "ONE_DAY" &&
+        sug?.switchToSixHours &&
+        Array.isArray(sug.sixHourChoices) &&
+        sug.sixHourChoices.length > 0
+      ) {
+        const rawSix =
+          device.priceSixHours ||
+          (device.priceOneDay ? Math.round(device.priceOneDay / 2) : 0);
+        const baseOriginal = roundDownToThousand(rawSix || 0);
+        if (baseOriginal <= 0) {
+          return {
+            original: 0,
+            discounted: 0,
+            durationType: "SIX_HOURS",
+            billableDays: 0,
+          };
+        }
+        let bestOriginal = baseOriginal;
+        let bestDiscounted = baseOriginal;
+        for (const ch of sug.sixHourChoices) {
+          const b = computeDiscountBreakdown(
+            baseOriginal,
+            ch.fromDateTime,
+            ch.toDateTime,
+          );
+          const disc = b?.discounted ?? baseOriginal;
+          const orig = b?.original ?? baseOriginal;
+          if (disc < bestDiscounted) {
+            bestDiscounted = disc;
+            bestOriginal = orig;
+          }
+        }
+        return {
+          original: bestOriginal,
+          discounted: bestDiscounted,
+          durationType: "SIX_HOURS",
+          billableDays: 0,
+        };
+      }
+
+      if (
+        pricingContext.durationType === "ONE_DAY" &&
+        sug?.switchToSixHours &&
+        sug.fromDateTime &&
+        sug.toDateTime
+      ) {
+        const rawSix =
+          device.priceSixHours ||
+          (device.priceOneDay ? Math.round(device.priceOneDay / 2) : 0);
+        const baseOriginal = roundDownToThousand(rawSix || 0);
+        if (baseOriginal <= 0) {
+          return {
+            original: 0,
+            discounted: 0,
+            durationType: "SIX_HOURS",
+            billableDays: 0,
+          };
+        }
+        const b = computeDiscountBreakdown(
+          baseOriginal,
+          sug.fromDateTime,
+          sug.toDateTime,
+        );
+        if (!b) {
+          return {
+            original: baseOriginal,
+            discounted: baseOriginal,
+            durationType: "SIX_HOURS",
+            billableDays: 0,
+          };
+        }
+        return {
+          original: b.original,
+          discounted: b.discounted,
+          durationType: "SIX_HOURS",
+          billableDays: 0,
+        };
+      }
+
       const { durationType, fromDateTime, toDateTime } = pricingContext;
       const billableDays =
         durationType === "ONE_DAY"
