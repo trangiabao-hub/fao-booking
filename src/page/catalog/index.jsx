@@ -1113,6 +1113,8 @@ export default function DeviceCatalogPage() {
   const [quickBookDevices, setQuickBookDevices] = useState([]); // Đơn nhiều món
   const [showQuickBookModal, setShowQuickBookModal] = useState(false);
   const [deviceBookingsById, setDeviceBookingsById] = useState({});
+  /** Toàn bộ booking theo từng máy (theo khoảng API); dùng khi gợi ý slot 6h — không chỉ lọc theo khung ONE_DAY khách chọn. */
+  const [deviceRawBookingsById, setDeviceRawBookingsById] = useState({});
 
   /** Giỏ hàng: mỗi dòng = một modelKey + số lượng máy vật lý */
   const [cartLines, setCartLines] = useState([]);
@@ -1429,8 +1431,10 @@ export default function DeviceCatalogPage() {
         const data = bookingResp.data || [];
         const busySet = new Set();
         const bookingMap = {};
+        const rawBookingMap = {};
         data.forEach((d) => {
           const raw = Array.isArray(d.bookingDtos) ? d.bookingDtos : [];
+          rawBookingMap[d.id] = raw;
           const overlapping = filterBookingsOverlappingSlot(
             raw,
             fromDateTime,
@@ -1443,12 +1447,14 @@ export default function DeviceCatalogPage() {
         });
         setBusyDeviceIds(Array.from(busySet));
         setDeviceBookingsById(bookingMap);
+        setDeviceRawBookingsById(rawBookingMap);
         setModelAvailabilitySuggestions(suggestionResp.data || {});
       } catch (err) {
         console.error("Failed to fetch availability:", err);
         if (!silent) {
           setBusyDeviceIds([]);
           setDeviceBookingsById({});
+          setDeviceRawBookingsById({});
           setModelAvailabilitySuggestions({});
         }
       } finally {
@@ -1548,7 +1554,12 @@ export default function DeviceCatalogPage() {
         availabilityPrefs.durationType === "ONE_DAY" &&
         !isAvailable
           ? findClientCatalogAvailabilitySuggestion(
-              group.map((g) => g.device),
+              group.map((g) => {
+                const raw = deviceRawBookingsById[g.device.id];
+                const bookingDtos =
+                  raw !== undefined ? raw : g.device.bookingDtos || [];
+                return { ...g.device, bookingDtos };
+              }),
               availabilityPrefs,
             )
           : null;
@@ -1633,6 +1644,7 @@ export default function DeviceCatalogPage() {
     availabilityConfirmed,
     availabilityPrefs,
     deviceBookingsById,
+    deviceRawBookingsById,
   ]);
 
   const processedByModelKey = useMemo(() => {

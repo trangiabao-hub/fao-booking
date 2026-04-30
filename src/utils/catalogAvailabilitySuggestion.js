@@ -80,7 +80,11 @@ function daysSortedByRentalOverlapDesc(rentFrom, rentTo) {
     days.push(new Date(d));
     d = addDays(d, 1);
   }
-  return days.sort((dayA, dayB) => {
+  // Bỏ ngày không thực sự nằm trong khung thuê (tránh gợi ý 6h “ngoài” lịch).
+  const withOverlap = days.filter(
+    (day) => rentalOverlapMsOnCalendarDay(rentFrom, rentTo, day) > 0,
+  );
+  return withOverlap.sort((dayA, dayB) => {
     const ma = rentalOverlapMsOnCalendarDay(rentFrom, rentTo, dayA);
     const mb = rentalOverlapMsOnCalendarDay(rentFrom, rentTo, dayB);
     if (mb !== ma) return mb - ma;
@@ -158,6 +162,10 @@ export function findClientCatalogAvailabilitySuggestion(devices, prefs) {
     computeAvailabilityRange(prefs);
   const rangeErr = getAvailabilityRangeError(prefs, rentFrom, rentTo);
   if (!rangeErr && rentFrom && rentTo) {
+    const rentDurationMs = rentTo.getTime() - rentFrom.getTime();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    if (rentDurationMs > oneDayMs) return null;
+
     const sortedDays = daysSortedByRentalOverlapDesc(rentFrom, rentTo);
     for (const day of sortedDays) {
       const choices = buildSixHourChoicesForDay(devices, prefs, day);
