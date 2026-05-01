@@ -70,8 +70,6 @@ const TET_BASE_DATE = new Date(2026, 1, 12); // Mùng 1 Tết
 const TET_START_OFFSET = -6; // 25 Tết
 const TET_END_OFFSET = 9; // Mùng 10
 
-const FIRST_ORDER_VOUCHER_RATE = 0.3;
-const FIRST_ORDER_VOUCHER_CAP = 200000;
 const POINT_TO_VND = 1000;
 
 /** Một voucher shop mỗi đơn — style chọn giống Shopee */
@@ -88,12 +86,6 @@ const BOOKING_VOUCHER_OPTIONS = [
     title: "Giảm 20% ngày trong tuần",
     subtitle:
       "Theo từng ngày lịch (T2–T6, trừ lễ); slot tối/sáng như catalog — không phải 20% cả đơn",
-  },
-  {
-    id: "FIRST30",
-    percentBadge: "30%",
-    title: "Giảm 30% đơn đầu tiên",
-    subtitle: "Tối đa 200.000đ • Thành viên, đơn đầu",
   },
 ];
 
@@ -300,8 +292,6 @@ function useBookingPricing(
   timeTo,
   durationId,
   selectedVoucherId,
-  firstOrderPromoEligible,
-  hasSession,
   pointsToRedeem,
 ) {
   return useMemo(() => {
@@ -413,19 +403,6 @@ function useBookingPricing(
         voucherHint =
           "Không có ngày được giảm trong lịch (T7/CN/ngày lễ hoặc cách tính ngày theo slot tối/sáng) — mã không trừ tiền.";
       }
-    } else if (selectedVoucherId === "FIRST30") {
-      if (firstOrderPromoEligible) {
-        voucherDiscount = Math.min(
-          Math.round(subTotal * FIRST_ORDER_VOUCHER_RATE),
-          FIRST_ORDER_VOUCHER_CAP,
-        );
-          voucherLabel = "Giảm 30% đơn đầu (tối đa 200k)";
-      } else if (!hasSession) {
-        voucherHint =
-          "Đăng nhập thành viên — voucher dành cho đơn thuê đầu tiên.";
-      } else {
-        voucherHint = "Voucher chỉ áp dụng cho đơn thuê đầu tiên của tài khoản.";
-      }
     }
 
     const totalAfterVoucher = Math.max(0, subTotal - voucherDiscount);
@@ -457,20 +434,13 @@ function useBookingPricing(
     timeTo,
     durationId,
     selectedVoucherId,
-    firstOrderPromoEligible,
-    hasSession,
     pointsToRedeem,
   ]);
 }
 
 /* ===================== UI Components ===================== */
 
-function ShopeeVoucherStrip({
-  value,
-  onChange,
-  firstOrderBlocked,
-  hasSession,
-}) {
+function ShopeeVoucherStrip({ value, onChange }) {
   return (
     <div className="rounded-2xl border border-[#ffeee8] bg-white shadow-[0_2px_12px_rgba(238,77,45,0.08)] overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 bg-gradient-to-r from-[#fff5f0] to-white border-b border-[#ffe4d6]">
@@ -486,7 +456,7 @@ function ShopeeVoucherStrip({
       <div className="flex gap-2.5 overflow-x-auto px-3 py-3 snap-x snap-mandatory scrollbar-thin pb-1">
         {BOOKING_VOUCHER_OPTIONS.map((v) => {
           const active = value === v.id;
-          const disabled = v.id === "FIRST30" && firstOrderBlocked;
+          const disabled = false;
 
           return (
             <button
@@ -534,11 +504,6 @@ function ShopeeVoucherStrip({
                   <p className="text-[10px] text-[#888] mt-0.5 line-clamp-2 leading-snug">
                     {v.subtitle}
                   </p>
-                  {v.id === "FIRST30" && !hasSession && (
-                    <p className="text-[9px] text-[#ee4d2d] font-semibold mt-1">
-                      Cần đăng nhập
-                    </p>
-                  )}
                 </div>
                 <div className="flex items-center pr-2 shrink-0">
                   <div
@@ -792,7 +757,7 @@ function Summary({
         )}
         {!hasSession && (
           <div className="mb-2 rounded-lg border border-dashed border-[#F5D9E7] bg-white px-3 py-2 text-xs text-[#7C5A69]">
-            Đăng nhập thành viên để dùng điểm và voucher đơn đầu tiên.
+            Đăng nhập thành viên để dùng điểm và voucher ưu đãi.
           </div>
         )}
         {pointDiscount > 0 && (
@@ -1216,18 +1181,7 @@ export default function BookingPage() {
   }, [prefsForRange, t1, t2]);
 
   /* ==== Pricing ==== */
-  const isFirstOrderPromoEligible =
-    hasSession && !isMemberLoading && memberBookingsCount === 0;
   const availablePoints = Math.max(0, Number(memberAccount?.point || 0));
-
-  const firstOrderVoucherBlocked =
-    hasSession && !isMemberLoading && memberBookingsCount > 0;
-
-  useEffect(() => {
-    if (selectedVoucherId === "FIRST30" && firstOrderVoucherBlocked) {
-      setSelectedVoucherId("WEEKDAY20");
-    }
-  }, [selectedVoucherId, firstOrderVoucherBlocked]);
 
   const {
     days,
@@ -1247,8 +1201,6 @@ export default function BookingPage() {
     timeTo,
     durationOptionId,
     selectedVoucherId,
-    isFirstOrderPromoEligible,
-    hasSession,
     pointsToRedeem,
   );
   const maxRedeemablePoints = Math.min(
@@ -1465,9 +1417,6 @@ export default function BookingPage() {
           voucherDiscount > 0 && selectedVoucherId === "WEEKDAY20"
             ? "WEEKDAY_20_PCT"
             : null,
-          voucherDiscount > 0 && selectedVoucherId === "FIRST30"
-            ? "FIRST_ORDER_30_MAX200K"
-            : null,
           pointDiscount > 0 ? `POINT_${pointsToRedeem}` : null,
         ]
           .filter(Boolean)
@@ -1668,8 +1617,6 @@ export default function BookingPage() {
               <ShopeeVoucherStrip
                 value={selectedVoucherId}
                 onChange={setSelectedVoucherId}
-                firstOrderBlocked={firstOrderVoucherBlocked}
-                hasSession={hasSession}
               />
             </div>
 

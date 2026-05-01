@@ -55,16 +55,13 @@ import {
 
 /** Đồng bộ fao-booking với trang /booking và fao (noteVoucher). */
 function buildQuickBookNoteVoucher({
-  isFirstOrderVoucherSelected,
   price,
   t1,
   t2,
   pointToUse,
 }) {
   const parts = [];
-  if (isFirstOrderVoucherSelected) {
-    parts.push("FIRST_ORDER_30_MAX200K");
-  } else if (price > 0 && t1 && t2) {
+  if (price > 0 && t1 && t2) {
     const b = computeDiscountBreakdown(price, t1, t2);
     if (b && b.discount > 0) {
       parts.push("WEEKDAY_20_PCT");
@@ -91,8 +88,7 @@ import BookingPrefsForm, {
   formatPickupReturnSummary,
 } from "./BookingPrefsForm";
 
-const FIRST_ORDER_DISCOUNT_RATE = 0.3;
-const FIRST_ORDER_DISCOUNT_CAP = 200000;
+const AFTERNOON_PICKUP_TIME = "15:00";
 
 /** Giống catalog: local datetime không hậu tố Z — backend parse LocalDateTime. */
 function formatLocalDateTimeForDeviceApi(date) {
@@ -218,6 +214,12 @@ function extractApiErrorMessage(error, fallback = "Có lỗi xảy ra") {
   return error?.message || fallback;
 }
 
+function inferOneDayPickupType(timeFrom) {
+  if (timeFrom === MORNING_PICKUP_TIME) return "MORNING";
+  if (timeFrom === AFTERNOON_PICKUP_TIME) return "AFTERNOON";
+  return "EVENING";
+}
+
 async function resolveGuestCustomerId(customer) {
   const payload = {
     fullName: customer.fullName || null,
@@ -281,6 +283,14 @@ function allocateDiscountByRatio(amounts, discount) {
     pointer += 1;
   }
   return distributed;
+}
+
+function formatChargeableDaysLabel(days) {
+  if (!days || days < 1) return "Gói 6h";
+  const normalized = Number(days);
+  return Number.isInteger(normalized)
+    ? `${normalized} ngày`
+    : `${normalized.toFixed(1)} ngày`;
 }
 
 export default function QuickBookModal({
@@ -453,7 +463,7 @@ export default function QuickBookModal({
   const [hasGoogleSession, setHasGoogleSession] = useState(
     () => !!loadCustomerSession()?.token,
   );
-  const [memberBookingsCount, setMemberBookingsCount] = useState(0);
+  const [_memberBookingsCount, setMemberBookingsCount] = useState(0);
   const [memberTotalSpent, setMemberTotalSpent] = useState(0);
   const [memberPoint, setMemberPoint] = useState(0);
   const [pointToUse, setPointToUse] = useState(0);
@@ -557,6 +567,36 @@ export default function QuickBookModal({
     pickupSlot,
     isOpen,
     hasInitialPrefs,
+  ]);
+
+  // Defensive normalize: ONE_DAY must return at the same clock time as pickup.
+  // This also protects flows that jump straight to step 2 (bypassing BookingPrefsForm step 1).
+  useEffect(() => {
+    if (!isOpen || selectedDuration !== "ONE_DAY" || !sixHourTimeFrom) return;
+
+    if (sixHourTimeTo !== sixHourTimeFrom) {
+      setSixHourTimeTo(sixHourTimeFrom);
+    }
+
+    const expectedPickupType = inferOneDayPickupType(sixHourTimeFrom);
+    if (pickupType !== expectedPickupType) {
+      setPickupType(expectedPickupType);
+    }
+
+    const expectedPickupSlot =
+      expectedPickupType === "EVENING" || expectedPickupType === "AFTERNOON"
+        ? sixHourTimeFrom
+        : DEFAULT_EVENING_SLOT;
+    if (pickupSlot !== expectedPickupSlot) {
+      setPickupSlot(expectedPickupSlot);
+    }
+  }, [
+    isOpen,
+    selectedDuration,
+    sixHourTimeFrom,
+    sixHourTimeTo,
+    pickupType,
+    pickupSlot,
   ]);
 
   // Compute time range via BookingPrefsForm's model
@@ -986,34 +1026,9 @@ export default function QuickBookModal({
       !socialLinkError
     );
   }, [fullNameError, phoneError, gmailError, socialLinkError]);
-  const isFirstOrderPromoEligible = useMemo(() => {
-    return (
-      checkoutMode === "GOOGLE" &&
-      hasGoogleSession &&
-      !isMemberDataLoading &&
-      memberBookingsCount === 0
-    );
-  }, [
-    checkoutMode,
-    hasGoogleSession,
-    isMemberDataLoading,
-    memberBookingsCount,
-  ]);
   const firstOrderDiscount = useMemo(() => {
-    if (!isFirstOrderPromoEligible) return 0;
-    return Math.min(
-      Math.round((price || 0) * FIRST_ORDER_DISCOUNT_RATE),
-      FIRST_ORDER_DISCOUNT_CAP,
-    );
-  }, [isFirstOrderPromoEligible, price]);
-  const firstOrderPreviewDiscount = useMemo(
-    () =>
-      Math.min(
-        Math.round((price || 0) * FIRST_ORDER_DISCOUNT_RATE),
-        FIRST_ORDER_DISCOUNT_CAP,
-      ),
-    [price],
-  );
+    return 0;
+  }, []);
   const basePromotionDiscount = useMemo(
     () => Math.max(0, Math.round((price || 0) - (discountedTotal || 0))),
     [price, discountedTotal],
@@ -1080,13 +1095,8 @@ export default function QuickBookModal({
     return `50.000đ = ${n} điểm theo hạng`;
   }, [hasGoogleSession, memberTotalSpent]);
   const discountedLabel = formatPriceK(payableTotal);
-  const selectedDiscountAmount = isFirstOrderVoucherSelected
-    ? firstOrderDiscount
-    : basePromotionDiscount;
-  const selectedDiscountLabel =
-    isFirstOrderVoucherSelected && selectedDiscountAmount > 0
-      ? "Voucher đơn đầu -30% (tối đa 200k)"
-      : priceBreakdown?.discountLabel || "Khuyến mãi";
+  const selectedDiscountAmount = basePromotionDiscount;
+  const selectedDiscountLabel = priceBreakdown?.discountLabel || "Khuyến mãi";
   const isLoggedInUser = hasGoogleSession;
   const shouldShowContactForm =
     checkoutMode === "GUEST" || (checkoutMode === "GOOGLE" && hasGoogleSession);
@@ -1191,7 +1201,6 @@ export default function QuickBookModal({
         `${normalizedCustomer.fullName} ${phone} ${branchLabel}`.slice(0, 80);
 
       const noteVoucherForRequests = buildQuickBookNoteVoucher({
-        isFirstOrderVoucherSelected,
         price,
         t1,
         t2,
@@ -1623,7 +1632,7 @@ export default function QuickBookModal({
                           >
                             Giảm ngay
                             <span className="ml-1 text-sm sm:text-base font-extrabold">
-                              {formatPriceK(firstOrderPreviewDiscount)}
+                              {formatPriceK(basePromotionDiscount)}
                             </span>
                           </span>
                           <div
@@ -1661,7 +1670,7 @@ export default function QuickBookModal({
                             : "text-[#444]"
                         }`}
                       >
-                        Ưu đãi tốt hơn khi đăng nhập
+                        Đăng nhập để dùng điểm thành viên
                       </div>
 
                       <div
@@ -1671,7 +1680,7 @@ export default function QuickBookModal({
                             : "text-[#777]"
                         }`}
                       >
-                        Áp dụng ưu đãi tài khoản Google khi đủ điều kiện
+                        Lưu lịch sử thuê và đổi điểm nhanh hơn
                       </div>
                     </button>
 
@@ -1773,10 +1782,7 @@ export default function QuickBookModal({
                         "Đang đăng nhập..."
                       ) : (
                         <>
-                          Đăng nhập Google mở ưu đãi đến{" "}
-                          <span className="text-base sm:text-lg text-[#D61F7A]">
-                            {formatPriceK(firstOrderPreviewDiscount)}
-                          </span>
+                          Đăng nhập Google để dùng điểm thành viên
                         </>
                       )}
                     </button>
@@ -1785,21 +1791,11 @@ export default function QuickBookModal({
 
                 {checkoutMode === "GOOGLE" &&
                   hasGoogleSession &&
-                  (isMemberDataLoading || isFirstOrderPromoEligible) && (
+                  isMemberDataLoading && (
                     <div
-                      className={`rounded-2xl border px-3 py-3 text-sm font-medium ${
-                        isMemberDataLoading
-                          ? "border-slate-200 bg-slate-50 text-slate-500"
-                          : isFirstOrderPromoEligible
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : "border-amber-200 bg-amber-50 text-amber-700"
-                      }`}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-500"
                     >
-                      {isMemberDataLoading
-                        ? "Đang kiểm tra ưu đãi tài khoản..."
-                        : isFirstOrderPromoEligible
-                          ? `🎉 Tài khoản đủ điều kiện ưu đãi đơn đầu • Ước tính giảm ${firstOrderPreviewDiscount.toLocaleString("vi-VN")}đ`
-                          : ""}
+                      Đang tải dữ liệu thành viên...
                     </div>
                   )}
 
@@ -2040,8 +2036,7 @@ export default function QuickBookModal({
                             fullDays > 3
                               ? formatPriceBreakdown(dev, fullDays)
                               : null;
-                          const daysLabel =
-                            days >= 1 ? `${Math.round(days)} ngày` : "Gói 6h";
+                          const daysLabel = formatChargeableDaysLabel(days);
                           return (
                             <div
                               key={dev.id}
@@ -2081,9 +2076,7 @@ export default function QuickBookModal({
                                 : null;
                             const base0 = r0?.price || 0;
                             const daysLabel =
-                              chargeableDays >= 1
-                                ? `${Math.round(chargeableDays)} ngày`
-                                : "Gói 6h";
+                              formatChargeableDaysLabel(chargeableDays);
                             return (
                               <p className="text-[12px] text-stone-500 mt-1 leading-relaxed">
                                 {breakdown ||

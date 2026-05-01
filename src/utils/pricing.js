@@ -313,12 +313,6 @@ export function calculateFinalPrice(basePrice, rentalPeriod, voucher) {
       case "50_PERCENT":
         finalPrice = basePrice * 0.5;
         break;
-      case "FIRST_ORDER_30_WEB": {
-        const cap = 200000;
-        const discount = Math.min(Math.round(basePrice * 0.3), cap);
-        finalPrice = Math.max(0, basePrice - discount);
-        break;
-      }
       case "20_PERCENT_WEEKDAY":
       case "50_PERCENT_WEEKDAY": {
         if (durationHours < 23) {
@@ -342,14 +336,6 @@ export function calculateFinalPrice(basePrice, rentalPeriod, voucher) {
       default:
         finalPrice = basePrice;
     }
-  }
-
-  // Đồng bộ fao manage: đơn đầu web luôn giới hạn tổng giảm ≤ min(30% giá gốc, 200k), kể cả combo Tết.
-  if (voucher === "FIRST_ORDER_30_WEB") {
-    const firstOrderCap = 200000;
-    const maxDiscount = Math.min(Math.round(basePrice * 0.3), firstOrderCap);
-    const floorPrice = Math.max(0, basePrice - maxDiscount);
-    finalPrice = Math.max(finalPrice, floorPrice);
   }
 
   return roundDownToThousand(finalPrice);
