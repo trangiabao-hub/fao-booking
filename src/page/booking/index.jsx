@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { format, addDays, isSameDay } from "date-fns";
+import { format, addDays, isSameDay, isValid } from "date-fns";
 import { useSearchParams, Link, useNavigate, useMatch } from "react-router-dom";
 import vi from "date-fns/locale/vi";
 
@@ -35,7 +35,13 @@ import {
   DEFAULT_EVENING_SLOT,
   EVENING_SLOTS,
   SIX_HOUR_MAX_HOURS,
+  isBranchBookable,
+  Q9_BOOKING_OPENS_DATE,
 } from "../../data/bookingConstants";
+import {
+  devicesForBookingBranch,
+  normalizeDevicesListResponse,
+} from "../../utils/deviceBranch";
 import { formatTimeVi } from "../../utils/formatTimeVi";
 import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
 import {
@@ -48,6 +54,8 @@ import {
   getSlotButtonClasses,
   formatDateForAPIPayload,
   computeDiscountBreakdown,
+  computeQ9BranchFlatDiscountVnd,
+  Q9_BRANCH_VOUCHER_ID,
 } from "../../utils/bookingHelpers";
 import {
   computeEarnedPoints,
@@ -86,6 +94,12 @@ const BOOKING_VOUCHER_OPTIONS = [
     title: "Giảm 20% ngày trong tuần",
     subtitle:
       "Theo từng ngày lịch (T2–T6, trừ lễ); slot tối/sáng như catalog — không phải 20% cả đơn",
+  },
+  {
+    id: Q9_BRANCH_VOUCHER_ID,
+    percentBadge: "30%",
+    title: "Giảm sốc mừng khai trương",
+    subtitle: "Giảm 30%, tối đa 200k — nhận/trả tại FAO Q9 (Thủ Đức)",
   },
 ];
 
@@ -151,7 +165,7 @@ async function resolveGuestCustomerId(customer) {
 }
 
 function formatDateTimeLocalForAPI(date) {
-  if (!date) return null;
+  if (!date || !isValid(date)) return null;
   return format(date, "yyyy-MM-dd'T'HH:mm:ss");
 }
 
@@ -175,8 +189,9 @@ function getModelIdentity(device) {
 }
 
 function getTetDayLabel(date) {
-  if (!date) return null;
+  if (!date || !isValid(date)) return null;
   const d = normalizeDate(date);
+  if (!d || !isValid(d)) return null;
   const base = normalizeDate(TET_BASE_DATE);
   const diff = Math.round((d - base) / (1000 * 60 * 60 * 24));
   if (diff < TET_START_OFFSET || diff > TET_END_OFFSET) return null;
@@ -202,15 +217,18 @@ function formatWeekdayShort(date) {
 }
 
 function formatBookingSummaryDate(date) {
-  const tetLabel = getTetDayLabel(date);
+  if (!date) return "—";
+  const raw = date instanceof Date ? date : new Date(date);
+  if (!isValid(raw)) return "—";
+  const tetLabel = getTetDayLabel(raw);
   if (!tetLabel) {
-    return `${format(date, "dd/MM", { locale: vi })} ${formatTimeVi(date)}`;
+    return `${format(raw, "dd/MM", { locale: vi })} ${formatTimeVi(raw)}`;
   }
-  const timeLabel = formatTimeLabel(date);
-  const dayPart = getDayPartLabel(date);
-  const weekday = formatWeekdayShort(date);
+  const timeLabel = formatTimeLabel(raw);
+  const dayPart = getDayPartLabel(raw);
+  const weekday = formatWeekdayShort(raw);
   return `${timeLabel} • ${dayPart} • ${tetLabel} • ${weekday} (${format(
-    date,
+    raw,
     "dd/MM"
   )})`;
 }
@@ -236,7 +254,7 @@ function escapeHtmlContract(s) {
  * @param {{ device: { displayName: string, deposit: number }, total: number, t1: Date, t2: Date }} data
  */
 function printContract({ device, total, t1, t2 }) {
-  if (!device || !t1 || !t2) return;
+  if (!device || !t1 || !t2 || !isValid(t1) || !isValid(t2)) return;
   const machineName = escapeHtmlContract(device.displayName || "—");
   const machineValue = escapeHtmlContract(formatVnd(device.deposit)) + " VND";
   const rentalPrice = escapeHtmlContract(formatVnd(total)) + " VND";
@@ -292,6 +310,7 @@ function useBookingPricing(
   timeTo,
   durationId,
   selectedVoucherId,
+  selectedBranchId,
   pointsToRedeem,
 ) {
   return useMemo(() => {
@@ -392,7 +411,14 @@ function useBookingPricing(
     let voucherLabel = null;
     let voucherHint = null;
 
-    if (selectedVoucherId === "WEEKDAY20") {
+    if (
+      selectedBranchId === "Q9" &&
+      selectedVoucherId === Q9_BRANCH_VOUCHER_ID &&
+      subTotal > 0
+    ) {
+      voucherDiscount = computeQ9BranchFlatDiscountVnd(subTotal);
+      voucherLabel = "Giảm sốc mừng khai trương";
+    } else if (selectedVoucherId === "WEEKDAY20") {
       const breakdown =
         subTotal > 0 ? computeDiscountBreakdown(subTotal, t1, t2) : null;
       if (breakdown && breakdown.discounted < subTotal) {
@@ -434,13 +460,22 @@ function useBookingPricing(
     timeTo,
     durationId,
     selectedVoucherId,
+    selectedBranchId,
     pointsToRedeem,
   ]);
 }
 
 /* ===================== UI Components ===================== */
 
-function ShopeeVoucherStrip({ value, onChange }) {
+function ShopeeVoucherStrip({ value, onChange, branchId }) {
+  const voucherOptions = useMemo(
+    () =>
+      BOOKING_VOUCHER_OPTIONS.filter((v) =>
+        v.id === Q9_BRANCH_VOUCHER_ID ? branchId === "Q9" : true,
+      ),
+    [branchId],
+  );
+
   return (
     <div className="rounded-2xl border border-[#ffeee8] bg-white shadow-[0_2px_12px_rgba(238,77,45,0.08)] overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 bg-gradient-to-r from-[#fff5f0] to-white border-b border-[#ffe4d6]">
@@ -454,7 +489,7 @@ function ShopeeVoucherStrip({ value, onChange }) {
         </div>
       </div>
       <div className="flex gap-2.5 overflow-x-auto px-3 py-3 snap-x snap-mandatory scrollbar-thin pb-1">
-        {BOOKING_VOUCHER_OPTIONS.map((v) => {
+        {voucherOptions.map((v) => {
           const active = value === v.id;
           const disabled = false;
 
@@ -807,14 +842,13 @@ function Summary({
   );
 }
 
-/* Alternative Device Suggestion */
+/* Gợi ý máy tương tự — chỉ trong cùng chi nhánh (đừng truyền full allDevices). */
 function AlternativeDevices({ currentDevice, allDevices, onSelect }) {
   const alternatives = useMemo(() => {
     if (!currentDevice || !allDevices || allDevices.length === 0) return [];
 
     const currentBrand = inferBrand(currentDevice.name);
 
-    // Find similar devices (same brand, different device, available)
     const similar = allDevices
       .filter((d) => {
         const dBrand = inferBrand(d.name);
@@ -872,19 +906,25 @@ export default function BookingPage() {
 
   const initialPrefs = useMemo(() => {
     const prefs = loadBookingPrefs();
+    const firstDate = prefs?.date
+      ? normalizeDate(new Date(prefs.date))
+      : normalizeDate(new Date());
     const q9Branch = BRANCHES.find((b) => b.id === "Q9");
-    const q9Bookable = Boolean(q9Branch && !q9Branch.disabled);
+    const q9Bookable = Boolean(q9Branch && isBranchBookable(q9Branch, firstDate));
     let branchId;
     if (isQ9Entry && q9Bookable) {
       branchId = "Q9";
-    } else if (BRANCHES.some((b) => b.id === prefs?.branchId)) {
+    } else if (
+      BRANCHES.some((b) => b.id === prefs?.branchId && isBranchBookable(b, firstDate))
+    ) {
       branchId = prefs.branchId;
     } else {
       branchId = getDefaultBranchId();
     }
     const safeBranchId =
-      BRANCHES.find((b) => b.id === branchId && !b.disabled)?.id ||
-      getDefaultBranchId();
+      BRANCHES.find(
+        (b) => b.id === branchId && isBranchBookable(b, firstDate),
+      )?.id || getDefaultBranchId();
 
     return {
       branchId: safeBranchId,
@@ -921,21 +961,27 @@ export default function BookingPage() {
   const [availabilityByBranch, setAvailabilityByBranch] = useState({});
 
   useEffect(() => {
+    if (!isQ9Entry) return;
     const q9Branch = BRANCHES.find((b) => b.id === "Q9");
-    if (isQ9Entry && q9Branch && !q9Branch.disabled) {
+    const pickDay = selectedDate || normalizeDate(new Date());
+    if (q9Branch && isBranchBookable(q9Branch, pickDay)) {
       setSelectedBranchId("Q9");
-      return;
     }
-    const prefs = loadBookingPrefs();
-    const fromPrefs =
-      prefs?.branchId && BRANCHES.some((b) => b.id === prefs.branchId)
-        ? prefs.branchId
-        : getDefaultBranchId();
-    const safe =
-      BRANCHES.find((b) => b.id === fromPrefs && !b.disabled)?.id ||
-      getDefaultBranchId();
-    setSelectedBranchId(safe);
-  }, [isQ9Entry]);
+  }, [isQ9Entry, selectedDate]);
+
+  /** Q9: không reset chi nhánh (race với form → mất Q9); chỉ nâng ngày nhận tối thiểu tới ngày mở Q9. */
+  useEffect(() => {
+    const q9Branch = BRANCHES.find((b) => b.id === "Q9");
+    if (selectedBranchId !== "Q9" || !q9Branch || !selectedDate) return;
+    if (isBranchBookable(q9Branch, selectedDate)) return;
+    const minQ = normalizeDate(new Date(`${Q9_BOOKING_OPENS_DATE}T12:00:00`));
+    setSelectedDate(minQ);
+    setEndDateState((prev) => {
+      const minEnd = addDays(minQ, 1);
+      if (!prev || prev <= minQ) return minEnd;
+      return prev < minEnd ? minEnd : prev;
+    });
+  }, [selectedDate, selectedBranchId]);
 
   // Initialize customer from localStorage
   const [customer, setCustomer] = useState(() => {
@@ -959,6 +1005,14 @@ export default function BookingPage() {
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
   /** Mặc định WEEKDAY20 để khớp KM “ngày trong tuần” và lưu noteVoucher khi thanh toán */
   const [selectedVoucherId, setSelectedVoucherId] = useState("WEEKDAY20");
+
+  useEffect(() => {
+    if (selectedBranchId !== "Q9") {
+      setSelectedVoucherId((v) =>
+        v === Q9_BRANCH_VOUCHER_ID ? "WEEKDAY20" : v,
+      );
+    }
+  }, [selectedBranchId]);
 
   // Calculate current step for progress indicator
   const currentStep = useMemo(() => {
@@ -1068,8 +1122,11 @@ export default function BookingPage() {
     setIsLoadingDevices(true);
     setDevicesError("");
     try {
-      const response = await api.get("/v1/devices");
-      setAllDevices(response.data || []);
+      // Giống FAO manage: chỉ máy ảnh; dùng path tương đối để baseURL .../api + v1/devices = đúng endpoint
+      const response = await api.get("v1/devices", {
+        params: { type: "DEVICE", includeFeedbackImages: false },
+      });
+      setAllDevices(normalizeDevicesListResponse(response.data));
     } catch (error) {
       console.error("Failed to fetch devices:", error);
       setDevicesError("Không thể tải danh sách thiết bị. Vui lòng thử lại.");
@@ -1083,10 +1140,15 @@ export default function BookingPage() {
     fetchAllDevices();
   }, [fetchAllDevices]);
 
+  const devicesForBranch = useMemo(
+    () => devicesForBookingBranch(allDevices, selectedBranchId),
+    [allDevices, selectedBranchId],
+  );
+
   const DERIVED = useMemo(() => {
-    if (!allDevices) return [];
+    if (!devicesForBranch.length) return [];
     const byName = new Map();
-    for (const it of allDevices) {
+    for (const it of devicesForBranch) {
       const normalized = normalizeDeviceName(it.name);
       if (!byName.has(normalized)) byName.set(normalized, []);
       byName.get(normalized).push(it);
@@ -1111,21 +1173,23 @@ export default function BookingPage() {
       });
     }
     return result;
-  }, [allDevices]);
+  }, [devicesForBranch]);
 
-  // Set selected device from URL param or first device
+  // Chọn máy: ưu URL nếu còn trong danh sách chi nhánh; đổi chi nhánh → bỏ máy lệch branch
   useEffect(() => {
-    if (urlDeviceId && DERIVED.length > 0) {
-      const device = DERIVED.find((d) => d.id === parseInt(urlDeviceId));
-      if (device) {
-        setSelectedDeviceId(device.id);
-      } else if (!selectedDeviceId && DERIVED.length > 0) {
-        setSelectedDeviceId(DERIVED[0].id);
+    if (DERIVED.length === 0) return;
+    if (urlDeviceId) {
+      const fromUrl = DERIVED.find((d) => d.id === parseInt(urlDeviceId, 10));
+      if (fromUrl) {
+        setSelectedDeviceId(fromUrl.id);
+        return;
       }
-    } else if (!selectedDeviceId && DERIVED.length > 0) {
-      setSelectedDeviceId(DERIVED[0].id);
     }
-  }, [DERIVED, urlDeviceId, selectedDeviceId]);
+    setSelectedDeviceId((prev) => {
+      if (prev != null && DERIVED.some((d) => d.id === prev)) return prev;
+      return DERIVED[0].id;
+    });
+  }, [DERIVED, urlDeviceId, selectedBranchId]);
 
   const selectedDevice = useMemo(
     () => DERIVED.find((i) => i.id === selectedDeviceId) || null,
@@ -1136,6 +1200,22 @@ export default function BookingPage() {
     () => parseDeviceReleaseDate(selectedDevice),
     [selectedDevice],
   );
+
+  const dateStripMinDate = useMemo(() => {
+    const today = normalizeDate(new Date());
+    const q9Opens = normalizeDate(
+      new Date(`${Q9_BOOKING_OPENS_DATE}T12:00:00`),
+    );
+    let base = today;
+    if (deviceReleaseDate) {
+      const r = normalizeDate(deviceReleaseDate);
+      if (r && r.getTime() > base.getTime()) base = r;
+    }
+    if (selectedBranchId === "Q9" && q9Opens.getTime() > base.getTime()) {
+      base = q9Opens;
+    }
+    return base;
+  }, [deviceReleaseDate, selectedBranchId]);
 
   useEffect(() => {
     if (!selectedDevice) return;
@@ -1173,8 +1253,8 @@ export default function BookingPage() {
 
   const startDate = t1 ? normalizeDate(t1) : null;
   const endDate = t2 ? normalizeDate(t2) : null;
-  const timeFrom = t1 ? format(t1, "HH:mm") : null;
-  const timeTo = t2 ? format(t2, "HH:mm") : null;
+  const timeFrom = t1 && isValid(t1) ? format(t1, "HH:mm") : null;
+  const timeTo = t2 && isValid(t2) ? format(t2, "HH:mm") : null;
 
   const timeSelectionError = useMemo(() => {
     return getAvailabilityRangeError(prefsForRange, t1, t2);
@@ -1201,6 +1281,7 @@ export default function BookingPage() {
     timeTo,
     durationOptionId,
     selectedVoucherId,
+    selectedBranchId,
     pointsToRedeem,
   );
   const maxRedeemablePoints = Math.min(
@@ -1315,20 +1396,26 @@ export default function BookingPage() {
       }
     };
 
-    BRANCHES.filter((b) => !b.disabled).forEach((b) => fetchForBranch(b.id));
+    const pickDay = selectedDate || normalizeDate(new Date());
+    BRANCHES.filter((b) => isBranchBookable(b, pickDay)).forEach((b) =>
+      fetchForBranch(b.id),
+    );
 
     return () => {
       cancelled = true;
     };
-  }, [selectedDevice, startDate, endDate, timeFrom, timeTo]);
+  }, [selectedDevice, startDate, endDate, timeFrom, timeTo, selectedDate]);
 
   /* ==== Check if any branch has sold out ==== */
   const isSoldOutAllBranches = useMemo(() => {
-    return BRANCHES.every((b) => {
+    const pickDay = selectedDate || normalizeDate(new Date());
+    const open = BRANCHES.filter((b) => isBranchBookable(b, pickDay));
+    if (open.length === 0) return false;
+    return open.every((b) => {
       const av = availabilityByBranch[b.id];
       return av?.soldOut === true;
     });
-  }, [availabilityByBranch]);
+  }, [availabilityByBranch, selectedDate]);
 
   /* ==== Submit conditions ==== */
   const canSubmit = useMemo(() => {
@@ -1343,6 +1430,16 @@ export default function BookingPage() {
       if (pickupDay.getTime() < deviceReleaseDate.getTime()) return false;
     }
 
+    const q9B = BRANCHES.find((b) => b.id === "Q9");
+    if (
+      selectedBranchId === "Q9" &&
+      q9B &&
+      selectedDate &&
+      !isBranchBookable(q9B, selectedDate)
+    ) {
+      return false;
+    }
+
     const av = availabilityByBranch[selectedBranchId];
     if (!av || av.loading || av.soldOut) return false;
 
@@ -1350,6 +1447,7 @@ export default function BookingPage() {
   }, [
     selectedDevice,
     selectedBranchId,
+    selectedDate,
     t1,
     t2,
     total,
@@ -1416,6 +1514,9 @@ export default function BookingPage() {
         noteVoucher: [
           voucherDiscount > 0 && selectedVoucherId === "WEEKDAY20"
             ? "WEEKDAY_20_PCT"
+            : null,
+          voucherDiscount > 0 && selectedVoucherId === Q9_BRANCH_VOUCHER_ID
+            ? "Q9_30_MAX200K"
             : null,
           pointDiscount > 0 ? `POINT_${pointsToRedeem}` : null,
         ]
@@ -1509,7 +1610,7 @@ export default function BookingPage() {
       <DateStrip
         selectedDate={selectedDate}
         onSelect={(d) => setSelectedDate(normalizeDate(d))}
-        minDate={deviceReleaseDate}
+        minDate={dateStripMinDate}
       />
 
       {/* CONTENT */}
@@ -1581,7 +1682,7 @@ export default function BookingPage() {
                 </p>
                 <AlternativeDevices
                   currentDevice={selectedDevice}
-                  allDevices={allDevices}
+                  allDevices={devicesForBranch}
                   onSelect={handleSelectAlternative}
                 />
               </div>
@@ -1617,6 +1718,7 @@ export default function BookingPage() {
               <ShopeeVoucherStrip
                 value={selectedVoucherId}
                 onChange={setSelectedVoucherId}
+                branchId={selectedBranchId}
               />
             </div>
 

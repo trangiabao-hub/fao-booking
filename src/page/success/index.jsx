@@ -28,9 +28,22 @@ import {
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
 import { MESSENGER_LINK } from "../../data/contactConfig";
+import {
+  BRANCHES,
+  BRANCH_WORKING_HOURS_LABEL,
+} from "../../data/bookingConstants";
 import FloatingContactButton from "../../components/FloatingContactButton";
 import SlideNav from "../../components/SlideNav";
 import { saveRecentOrder } from "../../utils/storage";
+import {
+  inferOrderBookingBranchId,
+  normalizeBookingBranchId,
+} from "../../utils/deviceBranch";
+
+function branchMetaFromId(branchIdRaw) {
+  const id = normalizeBookingBranchId(branchIdRaw);
+  return BRANCHES.find((b) => b.id === id) || BRANCHES[0];
+}
 
 const FALLBACK_IMG = "https://placehold.co/640x360/fdf2f8/ec4899?text=No+Image";
 
@@ -46,6 +59,12 @@ function SuccessCard({ details }) {
       return new Date(dateStr).toISOString().replace(/-|:|\.\d+/g, "");
     };
 
+    const branchMeta = branchMetaFromId(details.branchId);
+    const contactPhone = branchMeta.phone || "0901355198";
+    const calendarLocation =
+      branchMeta.calendarLocation ||
+      "Lầu 1, 475 Huỳnh Văn Bánh, Quận Phú Nhuận, Hồ Chí Minh, Việt Nam";
+
     const deviceLabel = details.devices?.length
       ? details.devices.map((d) => d.name).join(", ")
       : details.device?.name || "";
@@ -58,11 +77,9 @@ function SuccessCard({ details }) {
     ]
       .filter(Boolean)
       .join("\n");
-    const description = `Cảm ơn bạn đã đặt lịch thuê máy ảnh!\n\n${refLines}\nTổng tiền: ${details.total.toLocaleString("vi-VN")} đ\n\nVui lòng có mặt đúng giờ để nhận máy.\nLiên hệ: 0901355198`;
-    const location =
-      "Lầu 1, 475 Huỳnh Văn Bánh, Quận Phú Nhuận, Hồ Chí Minh, Việt Nam";
+    const description = `Cảm ơn bạn đã đặt lịch thuê máy ảnh!\n\n${refLines}\nTổng tiền: ${details.total.toLocaleString("vi-VN")} đ\n\nVui lòng có mặt đúng giờ để nhận máy.\nLiên hệ: ${contactPhone}`;
 
-    const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${startTime}/${endTime}&details=${encodeURIComponent(description)}&location=${encodeURIComponent(location)}`;
+    const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${startTime}/${endTime}&details=${encodeURIComponent(description)}&location=${encodeURIComponent(calendarLocation)}`;
 
     window.open(url, "_blank");
   };
@@ -152,6 +169,16 @@ function SuccessCard({ details }) {
     return <LoadingState message="Đang tải chi tiết đơn hàng..." />;
   }
 
+  const branchMeta = branchMetaFromId(details.branchId);
+  const mapUrl = branchMeta.mapUrl;
+  const pickupSpotLabel =
+    branchMeta.pickupSpotLabel || branchMeta.address || "";
+  const contactPhone = branchMeta.phone || "0901355198";
+  const pickupDirectionsTail =
+    branchMeta.pickupDirectionsTail ||
+    BRANCHES[0].pickupDirectionsTail ||
+    "Khi đến shop mình mang dép đen trên kệ, lên lầu 1 quẹo phải để nhận máy ạ";
+
   return (
     <div className="space-y-5 lg:space-y-6">
       <motion.div
@@ -232,9 +259,9 @@ function SuccessCard({ details }) {
                   <span className="mr-1" aria-hidden>
                     📍
                   </span>
-                  Lầu 1, tại 475 Huỳnh Văn Bánh, Q. Phú Nhuận —{" "}
+                  {pickupSpotLabel} —{" "}
                   <a
-                    href="https://maps.app.goo.gl/Lg6KoXzXWrdiurWj9?g_st=ic"
+                    href={mapUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-semibold text-emerald-800 underline decoration-emerald-400 underline-offset-2 hover:text-emerald-900"
@@ -247,15 +274,15 @@ function SuccessCard({ details }) {
                     📞
                   </span>
                   <a
-                    href="tel:0901355198"
+                    href={`tel:${String(contactPhone).replace(/\s/g, "")}`}
                     className="font-bold text-emerald-900 hover:underline"
                   >
-                    0901355198
+                    {contactPhone}
                   </a>
                 </p>
                 <p className="text-emerald-900/90">
                   <span className="font-semibold">Thời gian làm việc:</span>{" "}
-                  09h00 - 22h00
+                  {BRANCH_WORKING_HOURS_LABEL}
                 </p>
               </div>
               <p className="text-xs sm:text-sm lg:text-[15px] text-emerald-900/90 leading-relaxed pt-1 border-t border-emerald-200/70">
@@ -264,8 +291,7 @@ function SuccessCard({ details }) {
                 </span>
                 Khách iu khi đến nhận máy chuẩn bị giúp FAO{" "}
                 <strong>CCCD bản gốc</strong> hoặc{" "}
-                <strong>VNeID định danh mức 2</strong>. Khi đến shop mình mang dép
-                đen trên kệ, lên lầu 1 quẹo phải để nhận máy ạ
+                <strong>VNeID định danh mức 2</strong>. {pickupDirectionsTail}
                 <span aria-hidden>✨</span>
               </p>
             </div>
@@ -656,6 +682,7 @@ export default function PaymentStatusPage() {
               setBookingDetails({
                 orderCode: pending.orderCode,
                 orderIdNew: pending.orderIdNew,
+                branchId: inferOrderBookingBranchId(bookings),
                 bookingFrom: first.bookingFrom,
                 bookingTo: first.bookingTo,
                 total: totalSum,

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import SlideNav from "../../components/SlideNav";
+import BookingPromoBanners from "../../components/BookingPromoBanners";
 import {
   CameraIcon,
   ShieldCheckIcon,
@@ -273,7 +274,7 @@ const HeroSection = () => {
   );
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-rose-50 to-pink-100 pt-20 pb-[calc(4rem+max(12px,env(safe-area-inset-bottom))+12px)] text-center">
+    <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-rose-50 to-pink-100 pb-[calc(4rem+max(12px,env(safe-area-inset-bottom))+12px)] text-center">
       <BackgroundPattern />
 
       <FloatingIcon
@@ -639,13 +640,17 @@ export default function HomePage() {
       <style>{swiperStyles}</style>
       <Header />
 
-      <HeroSection />
-      <main className="min-h-0 shrink-0">
-        {/* <FeaturesSection />
+      <BookingPromoBanners />
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-20">
+        <HeroSection />
+        <main className="min-h-0 shrink-0">
+          {/* <FeaturesSection />
         <TestimonialsSection />
         <CategoriesSection />
         <CallToActionSection /> */}
-      </main>
+        </main>
+      </div>
       {/* <Footer /> */}
       <SlideNav />
     </div>

@@ -6,6 +6,7 @@ import SlideNav from "../../components/SlideNav";
 import FloatingContactButton from "../../components/FloatingContactButton";
 import QuickBookModal from "../../components/QuickBookModal";
 import { loadBookingPrefs } from "../../utils/storage";
+import { normalizeDevicesListResponse } from "../../utils/deviceBranch";
 
 const FALLBACK_IMG =
   "https://placehold.co/1200x800/FFE4F0/E85C9C?text=Anh+khach+chup";
@@ -337,17 +338,17 @@ export default function FeedbackPage() {
       setError("");
       try {
         const [res, categoriesRes] = await Promise.all([
-          api.get("/v1/devices", {
+          api.get("v1/devices", {
             params: { type: "DEVICE", includeFeedbackImages: false },
           }),
           api
-            .get("/v1/device-categories/with-items", {
+            .get("v1/device-categories/with-items", {
               params: { includeFeedbackImages: false },
             })
             .catch(() => ({ data: [] })),
         ]);
         if (!isMounted) return;
-        setDevices(Array.isArray(res.data) ? res.data : []);
+        setDevices(normalizeDevicesListResponse(res.data));
         setApiCategories(Array.isArray(categoriesRes?.data) ? categoriesRes.data : []);
       } catch {
         if (!isMounted) return;

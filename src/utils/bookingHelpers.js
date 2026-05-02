@@ -1,4 +1,4 @@
-import { format, addDays, isWeekend } from "date-fns";
+import { format, addDays, isWeekend, isValid } from "date-fns";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
@@ -8,6 +8,7 @@ import {
   MORNING_PICKUP_TIME,
   DEFAULT_EVENING_SLOT,
   SIX_HOUR_RETURN_TIME,
+  isBranchBookable,
 } from "../data/bookingConstants";
 import {
   computeDiscountBreakdown as computeDiscountBreakdownFromPricing,
@@ -19,6 +20,7 @@ dayjs.extend(timezone);
 export function normalizeDate(date) {
   if (!date) return null;
   const d = new Date(date);
+  if (!isValid(d)) return null;
   d.setHours(0, 0, 0, 0);
   return d;
 }
@@ -37,8 +39,9 @@ export function combineDateWithTime(dateOnly, timeStr) {
   const m = parseInt(mStr, 10) || 0;
   if (isNaN(h) || isNaN(m)) return null;
   const d = new Date(dateOnly);
+  if (!isValid(d)) return null;
   d.setHours(h, m, 0, 0);
-  return d;
+  return isValid(d) ? d : null;
 }
 
 export function formatPriceK(price) {
@@ -104,7 +107,7 @@ export function getDurationDays(durationId) {
 }
 
 export function getDefaultBranchId() {
-  return BRANCHES.find((b) => !b.disabled)?.id || BRANCHES[0]?.id;
+  return BRANCHES.find((b) => isBranchBookable(b))?.id || BRANCHES[0]?.id;
 }
 
 export function getTimeRange(
@@ -183,6 +186,17 @@ export function computeDiscountedPrice(price, startDateTime, endDateTime) {
  */
 export function computeDiscountBreakdown(price, startDateTime, endDateTime) {
   return computeDiscountBreakdownFromPricing(price, startDateTime, endDateTime);
+}
+
+/** Voucher chi nhánh Q9 — noteVoucher backend / UI đặt lịch */
+export const Q9_BRANCH_VOUCHER_ID = "Q9_30_MAX200K";
+export const Q9_BRANCH_VOUCHER_MAX_VND = 200_000;
+
+/** Giảm 30% giá thuê gói, tối đa 200.000đ (một đơn). */
+export function computeQ9BranchFlatDiscountVnd(subTotalVnd) {
+  const n = Number(subTotalVnd);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(Math.floor(n * 0.3), Q9_BRANCH_VOUCHER_MAX_VND);
 }
 
 export function getSlotButtonClasses(count, active) {

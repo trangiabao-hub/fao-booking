@@ -1,4 +1,4 @@
-import { addDays, format } from "date-fns";
+import { addDays, format, isValid } from "date-fns";
 import {
   computeAvailabilityRange,
   getAvailabilityRangeError,
@@ -44,11 +44,17 @@ function firstDeviceFreeForSlot(devices, fromDateTime, toDateTime) {
 }
 
 function buildSuggestionFromRange(freeDevice, fromDateTime, toDateTime, extra = {}) {
+  const tf =
+    fromDateTime && isValid(fromDateTime)
+      ? format(fromDateTime, "HH:mm")
+      : "09:00";
+  const tt =
+    toDateTime && isValid(toDateTime) ? format(toDateTime, "HH:mm") : "09:00";
   return {
     fromDateTime,
     toDateTime,
-    timeFrom: format(fromDateTime, "HH:mm"),
-    timeTo: format(toDateTime, "HH:mm"),
+    timeFrom: tf,
+    timeTo: tt,
     suggestedDeviceId: freeDevice.id,
     switchToSixHours: false,
     ...extra,

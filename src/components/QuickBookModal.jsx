@@ -6,7 +6,7 @@ import React, {
   useLayoutEffect,
   useRef,
 } from "react";
-import { format, addDays } from "date-fns";
+import { format, addDays, isValid } from "date-fns";
 import vi from "date-fns/locale/vi";
 import { motion, AnimatePresence } from "framer-motion";
 import { signInWithPopup } from "firebase/auth";
@@ -40,6 +40,7 @@ import {
   MORNING_PICKUP_TIME,
   SIX_HOUR_RETURN_TIME,
   DEFAULT_EVENING_SLOT,
+  isBranchBookable,
 } from "../data/bookingConstants";
 import { filterBookingsOverlappingSlot } from "../utils/bookingOverlap";
 import {
@@ -51,27 +52,9 @@ import {
   formatDateForAPIPayload,
   computeDiscountedPrice,
   computeDiscountBreakdown,
+  computeQ9BranchFlatDiscountVnd,
+  Q9_BRANCH_VOUCHER_ID,
 } from "../utils/bookingHelpers";
-
-/** Đồng bộ fao-booking với trang /booking và fao (noteVoucher). */
-function buildQuickBookNoteVoucher({
-  price,
-  t1,
-  t2,
-  pointToUse,
-}) {
-  const parts = [];
-  if (price > 0 && t1 && t2) {
-    const b = computeDiscountBreakdown(price, t1, t2);
-    if (b && b.discount > 0) {
-      parts.push("WEEKDAY_20_PCT");
-    }
-  }
-  if (pointToUse > 0) {
-    parts.push(`POINT_${pointToUse}`);
-  }
-  return parts.length > 0 ? parts.join(" | ") : "NONE";
-}
 import {
   computeEarnedPoints,
   computeTotalSpentFromBookings,
@@ -88,12 +71,40 @@ import BookingPrefsForm, {
   formatPickupReturnSummary,
 } from "./BookingPrefsForm";
 
+/** Đồng bộ fao-booking với trang /booking và fao (noteVoucher). */
+function buildQuickBookNoteVoucher({
+  price,
+  t1,
+  t2,
+  pointToUse,
+  selectedBranch,
+}) {
+  const parts = [];
+  if (selectedBranch === "Q9" && price > 0) {
+    parts.push(Q9_BRANCH_VOUCHER_ID);
+  } else if (price > 0 && isValid(t1) && isValid(t2)) {
+    const b = computeDiscountBreakdown(price, t1, t2);
+    if (b && b.discount > 0) {
+      parts.push("WEEKDAY_20_PCT");
+    }
+  }
+  if (pointToUse > 0) {
+    parts.push(`POINT_${pointToUse}`);
+  }
+  return parts.length > 0 ? parts.join(" | ") : "NONE";
+}
+
 const AFTERNOON_PICKUP_TIME = "15:00";
 
 /** Giống catalog: local datetime không hậu tố Z — backend parse LocalDateTime. */
 function formatLocalDateTimeForDeviceApi(date) {
-  if (!date) return null;
+  if (!date || !isValid(date)) return null;
   return format(date, "yyyy-MM-dd'T'HH:mm:ss");
+}
+
+/** Invalid Date là truthy — luôn kiểm tra isValid trước khi format/submit. */
+function isValidDateRange(t1, t2) {
+  return Boolean(t1 && t2 && isValid(t1) && isValid(t2));
 }
 
 function isValidEmail(email) {
@@ -400,9 +411,13 @@ export default function QuickBookModal({
   // Load initial state from storage or defaults
   const getInitialPrefs = useCallback(() => {
     const prefs = loadBookingPrefs();
+    const pickDay = prefs?.date
+      ? normalizeDate(new Date(prefs.date))
+      : normalizeDate(new Date());
     const branchId =
-      BRANCHES.find((b) => b.id === prefs?.branchId && !b.disabled)?.id ||
-      getDefaultBranchId();
+      BRANCHES.find(
+        (b) => b.id === prefs?.branchId && isBranchBookable(b, pickDay),
+      )?.id || getDefaultBranchId();
     const durationId = DURATION_OPTIONS.some((d) => d.id === prefs?.durationId)
       ? prefs.durationId
       : "ONE_DAY";
@@ -474,10 +489,13 @@ export default function QuickBookModal({
   const [agreeNoResellOrPawn, setAgreeNoResellOrPawn] = useState(false);
   const [agreeConfirmPickupReturnTime, setAgreeConfirmPickupReturnTime] =
     useState(false);
+  const [agreePickupInPersonAtBranch, setAgreePickupInPersonAtBranch] =
+    useState(false);
   const [agreeCccdPerDevice, setAgreeCccdPerDevice] = useState(false);
   const [agreementErrors, setAgreementErrors] = useState({
     noResellOrPawn: false,
     confirmPickupReturnTime: false,
+    pickupInPersonAtBranch: false,
     cccdPerDevice: false,
   });
   const agreementSectionRef = useRef(null);
@@ -486,6 +504,14 @@ export default function QuickBookModal({
     () => getFaoStandardRentalContractUrl(),
     [],
   );
+  const selectedBranchPickupAddress = useMemo(() => {
+    const b = BRANCHES.find((x) => x.id === selectedBranch);
+    return (b?.address || "").trim();
+  }, [selectedBranch]);
+
+  useEffect(() => {
+    setAgreePickupInPersonAtBranch(false);
+  }, [selectedBranch]);
   /** Tránh reset step khi parent re-render: initialPrefs là object mới mỗi lần render. */
   const quickBookWasOpenRef = useRef(false);
   const [showCccdConfirmDialog, setShowCccdConfirmDialog] = useState(false);
@@ -511,10 +537,12 @@ export default function QuickBookModal({
     setPointToUse(0);
     setAgreeNoResellOrPawn(false);
     setAgreeConfirmPickupReturnTime(false);
+    setAgreePickupInPersonAtBranch(false);
     setAgreeCccdPerDevice(false);
     setAgreementErrors({
       noResellOrPawn: false,
       confirmPickupReturnTime: false,
+      pickupInPersonAtBranch: false,
       cccdPerDevice: false,
     });
     if (hasInitialPrefs && initialPrefs) {
@@ -628,7 +656,7 @@ export default function QuickBookModal({
 
   // Base price từ khoảng thời gian thực tế (t1, t2) - đồng bộ manage
   const rentalInfoPerDevice = useMemo(() => {
-    if (!t1 || !t2) return [];
+    if (!isValidDateRange(t1, t2)) return [];
     return effectiveDevices.map((d) => {
       const info = calculateRentalInfo([t1, t2], d);
       return {
@@ -647,6 +675,9 @@ export default function QuickBookModal({
   const chargeableDays = rentalInfo.chargeableDays;
 
   const discountedTotal = useMemo(() => {
+    if (selectedBranch === "Q9" && price > 0) {
+      return Math.max(0, price - computeQ9BranchFlatDiscountVnd(price));
+    }
     if (isMulti) {
       return rentalInfoPerDevice.reduce((sum, r) => {
         const p = r?.price || 0;
@@ -657,6 +688,7 @@ export default function QuickBookModal({
       return pricing.discounted;
     return computeDiscountedPrice(price, t1, t2);
   }, [
+    selectedBranch,
     isMulti,
     hasInitialPrefs,
     pricing?.discounted,
@@ -683,7 +715,16 @@ export default function QuickBookModal({
     const savingVsRetail = Math.max(0, retailPrice - packagePrice);
 
     let base = null;
-    if (
+    if (selectedBranch === "Q9" && price > 0) {
+      const disc = computeQ9BranchFlatDiscountVnd(price);
+      base = {
+        original: price,
+        discount: disc,
+        discounted: Math.max(0, price - disc),
+        discountLabel:
+          disc > 0 ? "Giảm sốc mừng khai trương" : null,
+      };
+    } else if (
       !isMulti &&
       hasInitialPrefs &&
       pricing?.original != null &&
@@ -696,7 +737,7 @@ export default function QuickBookModal({
         discounted: pricing.discounted,
         discountLabel: discount > 0 ? "Khuyến mãi" : null,
       };
-    } else if (t1 && t2 && price > 0) {
+    } else if (isValidDateRange(t1, t2) && price > 0) {
       base = computeDiscountBreakdown(price, t1, t2);
     }
     if (!base) return null;
@@ -719,6 +760,7 @@ export default function QuickBookModal({
     effectiveDevices,
     rentalInfoPerDevice,
     chargeableDays,
+    selectedBranch,
   ]);
 
   const durationDays = chargeableDays;
@@ -748,7 +790,11 @@ export default function QuickBookModal({
 
   // Check availability
   const checkAvailability = useCallback(async () => {
-    if (baseDevicesForProps.length === 0 || !t1 || !t2 || timeSelectionError)
+    if (
+      baseDevicesForProps.length === 0 ||
+      !isValidDateRange(t1, t2) ||
+      timeSelectionError
+    )
       return;
     setIsCheckingAvailability(true);
     try {
@@ -1113,17 +1159,24 @@ export default function QuickBookModal({
 
   // Submit booking
   const handleSubmit = async () => {
-    if (effectiveDevices.length === 0 || !t1 || !t2 || !isCustomerValid) return;
+    if (
+      effectiveDevices.length === 0 ||
+      !isValidDateRange(t1, t2) ||
+      !isCustomerValid
+    )
+      return;
 
     const nextAgreementErrors = {
       noResellOrPawn: !agreeNoResellOrPawn,
       confirmPickupReturnTime: !agreeConfirmPickupReturnTime,
+      pickupInPersonAtBranch: !agreePickupInPersonAtBranch,
       cccdPerDevice:
         effectiveDevices.length >= 2 && !agreeCccdPerDevice,
     };
     if (
       nextAgreementErrors.noResellOrPawn ||
       nextAgreementErrors.confirmPickupReturnTime ||
+      nextAgreementErrors.pickupInPersonAtBranch ||
       nextAgreementErrors.cccdPerDevice
     ) {
       setAgreementErrors(nextAgreementErrors);
@@ -1140,6 +1193,7 @@ export default function QuickBookModal({
     setAgreementErrors({
       noResellOrPawn: false,
       confirmPickupReturnTime: false,
+      pickupInPersonAtBranch: false,
       cccdPerDevice: false,
     });
 
@@ -1205,18 +1259,33 @@ export default function QuickBookModal({
         t1,
         t2,
         pointToUse,
+        selectedBranch,
       });
 
       if (isMulti) {
-        const perDeviceAmounts = rentalInfoPerDevice.map((r) =>
-          Math.round(computeDiscountedPrice(r?.price || 0, t1, t2)),
+        const rawAmounts = rentalInfoPerDevice.map((r) =>
+          Math.round(r?.price || 0),
         );
-        const distributedVoucher = isFirstOrderVoucherSelected
-          ? allocateDiscountByRatio(
-              perDeviceAmounts,
-              firstOrderAdditionalDiscount,
-            )
-          : perDeviceAmounts.map(() => 0);
+        const totalRaw = rawAmounts.reduce((a, b) => a + b, 0);
+        const totalQ9Off =
+          selectedBranch === "Q9"
+            ? computeQ9BranchFlatDiscountVnd(totalRaw)
+            : 0;
+        const perDeviceAmounts =
+          selectedBranch === "Q9"
+            ? rawAmounts
+            : rentalInfoPerDevice.map((r) =>
+                Math.round(computeDiscountedPrice(r?.price || 0, t1, t2)),
+              );
+        const distributedVoucher =
+          selectedBranch === "Q9"
+            ? allocateDiscountByRatio(rawAmounts, totalQ9Off)
+            : isFirstOrderVoucherSelected
+              ? allocateDiscountByRatio(
+                  perDeviceAmounts,
+                  firstOrderAdditionalDiscount,
+                )
+              : perDeviceAmounts.map(() => 0);
         const perDeviceAfterVoucher = perDeviceAmounts.map((baseAmount, idx) =>
           Math.max(0, baseAmount - (distributedVoucher[idx] || 0)),
         );
@@ -1230,9 +1299,10 @@ export default function QuickBookModal({
         const bookingRequests = rentalInfoPerDevice.map((r, idx) => {
           const dev = r.device;
           const devPrice = Math.round(r?.price || 0);
-          const baseDiscounted = Math.round(
-            computeDiscountedPrice(devPrice, t1, t2),
-          );
+          const baseDiscounted =
+            selectedBranch === "Q9"
+              ? devPrice
+              : Math.round(computeDiscountedPrice(devPrice, t1, t2));
           const voucherDiscount = distributedVoucher[idx] || 0;
           const pointDiscount = distributedPointDiscount[idx] || 0;
           const finalAmount = Math.max(
@@ -1415,7 +1485,7 @@ export default function QuickBookModal({
                     ({durationDays < 1 ? "Gói 6h" : `${durationDays} ngày`})
                   </span>
                 </div>
-                {t1 && t2 && (
+                {isValid(t1) && isValid(t2) && (
                   <div className="text-[10px] text-[#888] font-bold mt-0.5 uppercase tracking-wide">
                     {format(t1, "dd/MM", { locale: vi })} {formatTimeVi(t1)} —{" "}
                     {format(t2, "dd/MM", { locale: vi })} {formatTimeVi(t2)}
@@ -2295,13 +2365,13 @@ export default function QuickBookModal({
                         Thời gian
                       </div>
                       <div className="text-[13px] text-stone-800 space-y-1 leading-relaxed">
-                        {t1 && (
+                        {isValid(t1) && (
                           <div>
                             <span className="text-stone-500">Nhận:</span>{" "}
                             {formatPickupReturnSummary(t1)}
                           </div>
                         )}
-                        {t2 && (
+                        {isValid(t2) && (
                           <div>
                             <span className="text-stone-500">Trả:</span>{" "}
                             {formatPickupReturnSummary(t2)}
@@ -2434,6 +2504,36 @@ export default function QuickBookModal({
                     <span>
                       Xác nhận đã đúng giờ nhận/trả. Nếu cần thay đổi, tôi sẽ
                       nhắn trực tiếp cho page.
+                    </span>
+                  </label>
+                  <label
+                    className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
+                      agreementErrors.pickupInPersonAtBranch
+                        ? "border-red-300 bg-red-50 text-red-800"
+                        : "border-stone-100 bg-stone-50/80 text-stone-700"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={agreePickupInPersonAtBranch}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setAgreePickupInPersonAtBranch(checked);
+                        setAgreementErrors((prev) => ({
+                          ...prev,
+                          pickupInPersonAtBranch:
+                            !checked && prev.pickupInPersonAtBranch,
+                        }));
+                      }}
+                      className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
+                    />
+                    <span>
+                      Tôi sẽ nhận máy trực tiếp tại{" "}
+                      <strong className="text-stone-900">
+                        {selectedBranchPickupAddress ||
+                          "địa chỉ cửa hàng chi nhánh đã chọn"}
+                      </strong>
+                      .
                     </span>
                   </label>
                   {effectiveDevices.length >= 2 && (

@@ -1,11 +1,15 @@
 import React, { useMemo, useEffect } from "react";
-import { format, addDays } from "date-fns";
+import { format, addDays, isValid } from "date-fns";
 import vi from "date-fns/locale/vi";
 import DatePicker from "react-datepicker";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { formatTimeVi, formatTimeViFromString } from "../utils/formatTimeVi";
-import { BRANCHES } from "../data/bookingConstants";
+import {
+  BRANCHES,
+  isBranchBookable,
+  Q9_BOOKING_OPENS_DATE,
+} from "../data/bookingConstants";
 import { getDefaultBranchId as getDefaultBranchIdFromHelpers } from "../utils/bookingHelpers";
 
 /* ── Constants ── */
@@ -23,6 +27,11 @@ const ONE_DAY_EVENING_SLOTS = [
 ];
 const QUICK_RETURN_DAY_OFFSETS = [1, 2, 3];
 const SIX_HOUR_MAX_HOURS = 12;
+
+/** react-datepicker gọi date-fns format(selected) — Invalid Date vẫn truthy → RangeError */
+function pickerSelected(d) {
+  return d instanceof Date && isValid(d) ? d : null;
+}
 
 const DURATION_TYPES = [
   { id: "SIX_HOURS", label: "6 tiếng" },
@@ -55,6 +64,7 @@ const ONE_DAY_PICKUP_OPTIONS = [
 export function normalizeDate(date) {
   if (!date) return null;
   const d = new Date(date);
+  if (!isValid(d)) return null;
   d.setHours(0, 0, 0, 0);
   return d;
 }
@@ -70,8 +80,9 @@ function combineDateWithTimeString(dateOnly, timeStr) {
   const m = parseInt(mStr, 10) || 0;
   if (isNaN(h) || isNaN(m)) return null;
   const d = new Date(dateOnly);
+  if (!isValid(d)) return null;
   d.setHours(h, m, 0, 0);
-  return d;
+  return isValid(d) ? d : null;
 }
 
 export function getSixHourAutoReturnTime(timeFrom) {
@@ -107,7 +118,7 @@ function formatTimeShort(date) {
 }
 
 export function formatPickupReturnSummary(date) {
-  if (!date) return "";
+  if (!date || !isValid(date)) return "";
   return `${formatTimeShort(date)} • ${getDayPartLabel(date)} • ${formatWeekdayLabel(
     date,
   )} (${format(date, "dd/MM")})`;
@@ -219,11 +230,44 @@ export default function BookingPrefsForm({
 }) {
   const effectiveMinPickup = useMemo(() => {
     const today = normalizeDate(new Date());
-    if (!minPickupDate) return today;
-    const r = normalizeDate(minPickupDate);
-    if (!r) return today;
-    return r.getTime() > today.getTime() ? r : today;
-  }, [minPickupDate]);
+    const q9Opens = normalizeDate(
+      new Date(`${Q9_BOOKING_OPENS_DATE}T12:00:00`),
+    );
+    let base = today;
+    if (minPickupDate) {
+      const r = normalizeDate(minPickupDate);
+      if (r && r.getTime() > base.getTime()) base = r;
+    }
+    if (
+      branchId === "Q9" &&
+      q9Opens &&
+      q9Opens.getTime() > base.getTime()
+    ) {
+      base = q9Opens;
+    }
+    return base;
+  }, [minPickupDate, branchId]);
+
+  const pickupMinDate =
+    effectiveMinPickup && isValid(effectiveMinPickup)
+      ? effectiveMinPickup
+      : undefined;
+
+  const endPickerMinDate = useMemo(() => {
+    if (durationType === "ONE_DAY") {
+      if (date && isValid(date)) {
+        const d = addDays(date, 1);
+        return isValid(d) ? d : undefined;
+      }
+      if (effectiveMinPickup && isValid(effectiveMinPickup)) {
+        const d = addDays(effectiveMinPickup, 1);
+        return isValid(d) ? d : undefined;
+      }
+      return undefined;
+    }
+    if (date && isValid(date)) return date;
+    return pickupMinDate;
+  }, [durationType, date, effectiveMinPickup, pickupMinDate]);
 
   const showFutureReleaseNotice = useMemo(() => {
     if (!minPickupDate) return false;
@@ -282,6 +326,18 @@ export default function BookingPrefsForm({
   }, [durationType, timeFrom, timeTo, setTimeTo]);
 
   useEffect(() => {
+    if (branchId !== "Q9") return;
+    const minQ = normalizeDate(new Date(`${Q9_BOOKING_OPENS_DATE}T12:00:00`));
+    if (!minQ) return;
+    const cur = date ? normalizeDate(date) : normalizeDate(new Date());
+    if (!cur) {
+      setDate(minQ);
+      return;
+    }
+    if (cur.getTime() < minQ.getTime()) setDate(minQ);
+  }, [branchId, date, setDate]);
+
+  useEffect(() => {
     if (durationType !== "ONE_DAY") return;
     const isValidOneDayTime = ONE_DAY_PICKUP_OPTIONS.some(
       (option) => option.time === timeFrom,
@@ -331,7 +387,12 @@ export default function BookingPrefsForm({
           <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-900 font-medium">
             Máy mở đặt lịch từ{" "}
             <span className="font-black text-amber-950">
-              {format(normalizeDate(minPickupDate), "dd/MM/yyyy")}
+              {(() => {
+                const nd = normalizeDate(minPickupDate);
+                return nd && isValid(nd)
+                  ? format(nd, "dd/MM/yyyy")
+                  : "";
+              })()}
             </span>
             .
           </div>
@@ -385,11 +446,11 @@ export default function BookingPrefsForm({
               Ngày nhận
             </label>
             <DatePicker
-              selected={date}
+              selected={pickerSelected(date)}
               onChange={(nextDate) => setDate(normalizeDate(nextDate))}
               dateFormat="dd/MM/yyyy"
               locale="vi"
-              minDate={effectiveMinPickup}
+              minDate={pickupMinDate}
               placeholderText="Chọn ngày nhận"
               className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-base font-medium focus:border-[#FF9FCA] focus:outline-none"
             />
@@ -401,40 +462,41 @@ export default function BookingPrefsForm({
             {durationType === "SIX_HOURS" ? (
               <input
                 type="text"
-                value={toDateTime ? format(toDateTime, "dd/MM/yyyy") : ""}
+                value={
+                  toDateTime && isValid(toDateTime)
+                    ? format(toDateTime, "dd/MM/yyyy")
+                    : ""
+                }
                 disabled
                 className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] text-base font-medium text-[#777] cursor-not-allowed"
               />
             ) : (
               <>
                 <DatePicker
-                  selected={endDate}
+                  selected={pickerSelected(endDate)}
                   onChange={(nextDate) => setEndDate(normalizeDate(nextDate))}
                   dateFormat="dd/MM/yyyy"
                   locale="vi"
-                  minDate={
-                    durationType === "ONE_DAY"
-                      ? date
-                        ? addDays(date, 1)
-                        : addDays(effectiveMinPickup, 1)
-                      : date || effectiveMinPickup
-                  }
+                  minDate={endPickerMinDate}
                   placeholderText="Chọn ngày trả"
                   className="w-full px-4 py-3 rounded-xl border-2 border-[#eee] bg-white text-base font-medium focus:border-[#FF9FCA] focus:outline-none"
                 />
-                {durationType === "ONE_DAY" && date && (
+                {durationType === "ONE_DAY" && date && isValid(date) && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {QUICK_RETURN_DAY_OFFSETS.map((offset) => {
                       const candidate = normalizeDate(addDays(date, offset));
                       const active =
                         endDate &&
-                        candidate?.getTime() ===
+                        candidate &&
+                        candidate.getTime() ===
                           normalizeDate(endDate)?.getTime();
                       return (
                         <button
                           key={offset}
                           type="button"
-                          onClick={() => setEndDate(candidate)}
+                          onClick={() =>
+                            candidate && setEndDate(candidate)
+                          }
                           className={`px-2 py-1 rounded-lg border text-xs font-semibold transition-all ${
                             active
                               ? "bg-[#222] text-[#FF9FCA] border-[#222]"
@@ -615,14 +677,39 @@ export default function BookingPrefsForm({
           </label>
           <div className="space-y-2">
             {BRANCHES.map((branch) => {
-              const comingSoon = Boolean(branch.disabled && branch.comingSoon);
+              const pickupDay = date ? normalizeDate(date) : normalizeDate(new Date());
+              const bookable = isBranchBookable(branch, pickupDay);
+              const comingSoon = branch.id === "Q9" && !bookable;
               if (comingSoon) {
+                const openLabel =
+                  typeof branch.opensAt === "string" && branch.opensAt
+                    ? (() => {
+                        const od = new Date(`${branch.opensAt}T12:00:00`);
+                        return isValid(od)
+                          ? od.toLocaleDateString("vi-VN")
+                          : "";
+                      })()
+                    : "";
+                const activateQ9 = () => {
+                  const minQ = normalizeDate(
+                    new Date(`${Q9_BOOKING_OPENS_DATE}T12:00:00`),
+                  );
+                  setDate(minQ);
+                  setEndDate((prev) => {
+                    if (durationType === "SIX_HOURS") return minQ;
+                    const minEnd = addDays(minQ, 1);
+                    if (!prev || prev <= minQ) return minEnd;
+                    return prev < minEnd ? minEnd : prev;
+                  });
+                  setBranchId("Q9");
+                };
                 return (
-                  <div
+                  <button
                     key={branch.id}
-                    role="status"
-                    aria-label={`${branch.label} — sắp mở cửa`}
-                    className="relative w-full overflow-hidden rounded-xl border-2 border-dashed border-[#f5b8d4]/90 bg-gradient-to-br from-[#fff8fc] via-[#fff5f9] to-[#ffecf5] px-3 py-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
+                    type="button"
+                    onClick={activateQ9}
+                    aria-label={`${branch.label} — đặt từ ${openLabel || Q9_BOOKING_OPENS_DATE}`}
+                    className="relative w-full overflow-hidden rounded-xl border-2 border-dashed border-[#f5b8d4]/90 bg-gradient-to-br from-[#fff8fc] via-[#fff5f9] to-[#ffecf5] px-3 py-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] cursor-pointer transition hover:border-[#E85C9C]/80 hover:shadow-md active:scale-[0.99]"
                   >
                     <div
                       aria-hidden
@@ -634,7 +721,7 @@ export default function BookingPrefsForm({
                       </p>
                       <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-[#E85C9C] to-[#ff7eb3] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-sm ring-2 ring-white/80">
                         <Sparkles className="h-2.5 w-2.5" strokeWidth={2.5} />
-                        Sắp mở
+                        Chạm để chọn
                       </span>
                     </div>
                     {branch.address ? (
@@ -643,9 +730,10 @@ export default function BookingPrefsForm({
                       </p>
                     ) : null}
                     <p className="relative mt-1.5 text-[10px] font-semibold text-[#d9468c]/80">
-                      Đang hoàn thiện — sẽ mở đặt lịch sớm
+                      Ngày nhận hiện trước {openLabel || "—"}. Chạm để chọn Q9 và
+                      đặt ngày nhận từ {openLabel || "—"} (đặt trước được).
                     </p>
-                  </div>
+                  </button>
                 );
               }
 
@@ -654,10 +742,10 @@ export default function BookingPrefsForm({
                 <button
                   key={branch.id}
                   type="button"
-                  disabled={branch.disabled}
-                  onClick={() => !branch.disabled && setBranchId(branch.id)}
+                  disabled={!bookable}
+                  onClick={() => bookable && setBranchId(branch.id)}
                   className={`relative w-full overflow-hidden rounded-xl border-2 px-3 py-2.5 text-left transition-all ${
-                    branch.disabled
+                    !bookable
                       ? "cursor-not-allowed border-[#eee] bg-[#f5f5f5] text-[#bbb]"
                       : selected
                         ? "border-[#222] bg-[#222] shadow-md"
@@ -667,7 +755,7 @@ export default function BookingPrefsForm({
                   <div className="relative flex items-start justify-between gap-2">
                     <p
                       className={`min-w-0 flex-1 text-sm font-black uppercase tracking-wide leading-tight ${
-                        branch.disabled
+                        !bookable
                           ? "text-[#bbb]"
                           : selected
                             ? "text-[#FF9FCA]"
@@ -676,7 +764,7 @@ export default function BookingPrefsForm({
                     >
                       {branch.label}
                     </p>
-                    {selected && !branch.disabled ? (
+                    {selected && bookable ? (
                       <span className="shrink-0 rounded-full bg-[#FF9FCA]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#FF9FCA] ring-1 ring-[#FF9FCA]/30">
                         Đã chọn
                       </span>
@@ -685,7 +773,7 @@ export default function BookingPrefsForm({
                   {branch.address ? (
                     <p
                       className={`relative mt-1.5 text-[11px] font-medium leading-snug break-words ${
-                        branch.disabled
+                        !bookable
                           ? "text-[#ccc]"
                           : selected
                             ? "text-[#f5c0dc]"
