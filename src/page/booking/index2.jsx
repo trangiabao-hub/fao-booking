@@ -28,6 +28,7 @@ import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
 import { formatTimeVi } from "../../utils/formatTimeVi";
 import { loadCustomerSession } from "../../utils/storage";
 import { BRANCHES } from "../../data/bookingConstants";
+import { apiLocationFromBranchId } from "../../utils/deviceBranch";
 
 // Hình thức nhận máy
 const RECEIVE_METHODS = [
@@ -1256,6 +1257,7 @@ export default function BookingPage() {
         dayOfRent: days,
         originalPrice: subTotal,
         noteVoucher: voucherId || "NONE",
+        location: apiLocationFromBranchId(branch),
       };
 
       const rawDesc = `Thue ${(selectedDevice.displayName || "").slice(0, 15)}`;

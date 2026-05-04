@@ -15,6 +15,15 @@ export function normalizeBookingBranchId(rawValue) {
 }
 
 /**
+ * Giá trị `location` gửi khi tạo booking online — backend map sang DeviceBranch
+ * (resolveTargetBranchForBestFit). Luôn gửi explicit: nếu chỉ gửi khi Q9 thì PN
+ * để trống và BE fallback theo deviceId → có thể gán nhầm máy Q9.
+ */
+export function apiLocationFromBranchId(branchId) {
+  return normalizeBookingBranchId(branchId) === "Q9" ? "Thủ Đức" : "Phú Nhuận";
+}
+
+/**
  * Suy luận chi nhánh từ một booking khi API không trả `branchId`.
  * Backend thường gửi `location` ("Thủ Đức") và/hoặc `note` ("... FAO Q9").
  */

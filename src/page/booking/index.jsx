@@ -39,6 +39,7 @@ import {
   Q9_BOOKING_OPENS_DATE,
 } from "../../data/bookingConstants";
 import {
+  apiLocationFromBranchId,
   devicesForBookingBranch,
   normalizeDevicesListResponse,
 } from "../../utils/deviceBranch";
@@ -98,7 +99,7 @@ const BOOKING_VOUCHER_OPTIONS = [
   {
     id: Q9_BRANCH_VOUCHER_ID,
     percentBadge: "30%",
-    title: "Giảm sốc mừng khai trương",
+    title: "voucher khai trương 30%",
     subtitle: "Giảm 30%, tối đa 200k — nhận/trả tại FAO Q9 (Thủ Đức)",
   },
 ];
@@ -417,7 +418,7 @@ function useBookingPricing(
       subTotal > 0
     ) {
       voucherDiscount = computeQ9BranchFlatDiscountVnd(subTotal);
-      voucherLabel = "Giảm sốc mừng khai trương";
+      voucherLabel = "voucher khai trương 30%";
     } else if (selectedVoucherId === "WEEKDAY20") {
       const breakdown =
         subTotal > 0 ? computeDiscountBreakdown(subTotal, t1, t2) : null;
@@ -935,6 +936,10 @@ export default function BookingPage() {
       timeTo: prefs?.timeTo || SIX_HOUR_RETURN_TIME,
       pickupType: prefs?.pickupType || "MORNING",
       pickupSlot: prefs?.pickupSlot || DEFAULT_EVENING_SLOT,
+      initialVoucherId:
+        isQ9Entry && safeBranchId === "Q9"
+          ? Q9_BRANCH_VOUCHER_ID
+          : "WEEKDAY20",
     };
   }, [isQ9Entry]);
 
@@ -1003,8 +1008,10 @@ export default function BookingPage() {
   const [memberTotalSpent, setMemberTotalSpent] = useState(0);
   const [isMemberLoading, setIsMemberLoading] = useState(false);
   const [pointsToRedeem, setPointsToRedeem] = useState(0);
-  /** Mặc định WEEKDAY20 để khớp KM “ngày trong tuần” và lưu noteVoucher khi thanh toán */
-  const [selectedVoucherId, setSelectedVoucherId] = useState("WEEKDAY20");
+  /** /q9 + chi nhánh Q9: mặc định voucher khai trương; /booking: WEEKDAY20 */
+  const [selectedVoucherId, setSelectedVoucherId] = useState(
+    initialPrefs.initialVoucherId,
+  );
 
   useEffect(() => {
     if (selectedBranchId !== "Q9") {
@@ -1522,7 +1529,7 @@ export default function BookingPage() {
         ]
           .filter(Boolean)
           .join(" | ") || "NONE",
-        ...(selectedBranchId === "Q9" ? { location: "Thủ Đức" } : {}),
+        location: apiLocationFromBranchId(selectedBranchId),
       };
 
       const rawDesc = `Thue ${selectedDevice.displayName}`;

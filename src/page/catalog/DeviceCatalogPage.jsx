@@ -1325,15 +1325,30 @@ export default function DeviceCatalogPage() {
         if (!nid) return;
         // Only take the first appearance to define global order
         if (!orderMap.has(nid)) {
-          orderMap.set(nid, {
+          const row = {
             catOrder: cat.orderNumber ?? catIdx,
             itemOrder: item.orderIndex ?? 0,
-          });
+          };
+          orderMap.set(nid, row);
+          // Tab Tất cả / Máy trống: groupDeviceIds ở Q9 là id máy Thủ Đức — map CMS
+          // thường trỏ id chi nhánh khác → cần map cùng modelKey/tên như allowedOnAllDeviceIds.
+          const rep = deviceByIdGlobal.get(String(nid));
+          if (rep) {
+            const keys = new Set();
+            addDeviceCategoryGroupKeys(rep, keys);
+            for (const device of devices) {
+              if (!physicalDeviceMatchesCategoryGroupKeys(device, keys)) continue;
+              const idStr = String(device.id);
+              if (!orderMap.has(idStr)) {
+                orderMap.set(idStr, row);
+              }
+            }
+          }
         }
       });
     });
     return orderMap;
-  }, [apiCategories]);
+  }, [apiCategories, devices, deviceByIdGlobal]);
 
   const catalogFilterOpts = useMemo(
     () => ({
@@ -1420,17 +1435,17 @@ export default function DeviceCatalogPage() {
     setShowAlternateBranchOptions(false);
   }, [availabilityPrefs.branchId]);
 
+  /** Có máy trống chi nhánh khác → mở sẵn khối (user vẫn có thể thu gọn). */
   useEffect(() => {
     if (
       availabilityConfirmed &&
-      filteredDevices.length === 0 &&
       filteredAlternateBranchDevicesAvailable.length > 0
     ) {
       setShowAlternateBranchOptions(true);
     }
   }, [
     availabilityConfirmed,
-    filteredDevices.length,
+    availabilityPrefs.branchId,
     filteredAlternateBranchDevicesAvailable.length,
   ]);
 

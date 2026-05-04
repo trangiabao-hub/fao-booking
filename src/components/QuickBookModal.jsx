@@ -42,6 +42,7 @@ import {
   DEFAULT_EVENING_SLOT,
   isBranchBookable,
 } from "../data/bookingConstants";
+import { apiLocationFromBranchId } from "../utils/deviceBranch";
 import { filterBookingsOverlappingSlot } from "../utils/bookingOverlap";
 import {
   normalizeDate,
@@ -1320,7 +1321,7 @@ export default function QuickBookModal({
             originalPrice: devPrice,
             noteVoucher: noteVoucherForRequests,
             usedPoint: pointToUse,
-            ...(selectedBranch === "Q9" ? { location: "Thủ Đức" } : {}),
+            location: apiLocationFromBranchId(selectedBranch),
           };
         });
 
@@ -1357,7 +1358,7 @@ export default function QuickBookModal({
           originalPrice: price,
           noteVoucher: noteVoucherForRequests,
           usedPoint: pointToUse,
-          ...(selectedBranch === "Q9" ? { location: "Thủ Đức" } : {}),
+          location: apiLocationFromBranchId(selectedBranch),
         };
 
         const payload = {

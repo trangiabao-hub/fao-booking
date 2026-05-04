@@ -388,11 +388,11 @@ function ChicCardInner({
               >
                 <MapPin size={15} className="shrink-0" aria-hidden />
                 <span>
-                  Còn máy tại{" "}
+                  Còn máy ở{" "}
                   {crossBranchHint.branches[0].label
                     .replace(/^FAO\s*/i, "")
                     .trim()}{" "}
-                  · Đặt ngay
+                  Đặt ngay
                 </span>
               </button>
             ) : demoteLocalSlotSuggestions && hasSixHourChoices ? (
