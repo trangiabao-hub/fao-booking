@@ -1459,7 +1459,7 @@ export default function QuickBookModal({
           className="bg-[#FFFBF5] w-full max-w-md md:max-w-2xl rounded-3xl max-h-[94dvh] sm:max-h-[90vh] overflow-hidden flex flex-col"
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-3 sm:p-4 border-b border-[#FFE4F0]">
+          <div className="flex shrink-0 items-center justify-between p-3 sm:p-4 border-b border-[#FFE4F0]">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden bg-white shrink-0">
                 <img
@@ -1503,7 +1503,7 @@ export default function QuickBookModal({
           </div>
 
           {/* Progress */}
-          <div className="px-4 py-3 bg-[#222] border-b border-[#333]">
+          <div className="shrink-0 px-4 py-3 bg-[#222] border-b border-[#333]">
             <div className="flex items-center gap-2">
               {[1, 2, 3].map((s) => (
                 <div key={s} className="flex items-center gap-2">
@@ -1537,7 +1537,7 @@ export default function QuickBookModal({
           </div>
 
           {/* Content */}
-          <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-5">
+          <div className="min-h-0 flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-5">
             {step === 1 && (
               <div>
                 <BookingPrefsForm
@@ -2579,7 +2579,7 @@ export default function QuickBookModal({
           </div>
 
           {/* Footer */}
-          <div className="p-3 sm:p-4 border-t border-[#FFE4F0] bg-white">
+          <div className="shrink-0 p-3 sm:p-4 border-t border-[#FFE4F0] bg-white">
             <div
               className={`grid gap-3 ${
                 step > 1 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"

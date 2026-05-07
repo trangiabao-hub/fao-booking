@@ -265,6 +265,26 @@ export default function DeviceCatalogPage() {
   const [showQuickBookModal, setShowQuickBookModal] = useState(false);
   /** Khi đặt nhanh máy chỉ có ở chi nhánh khách — preset chi nhánh trong modal (không đổi prefs chung). */
   const [quickBookBranchOverride, setQuickBookBranchOverride] = useState(null);
+  /**
+   * Máy cùng model trong modal chỉ của chi nhánh đặt — không merge toàn cục (PN+Q9).
+   * Máy crossBranchOnly luôn dùng primaryBookBranchId.
+   */
+  const quickBookModelGroupBranchId = useMemo(() => {
+    const one = quickBookDevices.length === 1 ? quickBookDevices[0] : null;
+    if (one?.crossBranchOnly && one?.primaryBookBranchId) {
+      return one.primaryBookBranchId;
+    }
+    return quickBookBranchOverride ?? availabilityPrefs.branchId;
+  }, [
+    quickBookDevices,
+    quickBookBranchOverride,
+    availabilityPrefs.branchId,
+  ]);
+
+  const devicesForQuickBookModelGroup = useMemo(
+    () => devicesForBookingBranch(devices, quickBookModelGroupBranchId),
+    [devices, quickBookModelGroupBranchId],
+  );
   /** Progressive disclosure: máy chỉ có / đặt tại chi nhánh khác — không trộn vào grid chính. */
   const [showAlternateBranchOptions, setShowAlternateBranchOptions] =
     useState(false);
@@ -667,6 +687,9 @@ export default function DeviceCatalogPage() {
         return String(a.device.id).localeCompare(String(b.device.id));
       });
 
+      /** Ảnh catalog / feedback: luôn máy (1) — không dùng ảnh máy khác khi (1) đang bận. */
+      const displaySourceDevice = sortedGroup[0]?.device;
+
       const preferredDeviceId =
         availabilitySuggestion?.sixHourChoices?.[0]?.suggestedDeviceId ??
         availabilitySuggestion?.suggestedDeviceId ??
@@ -681,6 +704,11 @@ export default function DeviceCatalogPage() {
         ...group.map((g) => g.device.orderNumber ?? 999999),
       );
 
+      const cover =
+        displaySourceDevice?.images?.[0] ||
+        device.images?.[0] ||
+        FALLBACK_IMG;
+
       result.push({
         ...device,
         releaseDate: strictestRelease
@@ -690,7 +718,7 @@ export default function DeviceCatalogPage() {
         modelKey,
         displayName: normalizedName,
         brand: inferBrand(device.name),
-        img: device.images?.[0] || FALLBACK_IMG,
+        img: cover,
         unitCount: group.length,
         bookingCount: totalBookingCount,
         availableCount: totalAvailable,
@@ -836,6 +864,8 @@ export default function DeviceCatalogPage() {
         return String(a.device.id).localeCompare(String(b.device.id));
       });
 
+      const displaySourceDevice = sortedGroup[0]?.device;
+
       const rep =
         sortedGroup.find((g) => g.isAvailable) || sortedGroup[0];
       const { device } = rep;
@@ -843,6 +873,11 @@ export default function DeviceCatalogPage() {
       const minOrderNumber = Math.min(
         ...group.map((g) => g.device.orderNumber ?? 999999),
       );
+
+      const cover =
+        displaySourceDevice?.images?.[0] ||
+        device.images?.[0] ||
+        FALLBACK_IMG;
 
       result.push({
         ...device,
@@ -853,7 +888,7 @@ export default function DeviceCatalogPage() {
         modelKey: mk,
         displayName: normalizedName,
         brand: inferBrand(device.name),
-        img: device.images?.[0] || FALLBACK_IMG,
+        img: cover,
         unitCount: group.length,
         bookingCount: 0,
         availableCount: totalAvailable,
@@ -2746,7 +2781,7 @@ export default function DeviceCatalogPage() {
           quickBookDevices.length === 1 && quickBookDevices[0]?.groupDeviceIds?.size > 1
             ? buildModelGroupDevicesForModal(
                 quickBookDevices[0],
-                quickBookDevices[0]?.crossBranchOnly ? devices : devicesInBranch,
+                devicesForQuickBookModelGroup,
                 deviceBookingsById,
               )
             : []
