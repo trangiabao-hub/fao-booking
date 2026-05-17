@@ -63,7 +63,6 @@ import {
   pointsPerEarnBlock,
 } from "../utils/loyaltyEarn";
 import { calculateRentalInfo, roundDownToThousand } from "../utils/pricing";
-import { getFaoStandardRentalContractUrl } from "../config/externalUrls";
 import { getStrictestReleaseDate } from "../utils/deviceReleaseDate";
 import { formatTimeVi } from "../utils/formatTimeVi";
 import BookingPrefsForm, {
@@ -72,7 +71,15 @@ import BookingPrefsForm, {
   formatPickupReturnSummary,
 } from "./BookingPrefsForm";
 
-/** Đồng bộ fao-booking với trang /booking và fao (noteVoucher). */
+/** Đồng bộ copy với `/booking` — chỉ cam kết, không + cọc vào QR thanh toán. */
+const BOOKING_DEPOSIT_POLICY_LINES = [
+  "🎁 Đặc biệt: Chương trình CỌC 0Đ — áp dụng cho HSSV đang còn lịch học tại TP.HCM.",
+  "🔒 Hoặc cọc thế chân 2.000.000đ",
+  "🪪 CCCD/VNeID mức 2 (+ chứng nhận lịch học nếu thuộc diện CỌC 0Đ).",
+  "Lưu ý khách hàng dưới 16 tuổi cần có sự cho phép của phụ huynh",
+];
+
+/** Đồng bộ fao-booking với trang /booking (noteVoucher). */
 function buildQuickBookNoteVoucher({
   price,
   t1,
@@ -487,24 +494,20 @@ export default function QuickBookModal({
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [agreeNoResellOrPawn, setAgreeNoResellOrPawn] = useState(false);
-  const [agreeConfirmPickupReturnTime, setAgreeConfirmPickupReturnTime] =
-    useState(false);
+  const [agreeNoScamElsewhere, setAgreeNoScamElsewhere] = useState(false);
   const [agreePickupInPersonAtBranch, setAgreePickupInPersonAtBranch] =
     useState(false);
   const [agreeCccdPerDevice, setAgreeCccdPerDevice] = useState(false);
+  const [agreeDepositAndPolicies, setAgreeDepositAndPolicies] =
+    useState(false);
   const [agreementErrors, setAgreementErrors] = useState({
-    noResellOrPawn: false,
-    confirmPickupReturnTime: false,
+    noScamElsewhere: false,
     pickupInPersonAtBranch: false,
+    depositAndPolicies: false,
     cccdPerDevice: false,
   });
   const agreementSectionRef = useRef(null);
   const cccdConfirmedRef = useRef(false);
-  const faoStandardContractUrl = useMemo(
-    () => getFaoStandardRentalContractUrl(),
-    [],
-  );
   const selectedBranchPickupAddress = useMemo(() => {
     const b = BRANCHES.find((x) => x.id === selectedBranch);
     return (b?.address || "").trim();
@@ -536,14 +539,14 @@ export default function QuickBookModal({
     setError("");
     setCheckoutMode("GOOGLE");
     setPointToUse(0);
-    setAgreeNoResellOrPawn(false);
-    setAgreeConfirmPickupReturnTime(false);
+    setAgreeNoScamElsewhere(false);
     setAgreePickupInPersonAtBranch(false);
     setAgreeCccdPerDevice(false);
+    setAgreeDepositAndPolicies(false);
     setAgreementErrors({
-      noResellOrPawn: false,
-      confirmPickupReturnTime: false,
+      noScamElsewhere: false,
       pickupInPersonAtBranch: false,
+      depositAndPolicies: false,
       cccdPerDevice: false,
     });
     if (hasInitialPrefs && initialPrefs) {
@@ -1168,16 +1171,16 @@ export default function QuickBookModal({
       return;
 
     const nextAgreementErrors = {
-      noResellOrPawn: !agreeNoResellOrPawn,
-      confirmPickupReturnTime: !agreeConfirmPickupReturnTime,
+      noScamElsewhere: !agreeNoScamElsewhere,
       pickupInPersonAtBranch: !agreePickupInPersonAtBranch,
+      depositAndPolicies: !agreeDepositAndPolicies,
       cccdPerDevice:
         effectiveDevices.length >= 2 && !agreeCccdPerDevice,
     };
     if (
-      nextAgreementErrors.noResellOrPawn ||
-      nextAgreementErrors.confirmPickupReturnTime ||
+      nextAgreementErrors.noScamElsewhere ||
       nextAgreementErrors.pickupInPersonAtBranch ||
+      nextAgreementErrors.depositAndPolicies ||
       nextAgreementErrors.cccdPerDevice
     ) {
       setAgreementErrors(nextAgreementErrors);
@@ -1192,9 +1195,9 @@ export default function QuickBookModal({
     }
 
     setAgreementErrors({
-      noResellOrPawn: false,
-      confirmPickupReturnTime: false,
+      noScamElsewhere: false,
       pickupInPersonAtBranch: false,
+      depositAndPolicies: false,
       cccdPerDevice: false,
     });
 
@@ -1322,6 +1325,7 @@ export default function QuickBookModal({
             noteVoucher: noteVoucherForRequests,
             usedPoint: pointToUse,
             location: apiLocationFromBranchId(selectedBranch),
+            depositApplicable: true,
           };
         });
 
@@ -1359,6 +1363,7 @@ export default function QuickBookModal({
           noteVoucher: noteVoucherForRequests,
           usedPoint: pointToUse,
           location: apiLocationFromBranchId(selectedBranch),
+          depositApplicable: true,
         };
 
         const payload = {
@@ -2420,13 +2425,11 @@ export default function QuickBookModal({
                   </div>
                 </div>
 
-                <div className="p-3.5 sm:p-4 bg-emerald-50/90 rounded-xl border border-emerald-200/80">
-                  <div className="text-[11px] text-emerald-900 font-bold leading-snug mb-1">
-                    Đặc biệt: Cọc 0 đồng
-                  </div>
-                  <div className="text-[12px] text-emerald-900/85 leading-relaxed">
-                    Chỉ cần CCCD bản gốc (shop chụp lại, không giữ máy) hoặc
-                    VNeID định danh mức 2.
+                <div className="p-3.5 sm:p-4 bg-stone-50/90 rounded-xl border border-stone-200">
+                  <div className="text-[12px] text-stone-700 leading-relaxed">
+                    Cọc xử lý{" "}
+                    <strong>tại cửa hàng</strong> theo bốn điều bạn đã tick ở
+                    ô cam kết.
                   </div>
                 </div>
                 <div
@@ -2437,111 +2440,75 @@ export default function QuickBookModal({
                     Cam kết trước khi thanh toán
                   </div>
                   <label
-                    className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
-                      agreementErrors.noResellOrPawn
-                        ? "border-red-300 bg-red-50 text-red-800"
-                        : "border-stone-100 bg-stone-50/80 text-stone-700"
+                    className={`flex items-start gap-3 rounded-xl border-2 p-3 text-[13px] leading-relaxed transition-colors ${
+                      agreementErrors.noScamElsewhere
+                        ? "border-amber-600 bg-amber-100 text-amber-950"
+                        : "border-amber-300 bg-amber-50 text-amber-950"
                     }`}
                   >
                     <input
                       type="checkbox"
-                      checked={agreeNoResellOrPawn}
+                      checked={agreeNoScamElsewhere}
                       onChange={(e) => {
                         const checked = e.target.checked;
-                        setAgreeNoResellOrPawn(checked);
+                        setAgreeNoScamElsewhere(checked);
                         setAgreementErrors((prev) => ({
                           ...prev,
-                          noResellOrPawn: !checked && prev.noResellOrPawn,
+                          noScamElsewhere: !checked && prev.noScamElsewhere,
                         }));
                       }}
-                      className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
+                      className="mt-1 h-4 w-4 shrink-0 accent-amber-700"
                     />
                     <span>
-                      Cam kết không sử dụng máy dưới các mục đích như cầm, bán
-                      hoặc cho thuê lại. Nếu phát hiện vi phạm, tôi đồng ý bồi
-                      thường chi phí theo đúng nội dung đã nêu trong hợp đồng.{" "}
-                      <a
-                        href={faoStandardContractUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-semibold underline"
-                        title="Mẫu hợp đồng chuẩn (cùng domain trang hiện tại)"
-                      >
-                        Xem hợp đồng chuẩn
-                      </a>{" "}
-                      (kèm{" "}
-                      <a
-                        href={`${faoStandardContractUrl}#dieu-4`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-semibold underline"
-                      >
-                        Điều 4 — bồi thường
-                      </a>
-                      ).
+                      Tôi cam kết <strong>KHÔNG</strong> đang lừa đảo / quỵt
+                      máy / chiếm đoạt thiết bị tại bất kỳ shop cho thuê nào
+                      khác. Nếu shop phát hiện (qua mạng lưới shop cho thuê,
+                      nhóm cộng đồng, hoặc tin báo từ nạn nhân), FAO có quyền{" "}
+                      <strong className="uppercase">
+                        huỷ đơn ngay lập tức
+                      </strong>{" "}
+                      và{" "}
+                      <strong className="uppercase">không hoàn tiền</strong>{" "}
+                      cọc / tiền thuê đã thanh toán; đồng thời chia sẻ{" "}
+                      <strong>CCCD – SĐT – Facebook</strong> của tôi vào{" "}
+                      <strong className="uppercase">
+                        danh sách đen liên shop
+                      </strong>{" "}
+                      và{" "}
+                      <strong className="uppercase">
+                        trình báo cơ quan công an
+                      </strong>{" "}
+                      theo Điều 174 BLHS (tội Lừa đảo chiếm đoạt tài sản).
                     </span>
                   </label>
-                  <label
-                    className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
-                      agreementErrors.confirmPickupReturnTime
-                        ? "border-red-300 bg-red-50 text-red-800"
-                        : "border-stone-100 bg-stone-50/80 text-stone-700"
-                    }`}
-                  >
+                  <label className="flex items-start gap-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3 text-[13px] leading-relaxed text-stone-700 cursor-pointer hover:border-[#FF9FCA]/70 transition-colors">
                     <input
                       type="checkbox"
-                      checked={agreeConfirmPickupReturnTime}
+                      checked={agreeDepositAndPolicies}
                       onChange={(e) => {
                         const checked = e.target.checked;
-                        setAgreeConfirmPickupReturnTime(checked);
+                        setAgreeDepositAndPolicies(checked);
                         setAgreementErrors((prev) => ({
                           ...prev,
-                          confirmPickupReturnTime:
-                            !checked && prev.confirmPickupReturnTime,
+                          depositAndPolicies:
+                            !checked && prev.depositAndPolicies,
                         }));
                       }}
                       className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
                     />
-                    <span>
-                      Xác nhận đã đúng giờ nhận/trả. Nếu cần thay đổi, tôi sẽ
-                      nhắn trực tiếp cho page.
-                    </span>
-                  </label>
-                  <label
-                    className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
-                      agreementErrors.pickupInPersonAtBranch
-                        ? "border-red-300 bg-red-50 text-red-800"
-                        : "border-stone-100 bg-stone-50/80 text-stone-700"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={agreePickupInPersonAtBranch}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setAgreePickupInPersonAtBranch(checked);
-                        setAgreementErrors((prev) => ({
-                          ...prev,
-                          pickupInPersonAtBranch:
-                            !checked && prev.pickupInPersonAtBranch,
-                        }));
-                      }}
-                      className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
-                    />
-                    <span>
-                      Tôi sẽ nhận máy trực tiếp tại{" "}
-                      <strong className="text-stone-900">
-                        {selectedBranchPickupAddress ||
-                          "địa chỉ cửa hàng chi nhánh đã chọn"}
-                      </strong>
-                      .
+                    <span className="space-y-2">
+                      {BOOKING_DEPOSIT_POLICY_LINES.map((line) => (
+                        <span key={line} className="block">
+                          {line}
+                        </span>
+                      ))}
                     </span>
                   </label>
                   {effectiveDevices.length >= 2 && (
                     <label
                       className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
                         agreementErrors.cccdPerDevice
-                          ? "border-red-300 bg-red-50 text-red-800"
+                          ? "border-amber-300 bg-amber-50 text-amber-950"
                           : "border-stone-100 bg-stone-50/80 text-stone-700"
                       }`}
                     >
@@ -2568,6 +2535,36 @@ export default function QuickBookModal({
                       </span>
                     </label>
                   )}
+                  <label
+                    className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
+                      agreementErrors.pickupInPersonAtBranch
+                        ? "border-amber-300 bg-amber-50 text-amber-950"
+                        : "border-stone-100 bg-stone-50/80 text-stone-700"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={agreePickupInPersonAtBranch}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setAgreePickupInPersonAtBranch(checked);
+                        setAgreementErrors((prev) => ({
+                          ...prev,
+                          pickupInPersonAtBranch:
+                            !checked && prev.pickupInPersonAtBranch,
+                        }));
+                      }}
+                      className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
+                    />
+                    <span>
+                      Tôi sẽ nhận máy trực tiếp tại{" "}
+                      <strong className="text-stone-900">
+                        {selectedBranchPickupAddress ||
+                          "địa chỉ cửa hàng chi nhánh đã chọn"}
+                      </strong>
+                      .
+                    </span>
+                  </label>
                 </div>
                 {error && (
                   <div className="p-3.5 bg-red-50 text-red-800 rounded-xl text-[13px] font-semibold leading-relaxed border border-red-200/90">
@@ -2642,7 +2639,10 @@ export default function QuickBookModal({
                   {isSubmitting ? (
                     "Đang xử lý..."
                   ) : (
-                    <>Thanh toán • {payableTotal.toLocaleString("vi-VN")}đ</>
+                    <>
+                      Thanh toán •{" "}
+                      {payableTotal.toLocaleString("vi-VN")}đ
+                    </>
                   )}
                 </button>
               )}

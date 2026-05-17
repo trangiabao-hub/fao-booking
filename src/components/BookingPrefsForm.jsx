@@ -374,11 +374,16 @@ export default function BookingPrefsForm({
           từ thứ 2 đến thứ 6. Tự áp dụng khi đủ điều kiện, không cần nhập mã.
         </div>
         <div className="text-sm text-[#555] mt-1.5 font-medium leading-relaxed">
-          Thuê máy ảnh{" "}
-          <span className="font-black text-[#E85C9C] bg-[#FFE4F0] px-1.5 py-0.5 rounded">
-            không cần cọc
-          </span>
-          , chỉ cần CCCD chính chủ hoặc VNeID định danh mức 2.
+          <strong className="text-[#E85C9C]">Đặc biệt:</strong>{" "}
+          chương trình{" "}
+          <span className="font-black text-[#E85C9C] bg-[#FFE4F0] px-1 py-0.5 rounded">
+            CỌC 0Đ
+          </span>{" "}
+          áp dụng cho HSSV đang còn lịch học tại TP.HCM (xuất trình khi nhận
+          máy).{" "}
+          <strong>Hoặc</strong> cọc thế chân{" "}
+          <span className="font-black text-[#222]">2 triệu</span> (+ khi thanh
+          toán online) đối với khách không đủ điều kiện trên.
         </div>
       </div>
 

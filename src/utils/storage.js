@@ -6,7 +6,7 @@ const RECENT_ORDER_KEY = "fao_recent_order";
 
 /**
  * Save customer info to localStorage
- * @param {Object} customer - { fullName, phone, gmail, ig, fb }
+ * @param {Object} customer - { fullName, phone, gmail, ig, fb, birthDate }
  */
 export function saveCustomerInfo(customer) {
   try {
@@ -16,6 +16,7 @@ export function saveCustomerInfo(customer) {
       gmail: customer.gmail || "",
       ig: customer.ig || "",
       fb: customer.fb || "",
+      birthDate: customer.birthDate || "",
       savedAt: new Date().toISOString(),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -51,6 +52,7 @@ export function loadCustomerInfo() {
       gmail: data.gmail || "",
       ig: data.ig || "",
       fb: data.fb || "",
+      birthDate: data.birthDate || "",
     };
   } catch (e) {
     console.warn("Failed to load customer info:", e);

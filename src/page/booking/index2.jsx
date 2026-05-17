@@ -1258,6 +1258,7 @@ export default function BookingPage() {
         originalPrice: subTotal,
         noteVoucher: voucherId || "NONE",
         location: apiLocationFromBranchId(branch),
+        depositApplicable: true,
       };
 
       const rawDesc = `Thue ${(selectedDevice.displayName || "").slice(0, 15)}`;

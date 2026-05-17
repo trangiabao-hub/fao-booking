@@ -80,6 +80,16 @@ const TET_START_OFFSET = -6; // 25 Tết
 const TET_END_OFFSET = 9; // Mùng 10
 
 const POINT_TO_VND = 1000;
+/** Copy cam kết cọc (chỉ thông báo — không + vào QR thanh toán). */
+const BOOKING_DEPOSIT_COMMITMENT_LINES = [
+  "🎁 Đặc biệt: Chương trình CỌC 0Đ — áp dụng cho HSSV đang còn lịch học tại TP.HCM.",
+  "🔒 Hoặc cọc thế chân 2.000.000đ",
+  "🪪 CCCD/VNeID mức 2 (+ chứng nhận lịch học nếu thuộc diện CỌC 0Đ).",
+  "Lưu ý khách hàng dưới 16 tuổi cần có sự cho phép của phụ huynh",
+];
+
+/** Fallback parse Cọc từ mô tả thiết bị / contract (không dùng cho PayOS online). */
+const STANDARD_LEG_DEPOSIT_VND = 2_000_000;
 
 /** Một voucher shop mỗi đơn — style chọn giống Shopee */
 const BOOKING_VOUCHER_OPTIONS = [
@@ -119,7 +129,7 @@ function inferBrand(name = "") {
 }
 
 function parseDeposit(desc) {
-  if (!desc) return 2000000;
+  if (!desc) return STANDARD_LEG_DEPOSIT_VND;
   const mTrieu = desc.match(/Cọc\s*([\d.,]+)\s*triệu/i);
   if (mTrieu) {
     const n = parseFloat(mTrieu[1].replace(",", "."));
@@ -131,7 +141,17 @@ function parseDeposit(desc) {
     const n = parseInt(digits, 10);
     if (!isNaN(n) && n > 0) return n;
   }
-  return 2000000;
+  return STANDARD_LEG_DEPOSIT_VND;
+}
+
+function computeAgeFromBirthDate(birthDate) {
+  if (!birthDate || !isValid(birthDate)) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const md = today.getMonth() - birthDate.getMonth();
+  if (md < 0 || (md === 0 && today.getDate() < birthDate.getDate()))
+    age -= 1;
+  return age;
 }
 
 const diffHours = (d1, d2) => (d2.getTime() - d1.getTime()) / (1000 * 60 * 60);
@@ -692,7 +712,11 @@ function Summary({
               : days === 1
               ? "1 ngày"
               : `${days} ngày`}{" "}
-            • Cọc {Math.round(device?.deposit / 1000000)}tr
+            • Cọc tại cửa hàng theo chính sách (
+            <span className="text-[#999]">
+              chỉ tiền thuê được quét trong đơn
+            </span>
+            ).
           </div>
         </div>
         <div className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden bg-white shrink-0">
@@ -807,7 +831,7 @@ function Summary({
         <div className="border-t border-dashed border-[#FFE4F0] my-3"></div>
         <div className="flex justify-between items-center">
           <span className="text-sm font-black text-[#222] uppercase tracking-wider">
-            💰 Tổng tiền
+            💰 Thanh toán online
           </span>
           <span className="text-2xl font-black text-[#E85C9C]">
             {Math.round(total / 1000)}k
@@ -997,6 +1021,7 @@ export default function BookingPage() {
         phone: "",
         ig: "",
         fb: "",
+        birthDate: "",
       }
     );
   });
@@ -1012,6 +1037,11 @@ export default function BookingPage() {
   const [selectedVoucherId, setSelectedVoucherId] = useState(
     initialPrefs.initialVoucherId,
   );
+  /** Học sinh/sinh viên — nhắc lịch học trong cam kết; cọc không + vào PayOS. */
+  const [agreeDepositAndPolicies, setAgreeDepositAndPolicies] =
+    useState(false);
+  /** Bắt buộc nếu ngày sinh cho biết chưa đủ 16 tuổi. */
+  const [minorParentalOk, setMinorParentalOk] = useState(false);
 
   useEffect(() => {
     if (selectedBranchId !== "Q9") {
@@ -1306,6 +1336,25 @@ export default function BookingPage() {
     return { earnedPoints: earned, pointsEarnRuleLabel: label };
   }, [hasSession, memberTotalSpent, total]);
 
+  const parsedBirthDate = useMemo(() => {
+    const raw = (customer.birthDate || "").trim();
+    if (!raw) return null;
+    const d = new Date(`${raw}T12:00:00`);
+    return isValid(d) ? d : null;
+  }, [customer.birthDate]);
+
+  const isMinorFromBirthDate = useMemo(() => {
+    if (!parsedBirthDate) return false;
+    const a = computeAgeFromBirthDate(parsedBirthDate);
+    return a !== null && a < 16;
+  }, [parsedBirthDate]);
+
+
+
+  useEffect(() => {
+    if (!isMinorFromBirthDate) setMinorParentalOk(false);
+  }, [isMinorFromBirthDate]);
+
   useEffect(() => {
     setPointsToRedeem((prev) => clampNumber(prev, 0, maxRedeemablePoints));
   }, [maxRedeemablePoints]);
@@ -1450,6 +1499,9 @@ export default function BookingPage() {
     const av = availabilityByBranch[selectedBranchId];
     if (!av || av.loading || av.soldOut) return false;
 
+    if (!agreeDepositAndPolicies) return false;
+    if (isMinorFromBirthDate && !minorParentalOk) return false;
+
     return true;
   }, [
     selectedDevice,
@@ -1462,6 +1514,9 @@ export default function BookingPage() {
     validInfo,
     availabilityByBranch,
     deviceReleaseDate,
+    agreeDepositAndPolicies,
+    isMinorFromBirthDate,
+    minorParentalOk,
   ]);
 
   /* ==== Submit payment ==== */
@@ -1514,7 +1569,7 @@ export default function BookingPage() {
         deviceId: selectedDevice.id,
         bookingFrom: fmt(t1),
         bookingTo: fmt(t2),
-        total,
+        total: Math.max(0, Math.round(total)),
         note,
         dayOfRent: days,
         originalPrice: subTotal,
@@ -1529,13 +1584,15 @@ export default function BookingPage() {
         ]
           .filter(Boolean)
           .join(" | ") || "NONE",
+        usedPoint: pointDiscount > 0 ? pointsToRedeem : 0,
         location: apiLocationFromBranchId(selectedBranchId),
+        depositApplicable: true,
       };
 
       const rawDesc = `Thue ${selectedDevice.displayName}`;
       const returnUrl = `${window.location.origin}/payment-status`;
       const payload = {
-        amount: total,
+        amount: Math.max(0, Math.round(total)),
         description: safeDesc(rawDesc),
         bookingRequest,
         returnSuccessUrl: returnUrl,
@@ -1548,7 +1605,7 @@ export default function BookingPage() {
         trackBookingCheckoutStart(selectedDevice, {
           days,
           branchId: selectedBranchId,
-          total,
+          rentalTotalVnd: Math.max(0, Math.round(total)),
         });
         window.location.href = paymentUrl;
       } else {
@@ -1669,7 +1726,7 @@ export default function BookingPage() {
                     </span>
                   </div>
                   <div className="text-xs text-[#888] mt-1 font-medium">
-                    Cọc: {Math.round(selectedDevice.deposit / 1000000)}tr
+                    Cọc theo cửa hàng — chỉ tiền thuê được quét khi đặt.
                   </div>
                 </div>
               </div>
@@ -1757,6 +1814,32 @@ export default function BookingPage() {
                     error={errors.phone}
                     helpText="SĐT hợp lệ có 10 số, bắt đầu bằng 0."
                   />
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-[#777] mb-1.5 ml-1">
+                      <span>Ngày sinh</span>
+                      <span className="block font-medium normal-case text-[#aaa] text-[10px] mt-0.5 tracking-normal">
+                        Tuỳ chọn — nhập để hệ thống nhắc nếu dưới 16 tuổi
+                      </span>
+                    </div>
+                    <input
+                      type="date"
+                      value={customer.birthDate || ""}
+                      max={format(new Date(), "yyyy-MM-dd")}
+                      onChange={(e) =>
+                        setCustomer((c) => ({
+                          ...c,
+                          birthDate: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border-2 border-[#eee] focus:border-[#FF9FCA] focus:outline-none focus:ring-2 focus:ring-[#FF9FCA]/20 px-4 py-3 text-[#222] font-medium bg-white"
+                    />
+                    {isMinorFromBirthDate && (
+                      <p className="text-xs text-amber-900 font-semibold mt-2 ml-1">
+                        Theo ngày sinh, bạn dưới 16 tuổi — cần đánh dấu xác nhận
+                        phụ huynh/người giám hộ bên dưới và đi cùng khi nhận máy.
+                      </p>
+                    )}
+                  </div>
                   <InputField
                     icon={<span className="font-bold text-sm">IG</span>}
                     value={customer.ig}
@@ -1800,6 +1883,54 @@ export default function BookingPage() {
                     earnedPoints={earnedPoints}
                     pointsEarnRuleLabel={pointsEarnRuleLabel}
                   />
+                  {selectedDevice && t1 && t2 && total > 0 && (
+                    <div className="mt-4 space-y-3 rounded-xl border border-[#F0E8EC] bg-[#FFFBFB] p-3.5">
+                      <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
+                        Cam kết trước khi thanh toán
+                      </div>
+                      <label className="flex items-start gap-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3 text-[13px] leading-relaxed text-stone-700 cursor-pointer hover:border-[#FF9FCA]/70 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={agreeDepositAndPolicies}
+                          onChange={(e) =>
+                            setAgreeDepositAndPolicies(e.target.checked)
+                          }
+                          className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
+                        />
+                        <span className="space-y-2">
+                          {BOOKING_DEPOSIT_COMMITMENT_LINES.map((line) => (
+                            <span key={line} className="block">
+                              {line}
+                            </span>
+                          ))}
+                        </span>
+                      </label>
+                      {isMinorFromBirthDate && (
+                        <label
+                          className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed cursor-pointer ${
+                            !minorParentalOk
+                              ? "border-amber-300 bg-amber-50 text-amber-950"
+                              : "border-green-300 bg-green-50 text-green-900"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={minorParentalOk}
+                            onChange={(e) =>
+                              setMinorParentalOk(e.target.checked)
+                            }
+                            className="mt-1 h-4 w-4 shrink-0 accent-amber-600"
+                          />
+                          <span>
+                            Tôi xác nhận mình{" "}
+                            <strong>dưới 16 tuổi</strong> và đã có{" "}
+                            <strong>sự đồng ý của phụ huynh/người giám hộ</strong> để
+                            thực hiện giao dịch này và ký nhận máy tại cửa hàng.
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  )}
                   {selectedDevice && t1 && t2 && total > 0 && (
                     <>
                       <button
