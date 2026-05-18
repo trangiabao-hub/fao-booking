@@ -72,6 +72,11 @@ import {
   formatDateOnlyLocal,
 } from "../../utils/deviceReleaseDate";
 import { getFaoStandardRentalContractUrl } from "../../config/externalUrls";
+import {
+  parseDepositFromDescription,
+  buildBookingDepositCommitmentLines,
+  resolveDeviceLegDepositVnd,
+} from "../../utils/bookingDepositPolicy";
 
 /* ========= HẰNG SỐ & DỮ LIỆU ===== */
 
@@ -80,18 +85,6 @@ const TET_START_OFFSET = -6; // 25 Tết
 const TET_END_OFFSET = 9; // Mùng 10
 
 const POINT_TO_VND = 1000;
-/** Copy cam kết cọc (chỉ thông báo — không + vào QR thanh toán). */
-const BOOKING_DEPOSIT_COMMITMENT_LINES = [
-  "🎁 Đặc biệt: Chương trình CỌC 0Đ — áp dụng cho HSSV đang còn lịch học tại TP.HCM.",
-  "🔒 Hoặc cọc thế chân 2.000.000đ",
-  "🪪 CCCD/VNeID mức 2 (+ chứng nhận lịch học nếu thuộc diện CỌC 0Đ).",
-  "Lưu ý khách hàng dưới 16 tuổi cần có sự cho phép của phụ huynh",
-];
-
-/** Fallback parse Cọc từ mô tả thiết bị / contract (không dùng cho PayOS online). */
-const STANDARD_LEG_DEPOSIT_VND = 2_000_000;
-
-/** Một voucher shop mỗi đơn — style chọn giống Shopee */
 const BOOKING_VOUCHER_OPTIONS = [
   {
     id: "NONE",
@@ -126,22 +119,6 @@ function inferBrand(name = "") {
   if (n.includes("POCKET") || n.includes("GOPRO") || n.includes("DJI"))
     return "pocket";
   return "other";
-}
-
-function parseDeposit(desc) {
-  if (!desc) return STANDARD_LEG_DEPOSIT_VND;
-  const mTrieu = desc.match(/Cọc\s*([\d.,]+)\s*triệu/i);
-  if (mTrieu) {
-    const n = parseFloat(mTrieu[1].replace(",", "."));
-    if (!isNaN(n)) return Math.round(n * 1_000_000);
-  }
-  const mVnd = desc.match(/Cọc\s*([\d.\s,]+)/i);
-  if (mVnd) {
-    const digits = mVnd[1].replace(/[^\d]/g, "");
-    const n = parseInt(digits, 10);
-    if (!isNaN(n) && n > 0) return n;
-  }
-  return STANDARD_LEG_DEPOSIT_VND;
 }
 
 function computeAgeFromBirthDate(birthDate) {
@@ -277,7 +254,12 @@ function escapeHtmlContract(s) {
 function printContract({ device, total, t1, t2 }) {
   if (!device || !t1 || !t2 || !isValid(t1) || !isValid(t2)) return;
   const machineName = escapeHtmlContract(device.displayName || "—");
-  const machineValue = escapeHtmlContract(formatVnd(device.deposit)) + " VND";
+  const leg = resolveDeviceLegDepositVnd(device);
+  const machineValue = escapeHtmlContract(
+    leg != null && leg > 0
+      ? `${formatVnd(leg)} VND`
+      : "—",
+  );
   const rentalPrice = escapeHtmlContract(formatVnd(total)) + " VND";
   const extensionFeePerHour = "100.000 VND/giờ";
   const fromTime = format(t1, "HH");
@@ -1205,7 +1187,11 @@ export default function BookingPage() {
         brand: inferBrand(it.name),
         img: it.images?.[0] || FALLBACK_IMG,
         pricePerDay: it.priceOneDay || 0,
-        deposit: parseDeposit(it.description),
+        deposit: (() => {
+          const api = Number(it.deposit);
+          if (Number.isFinite(api) && api > 0) return Math.round(api);
+          return parseDepositFromDescription(it.description) ?? 0;
+        })(),
         displayName: normalized,
       });
     }
@@ -1774,6 +1760,11 @@ export default function BookingPage() {
                   setPickupSlot={setPickupSlot}
                   minPickupDate={deviceReleaseDate}
                   error={timeSelectionError || (availabilityByBranch[selectedBranchId]?.soldOut ? "⚠️ Máy đã hết trong khung giờ này." : "")}
+                  depositLegVnd={
+                    selectedDevice
+                      ? resolveDeviceLegDepositVnd(selectedDevice) ?? undefined
+                      : undefined
+                  }
                 />
               </div>
             </div>
@@ -1898,7 +1889,9 @@ export default function BookingPage() {
                           className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
                         />
                         <span className="space-y-2">
-                          {BOOKING_DEPOSIT_COMMITMENT_LINES.map((line) => (
+                          {buildBookingDepositCommitmentLines(
+                            selectedDevice ? [selectedDevice] : [],
+                          ).map((line) => (
                             <span key={line} className="block">
                               {line}
                             </span>

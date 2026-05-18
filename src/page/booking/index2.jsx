@@ -29,6 +29,7 @@ import { formatTimeVi } from "../../utils/formatTimeVi";
 import { loadCustomerSession } from "../../utils/storage";
 import { BRANCHES } from "../../data/bookingConstants";
 import { apiLocationFromBranchId } from "../../utils/deviceBranch";
+import { parseDepositFromDescription } from "../../utils/bookingDepositPolicy";
 
 // Hình thức nhận máy
 const RECEIVE_METHODS = [
@@ -105,22 +106,6 @@ function inferFujiSubCategory(name = "") {
   if (n.includes(" XT")) return "XT";
   if (n.includes(" XA")) return "XA";
   return null;
-}
-
-function parseDeposit(desc) {
-  if (!desc) return 2000000;
-  const mTrieu = desc.match(/Cọc\s*([\d.,]+)\s*triệu/i);
-  if (mTrieu) {
-    const n = parseFloat(mTrieu[1].replace(",", "."));
-    if (!isNaN(n)) return Math.round(n * 1_000_000);
-  }
-  const mVnd = desc.match(/Cọc\s*([\d.\s,]+)/i);
-  if (mVnd) {
-    const digits = mVnd[1].replace(/[^\d]/g, "");
-    const n = parseInt(digits, 10);
-    if (!isNaN(n) && n > 0) return n;
-  }
-  return 2000000;
 }
 
 function combineDateWithTimeString(dateOnly, timeStr) {
@@ -532,9 +517,11 @@ function CameraList({
               <div className="text-xs text-slate-600 mt-1">
                 {Number(it.pricePerDay).toLocaleString("vi-VN")} đ/ngày
               </div>
-              <div className="text-xs text-slate-500">
-                Cọc {Number(it.deposit).toLocaleString("vi-VN")} đ
-              </div>
+              {Number(it.deposit) > 0 ? (
+                <div className="text-xs text-slate-500">
+                  Cọc {Number(it.deposit).toLocaleString("vi-VN")} đ
+                </div>
+              ) : null}
               {busy && (
                 <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded-full bg-red-50 text-[11px] text-red-600 border border-red-100">
                   Đã được đặt trong khung thời gian này
@@ -793,9 +780,11 @@ function Summary({
           <div className="font-semibold text-pink-900 truncate">
             {device?.displayName || "—"}
           </div>
-          <div className="text-xs text-slate-500 mt-1">
-            Cọc {Number(device?.deposit || 0).toLocaleString("vi-VN")} đ
-          </div>
+          {Number(device?.deposit) > 0 ? (
+            <div className="text-xs text-slate-500 mt-1">
+              Cọc {Number(device.deposit).toLocaleString("vi-VN")} đ
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -928,7 +917,11 @@ export default function BookingPage() {
         brand: inferBrand(it.name),
         img: it.images?.[0] || FALLBACK_IMG,
         pricePerDay: it.priceOneDay || 0,
-        deposit: parseDeposit(it.description),
+        deposit: (() => {
+          const api = Number(it.deposit);
+          if (Number.isFinite(api) && api > 0) return Math.round(api);
+          return parseDepositFromDescription(it.description) ?? 0;
+        })(),
         displayName: normalized,
       });
     }

@@ -65,19 +65,15 @@ import {
 import { calculateRentalInfo, roundDownToThousand } from "../utils/pricing";
 import { getStrictestReleaseDate } from "../utils/deviceReleaseDate";
 import { formatTimeVi } from "../utils/formatTimeVi";
+import {
+  buildBookingDepositCommitmentLines,
+  resolveDevicesLegDepositTotalVnd,
+} from "../utils/bookingDepositPolicy";
 import BookingPrefsForm, {
   computeAvailabilityRange,
   getAvailabilityRangeError,
   formatPickupReturnSummary,
 } from "./BookingPrefsForm";
-
-/** Đồng bộ copy với `/booking` — chỉ cam kết, không + cọc vào QR thanh toán. */
-const BOOKING_DEPOSIT_POLICY_LINES = [
-  "🎁 Đặc biệt: Chương trình CỌC 0Đ — áp dụng cho HSSV đang còn lịch học tại TP.HCM.",
-  "🔒 Hoặc cọc thế chân 2.000.000đ",
-  "🪪 CCCD/VNeID mức 2 (+ chứng nhận lịch học nếu thuộc diện CỌC 0Đ).",
-  "Lưu ý khách hàng dưới 16 tuổi cần có sự cho phép của phụ huynh",
-];
 
 /** Đồng bộ fao-booking với trang /booking (noteVoucher). */
 function buildQuickBookNoteVoucher({
@@ -358,6 +354,11 @@ export default function QuickBookModal({
     bookingRowsForModel,
     sameModelQuantity,
   ]);
+
+  const depositCommitmentLines = useMemo(
+    () => buildBookingDepositCommitmentLines(effectiveDevices),
+    [effectiveDevices],
+  );
 
   const sameModelFreeCount = useMemo(() => {
     if (!bookingRowsForModel.length) return null;
@@ -1564,6 +1565,10 @@ export default function QuickBookModal({
                   setPickupSlot={setPickupSlot}
                   minPickupDate={strictestDeviceRelease}
                   error={timeSelectionError || step1AvailabilityMessage}
+                  depositLegVnd={
+                    resolveDevicesLegDepositTotalVnd(effectiveDevices) ??
+                    undefined
+                  }
                 />
 
                 {canPickSameModelQuantity && (
@@ -2497,7 +2502,7 @@ export default function QuickBookModal({
                       className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
                     />
                     <span className="space-y-2">
-                      {BOOKING_DEPOSIT_POLICY_LINES.map((line) => (
+                      {depositCommitmentLines.map((line) => (
                         <span key={line} className="block">
                           {line}
                         </span>

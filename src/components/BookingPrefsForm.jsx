@@ -207,6 +207,7 @@ export function getAvailabilityRangeError(prefs, fromDateTime, toDateTime) {
  *  - setBranchId, setDate, setEndDate, setTimeFrom, setTimeTo, setDurationType, setPickupType, setPickupSlot
  *  - error (optional string)
  *  - minPickupDate (optional Date) — releaseDate máy: không chọn nhận máy trước ngày này (vẫn không trước hôm nay)
+ *  - depositLegVnd (optional number) — mức cọc thế chân trong khuyến mãi; thiếu / ≤0 ⇒ ẩn nhánh «Hoặc cọc thế chân».
  */
 export default function BookingPrefsForm({
   branchId,
@@ -227,6 +228,7 @@ export default function BookingPrefsForm({
   setPickupSlot,
   error,
   minPickupDate = null,
+  depositLegVnd = undefined,
 }) {
   const effectiveMinPickup = useMemo(() => {
     const today = normalizeDate(new Date());
@@ -310,6 +312,14 @@ export default function BookingPrefsForm({
     () => `${teaserSaving.toLocaleString("vi-VN")} VND`,
     [teaserSaving],
   );
+  const depositLegBannerLabel = useMemo(() => {
+    if (depositLegVnd == null || !Number.isFinite(Number(depositLegVnd))) {
+      return null;
+    }
+    const n = Math.round(Number(depositLegVnd));
+    if (n <= 0) return null;
+    return `${n.toLocaleString("vi-VN")}đ`;
+  }, [depositLegVnd]);
   const MotionDiv = motion.div;
 
   useEffect(() => {
@@ -380,10 +390,17 @@ export default function BookingPrefsForm({
             CỌC 0Đ
           </span>{" "}
           áp dụng cho HSSV đang còn lịch học tại TP.HCM (xuất trình khi nhận
-          máy).{" "}
-          <strong>Hoặc</strong> cọc thế chân{" "}
-          <span className="font-black text-[#222]">2 triệu</span> (+ khi thanh
-          toán online) đối với khách không đủ điều kiện trên.
+          máy).
+          {depositLegBannerLabel ? (
+            <>
+              {" "}
+              <strong>Hoặc</strong> cọc thế chân{" "}
+              <span className="font-black text-[#222]">
+                {depositLegBannerLabel}
+              </span>{" "}
+              (+ khi thanh toán online) đối với khách không đủ điều kiện trên.
+            </>
+          ) : null}
         </div>
       </div>
 
