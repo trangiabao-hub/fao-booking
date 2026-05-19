@@ -679,6 +679,18 @@ export default function QuickBookModal({
   );
   const chargeableDays = rentalInfo.chargeableDays;
 
+  /** Giá catalog chỉ dùng khi lịch/gói chưa đổi — tránh giữ giá 1 ngày sau khi sửa 3 ngày ở step 1. */
+  const catalogPricingStillValid = useMemo(() => {
+    if (
+      !hasInitialPrefs ||
+      pricing?.discounted == null ||
+      pricing?.original == null
+    ) {
+      return false;
+    }
+    return price > 0 && price === pricing.original;
+  }, [hasInitialPrefs, pricing?.discounted, pricing?.original, price]);
+
   const discountedTotal = useMemo(() => {
     if (selectedBranch === "Q9" && price > 0) {
       return Math.max(0, price - computeQ9BranchFlatDiscountVnd(price));
@@ -689,13 +701,12 @@ export default function QuickBookModal({
         return sum + computeDiscountedPrice(p, t1, t2);
       }, 0);
     }
-    if (hasInitialPrefs && pricing?.discounted != null)
-      return pricing.discounted;
+    if (catalogPricingStillValid) return pricing.discounted;
     return computeDiscountedPrice(price, t1, t2);
   }, [
     selectedBranch,
     isMulti,
-    hasInitialPrefs,
+    catalogPricingStillValid,
     pricing?.discounted,
     price,
     t1,
@@ -729,12 +740,7 @@ export default function QuickBookModal({
         discountLabel:
           disc > 0 ? "Giảm sốc mừng khai trương" : null,
       };
-    } else if (
-      !isMulti &&
-      hasInitialPrefs &&
-      pricing?.original != null &&
-      pricing?.discounted != null
-    ) {
+    } else if (catalogPricingStillValid) {
       const discount = Math.max(0, pricing.original - pricing.discounted);
       base = {
         original: pricing.original,
@@ -756,7 +762,7 @@ export default function QuickBookModal({
     };
   }, [
     isMulti,
-    hasInitialPrefs,
+    catalogPricingStillValid,
     pricing?.original,
     pricing?.discounted,
     price,
