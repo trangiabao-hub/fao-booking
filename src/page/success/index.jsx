@@ -35,6 +35,7 @@ import {
 import FloatingContactButton from "../../components/FloatingContactButton";
 import SlideNav from "../../components/SlideNav";
 import { saveRecentOrder } from "../../utils/storage";
+import { trackBookingOrderPaid } from "../../lib/bookingAnalytics";
 import {
   inferOrderBookingBranchId,
   normalizeBookingBranchId,
@@ -692,6 +693,13 @@ export default function PaymentStatusPage() {
               saveRecentOrder({
                 orderCode: pending.orderCode,
                 orderIdNew: pending.orderIdNew,
+              });
+              trackBookingOrderPaid({
+                orderCode: pending.orderCode,
+                orderIdNew: pending.orderIdNew,
+                total: totalSum,
+                branchId: inferOrderBookingBranchId(bookings),
+                deviceCount: devices.length,
               });
               setStatus("success");
               return;

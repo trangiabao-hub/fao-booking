@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Blog generate manifest (local state)
+scripts/.blog-slugs-manifest.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -1,8 +1,6 @@
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
-import { BRANCHES } from "./data/bookingConstants";
 import HomePage from "./page/home";
 import DeviceCatalogPage from "./page/catalog";
-import BookingPage from "./page/booking";
 import PaymentStatusPage from "./page/success";
 import OrderInfoPage from "./page/order-info";
 import AccountBookingsPage from "./page/account-bookings";
@@ -13,22 +11,6 @@ import FeedbackPage from "./page/feedback";
 import RentalContractSamplePage from "./page/rental-contract-sample";
 import SeoMeta from "./components/SeoMeta";
 import AnalyticsShell from "./components/AnalyticsShell";
-
-function Q9BookingEntry() {
-  const q9 = BRANCHES.find((b) => b.id === "Q9");
-  if (q9?.disabled) {
-    return <Navigate to="/booking" replace />;
-  }
-  return (
-    <SeoMeta
-      title="Đặt lịch FAO Q9 (Thủ Đức)"
-      description="Đặt thuê máy ảnh tại FAO Q9 — 465 Lê Văn Việt (Elan Cafe), nhận trả Thủ Đức."
-      path="/q9"
-    >
-      <BookingPage />
-    </SeoMeta>
-  );
-}
 
 const App = () => {
   const router = createBrowserRouter([
@@ -61,19 +43,11 @@ const App = () => {
     },
     {
       path: "/booking",
-      element: (
-        <SeoMeta
-          title="Đặt lịch thuê thiết bị"
-          description="Chọn thời gian thuê, chi nhánh và thông tin nhận trả thiết bị trong vài bước tại FAO Booking."
-          path="/booking"
-        >
-          <BookingPage />
-        </SeoMeta>
-      ),
+      element: <Navigate to="/catalog" replace />,
     },
     {
       path: "/q9",
-      element: <Q9BookingEntry />,
+      element: <Navigate to="/catalog?branchId=Q9" replace />,
     },
     {
       path: "/payment-status",

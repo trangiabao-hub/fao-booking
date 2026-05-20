@@ -11,8 +11,6 @@ import {
   StarIcon,
   SparklesIcon,
   ChevronRightIcon,
-  Bars3Icon,
-  XMarkIcon,
   FilmIcon,
   VideoCameraIcon,
 } from "@heroicons/react/24/solid";
@@ -120,109 +118,26 @@ const Sparkle = ({ className }) => (
   />
 );
 
+const Header = () => (
+  <header className="fixed top-0 left-0 right-0 z-50 border-b border-pink-100 bg-white/80 backdrop-blur-lg">
+    <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
+      <Link to="/" className="flex items-center gap-2">
+        <CameraIcon className="h-8 w-8 text-pink-500" />
+        <span className="text-xl font-bold tracking-tight text-pink-800">
+          Fao Sài Gòn
+        </span>
+      </Link>
+      <a
+        href="/blog/"
+        className="rounded-full border border-pink-200 bg-white px-4 py-2 text-sm font-semibold text-pink-600 transition hover:border-pink-300 hover:bg-pink-50"
+      >
+        Blog
+      </a>
+    </div>
+  </header>
+);
+
 // --- Các Component Chính của Trang ---
-const Header = () => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  const handleScroll = (e, id) => {
-    e.preventDefault();
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-    setIsMenuOpen(false);
-  };
-
-  const navLinks = [
-    { name: "Tính năng", id: "features" },
-    { name: "Feedback", id: "testimonials" },
-    { name: "Dòng máy", id: "categories" },
-  ];
-
-  return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-lg border-b border-pink-100">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
-          <Link to="/" className="flex items-center gap-2">
-            <CameraIcon className="h-8 w-8 text-pink-500" />
-            <span className="text-xl font-bold text-pink-800 tracking-tight">
-              Fao Sài Gòn
-            </span>
-          </Link>
-          {/* <nav className="hidden md:flex items-center gap-8">
-            {navLinks.map((link) => (
-              <a
-                key={link.id}
-                href={`#${link.id}`}
-                onClick={(e) => handleScroll(e, link.id)}
-                className="text-sm font-medium text-slate-600 hover:text-pink-500 transition-colors duration-300"
-              >
-                {link.name}
-              </a>
-            ))}
-          </nav>
-          <div className="flex items-center gap-4">
-            <Link
-              to="/my-bookings"
-              className="hidden sm:inline-block bg-white text-pink-600 border border-pink-200 font-semibold px-5 py-2.5 rounded-full text-sm hover:bg-pink-50 transition-all duration-300"
-            >
-              Photo Booth
-            </Link>
-            <Link
-              to="/catalog"
-              className="hidden sm:inline-block bg-pink-500 text-white font-semibold px-5 py-2.5 rounded-full text-sm hover:bg-pink-600 transition-all duration-300 shadow-lg shadow-pink-500/30 hover:scale-105 active:scale-95"
-            >
-              Thuê máy ngay
-            </Link>
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="md:hidden z-50 text-pink-800"
-            >
-              {isMenuOpen ? (
-                <XMarkIcon className="h-7 w-7" />
-              ) : (
-                <Bars3Icon className="h-7 w-7" />
-              )}
-            </button>
-          </div> */}
-        </div>
-      </div>
-      {/* <AnimatePresence>
-        {isMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="md:hidden absolute top-full left-0 w-full bg-white/95 backdrop-blur-lg border-t border-pink-100 shadow-lg"
-          >
-            <nav className="flex flex-col items-center gap-6 py-8">
-              {navLinks.map((link) => (
-                <a
-                  key={link.id}
-                  href={`#${link.id}`}
-                  onClick={(e) => handleScroll(e, link.id)}
-                  className="text-lg font-medium text-slate-700 hover:text-pink-500 transition-colors"
-                >
-                  {link.name}
-                </a>
-              ))}
-              <Link
-                to="/my-bookings"
-                className="bg-white text-pink-600 border border-pink-200 font-semibold px-8 py-3 rounded-full text-base hover:bg-pink-50 transition-all duration-300 active:scale-95"
-              >
-                Photo Booth
-              </Link>
-              <Link
-                to="/catalog"
-                className="mt-4 bg-pink-500 text-white font-semibold px-8 py-3 rounded-full text-base hover:bg-pink-600 transition-all duration-300 shadow-lg shadow-pink-500/30 active:scale-95"
-              >
-                Thuê máy ngay
-              </Link>
-            </nav>
-          </motion.div>
-        )}
-      </AnimatePresence> */}
-    </header>
-  );
-};
-
 const HeroSection = () => {
   const title = "Lưu khoảnh khắc cùng";
   const title2 = "Fao Sài Gòn";

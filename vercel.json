@@ -1,3 +1,25 @@
 {
+  "redirects": [
+    {
+      "source": "/booking",
+      "destination": "/catalog",
+      "permanent": true
+    },
+    {
+      "source": "/booking/:path*",
+      "destination": "/catalog",
+      "permanent": true
+    },
+    {
+      "source": "/q9",
+      "destination": "/catalog?branchId=Q9",
+      "permanent": true
+    },
+    {
+      "source": "/blog/:slug",
+      "destination": "/:slug",
+      "permanent": true
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/" }]
 }

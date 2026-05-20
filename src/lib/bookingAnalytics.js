@@ -1,6 +1,13 @@
 import api from "../config/axios";
+import {
+  attributionMetaJson,
+  captureTrafficAttribution,
+  loadTrafficAttribution,
+} from "./trafficAttribution";
 
 const VISITOR_KEY = "fao_booking_visitor_id";
+
+export { captureTrafficAttribution, loadTrafficAttribution, attributionMetaJson };
 
 export function getBookingVisitorId() {
   try {
@@ -29,6 +36,25 @@ export function trackBookingEvent(payload) {
       ? `${window.location.pathname}${window.location.search || ""}`
       : "");
 
+  captureTrafficAttribution();
+
+  let metaJson = payload.metaJson ?? null;
+  if (payload.includeAttribution !== false) {
+    const extra = payload.metaExtra && typeof payload.metaExtra === "object"
+      ? payload.metaExtra
+      : payload.metaExtra
+        ? { data: payload.metaExtra }
+        : {};
+    if (typeof payload.metaJson === "string") {
+      try {
+        Object.assign(extra, JSON.parse(payload.metaJson));
+      } catch {
+        extra.rawMeta = payload.metaJson;
+      }
+    }
+    metaJson = attributionMetaJson(extra);
+  }
+
   const body = {
     eventType: payload.eventType,
     path,
@@ -36,7 +62,7 @@ export function trackBookingEvent(payload) {
     deviceId: payload.deviceId ?? null,
     modelKey: payload.modelKey ?? null,
     deviceLabel: payload.deviceLabel ?? null,
-    metaJson: payload.metaJson ?? null,
+    metaJson,
     userAgent:
       typeof navigator !== "undefined" ? navigator.userAgent : null,
   };
@@ -83,10 +109,36 @@ export function trackBookingCheckoutStart(device, meta) {
   if (!device) return;
   trackBookingEvent({
     eventType: "BOOKING_CHECKOUT_START",
-    path: "/booking",
+    path: "/catalog",
     deviceId: device.id ?? null,
     modelKey: device.modelKey || "",
     deviceLabel: device.displayName || device.name || "",
-    metaJson: meta ? JSON.stringify(meta) : null,
+    metaExtra: meta || null,
+  });
+}
+
+/** Đơn thanh toán thành công (PAID) — dùng attribution đã lưu để báo cáo SEO/blog. */
+export function trackBookingOrderPaid(details = {}) {
+  trackBookingEvent({
+    eventType: "BOOKING_ORDER_PAID",
+    path: "/payment-status",
+    metaExtra: {
+      orderCode: details.orderCode ?? null,
+      orderIdNew: details.orderIdNew ?? null,
+      total: details.total ?? null,
+      branchId: details.branchId ?? null,
+      deviceCount: details.deviceCount ?? null,
+    },
+  });
+}
+
+/** User từ trang nội dung (SEO/blog) vào catalog — có thể gọi khi detect utm trên /catalog. */
+export function trackContentToCatalog() {
+  const att = loadTrafficAttribution();
+  if (!att || !["seo", "blog"].includes(att.channel)) return;
+  trackBookingEvent({
+    eventType: "CONTENT_CATALOG_ENTRY",
+    path: "/catalog",
+    metaExtra: { step: "catalog_with_content_attribution" },
   });
 }

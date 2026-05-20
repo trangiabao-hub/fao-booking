@@ -4,6 +4,8 @@ import {
   startBookingPresencePing,
   stopBookingPresencePing,
   trackBookingEvent,
+  captureTrafficAttribution,
+  trackContentToCatalog,
 } from "../lib/bookingAnalytics";
 
 /**
@@ -13,10 +15,14 @@ export default function AnalyticsShell() {
   const location = useLocation();
 
   useEffect(() => {
+    captureTrafficAttribution();
     trackBookingEvent({
       eventType: "PAGE_VIEW",
       path: `${location.pathname}${location.search || ""}`,
     });
+    if (location.pathname === "/catalog") {
+      trackContentToCatalog();
+    }
   }, [location.pathname, location.search]);
 
   useEffect(() => {
