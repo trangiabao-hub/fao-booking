@@ -264,7 +264,7 @@ Nội dung → Catalog: 120
 - Dùng cùng design system admin hiện tại (card, table, date picker).
 - Số tiền: `1.234.567 ₫` locale vi-VN.
 - %: 1 chữ số thập phân.
-- Link campaign: mở `https://booking.faodigital.vn/{slug}` tab mới (slug blog/seo).
+- Link campaign: mở `https://faocamera.vn/{slug}` tab mới (slug blog/seo).
 - Không cần realtime; refresh manual hoặc 5 phút auto-refresh optional.
 
 ### 2.4 API integration (frontend admin)

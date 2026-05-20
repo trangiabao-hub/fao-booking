@@ -3,7 +3,7 @@
  * Tối ưu Google AI Overview: câu trả lời trực tiếp, Speakable, Breadcrumb, Organization.
  */
 export const SITE_CONFIG = {
-  url: (process.env.VITE_SITE_URL || "https://booking.faodigital.vn").replace(/\/+$/, ""),
+  url: (process.env.VITE_SITE_URL || "https://faocamera.vn").replace(/\/+$/, ""),
   name: "FAO Booking",
   brand: "FAO Camera Sài Gòn",
   phone: "0901355198",

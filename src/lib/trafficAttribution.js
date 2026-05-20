@@ -142,7 +142,7 @@ export function loadTrafficAttribution() {
 /** Gắn UTM lên link catalog từ trang SEO/blog tĩnh. */
 export function catalogUrlWithAttribution(href, { channel, slug }) {
   const base = href.startsWith("http") ? href : href.startsWith("/") ? href : `/${href}`;
-  const url = new URL(base, "https://booking.faodigital.vn");
+  const url = new URL(base, "https://faocamera.vn");
   if (channel === "seo") {
     url.searchParams.set("utm_source", "fao_seo");
     url.searchParams.set("utm_medium", "landing");
