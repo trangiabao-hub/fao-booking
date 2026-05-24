@@ -14,7 +14,15 @@ import {
   loadRecentOrder,
   loadCustomerSession,
   saveRecentOrder,
+  clearRecentOrder,
 } from "../../utils/storage";
+import { MESSENGER_LINK, ZALO_LINK } from "../../data/contactConfig";
+import {
+  getBranchLabelFromId,
+  parseCustomerNameFromBookingNote,
+  parsePayOsCodeFromNote,
+} from "../../utils/orderSummary";
+import { inferBookingBranchId } from "../../utils/deviceBranch";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -234,6 +242,12 @@ export default function AccountBookingsPage() {
               : [];
             setBookings(refreshed);
           }
+        } else if (pending?.status === "FAILED") {
+          clearRecentOrder();
+          setPendingOrder({
+            orderCode: pending.orderCode ?? recentOrder.orderCode,
+            failed: true,
+          });
         } else {
           setPendingOrder(recentOrder);
         }
@@ -261,15 +275,20 @@ export default function AccountBookingsPage() {
 
   useEffect(() => {
     if (!hasSession) return undefined;
-    const recentOrder = loadRecentOrder();
-    if (!recentOrder?.orderCode || recentOrder?.orderIdNew) return undefined;
+    if (pendingOrder?.failed || pendingOrder?.orderIdNew) return undefined;
+    if (!pendingOrder?.orderCode) return undefined;
 
     const timer = setInterval(() => {
       fetchMyBookings({ silent: true });
     }, 5000);
 
     return () => clearInterval(timer);
-  }, [hasSession, pendingOrder?.orderCode, pendingOrder?.orderIdNew]);
+  }, [
+    hasSession,
+    pendingOrder?.orderCode,
+    pendingOrder?.orderIdNew,
+    pendingOrder?.failed,
+  ]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff8fb_0%,_#fdf2f7_35%,_#f8efe8_100%)] px-3 py-5 pb-32 md:px-4 md:py-6 md:pb-36 lg:pb-28">
@@ -282,11 +301,44 @@ export default function AccountBookingsPage() {
           </div>
         )}
 
-        {hasSession && pendingOrder?.orderCode && !pendingOrder?.orderIdNew && (
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm">
-            Đơn mới của bạn đang được xác nhận thanh toán với mã{" "}
-            <span className="font-bold">#{pendingOrder.orderCode}</span>. Danh
-            sách sẽ tự cập nhật sau vài giây.
+        {hasSession &&
+          pendingOrder?.orderCode &&
+          !pendingOrder?.orderIdNew &&
+          !pendingOrder?.failed && (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm">
+              Đơn mới của bạn đang được xác nhận thanh toán với mã{" "}
+              <span className="font-bold">#{pendingOrder.orderCode}</span>. Danh
+              sách sẽ tự cập nhật sau vài giây.
+            </div>
+          )}
+
+        {hasSession && pendingOrder?.failed && pendingOrder?.orderCode && (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 shadow-sm">
+            <p>
+              Shop đã nhận thanh toán với mã{" "}
+              <span className="font-bold">#{pendingOrder.orderCode}</span>, nhưng
+              hệ thống <strong>không tạo được đơn thuê</strong> (ví dụ khung giờ
+              vừa có người đặt trước). Vui lòng liên hệ shop để đối soát và hỗ trợ
+              hoàn tiền — <strong>đừng thanh toán lại</strong>.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a
+                href={MESSENGER_LINK}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex rounded-xl bg-[#1F1F1F] px-4 py-2 text-xs font-bold text-white transition hover:opacity-95"
+              >
+                Nhắn Messenger
+              </a>
+              <a
+                href={ZALO_LINK}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex rounded-xl border border-rose-300 bg-white px-4 py-2 text-xs font-bold text-rose-900 transition hover:bg-rose-100/50"
+              >
+                Chat Zalo
+              </a>
+            </div>
           </div>
         )}
 
@@ -479,6 +531,13 @@ export default function AccountBookingsPage() {
                   {bookingList.map((booking) => {
                   const deviceName = booking?.device?.name || "Thiết bị";
                   const status = booking?.status || "CREATED";
+                  const branchLabel = getBranchLabelFromId(
+                    inferBookingBranchId(booking),
+                  );
+                  const payosCode = parsePayOsCodeFromNote(booking?.note);
+                  const customerName = parseCustomerNameFromBookingNote(
+                    booking?.note,
+                  );
 
                   return (
                     <li
@@ -501,6 +560,38 @@ export default function AccountBookingsPage() {
                               {formatDateTime(booking.bookingTo)}
                             </span>
                           </p>
+                          {(customerName || branchLabel || payosCode) && (
+                            <p className="mt-1.5 text-[11px] leading-relaxed text-[#9A8490] md:text-xs">
+                              {customerName ? (
+                                <span>
+                                  Khách:{" "}
+                                  <span className="font-semibold text-[#555]">
+                                    {customerName}
+                                  </span>
+                                </span>
+                              ) : null}
+                              {customerName && branchLabel ? " · " : null}
+                              {branchLabel ? (
+                                <span>
+                                  Chi nhánh:{" "}
+                                  <span className="font-semibold text-[#555]">
+                                    {branchLabel}
+                                  </span>
+                                </span>
+                              ) : null}
+                              {(customerName || branchLabel) && payosCode
+                                ? " · "
+                                : null}
+                              {payosCode ? (
+                                <span>
+                                  PayOS:{" "}
+                                  <span className="font-mono font-semibold text-[#555] tabular-nums">
+                                    {payosCode}
+                                  </span>
+                                </span>
+                              ) : null}
+                            </p>
+                          )}
                         </div>
                         <span
                           className={`inline-flex w-fit shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold md:px-3 md:py-1.5 md:text-xs ${getStatusClasses(

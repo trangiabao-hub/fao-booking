@@ -34,6 +34,7 @@ import {
 import { auth, googleProvider } from "../config/firebase";
 import { resolveGoogleSignInError } from "../utils/googleSignInEnvironment";
 import EmbeddedBrowserGoogleHint from "./EmbeddedBrowserGoogleHint";
+import OrderSummaryPanel from "./OrderSummaryPanel";
 import {
   BRANCHES,
   DURATION_OPTIONS,
@@ -1138,6 +1139,29 @@ export default function QuickBookModal({
     () => Math.max(0, payableBeforePoint - pointDiscountAmount),
     [payableBeforePoint, pointDiscountAmount],
   );
+  const checkoutSummaryDetails = useMemo(() => {
+    const branchLabel =
+      BRANCHES.find((b) => b.id === selectedBranch)?.label || null;
+    const deviceNames = rentalInfoPerDevice
+      .map((r) => r.device?.displayName || r.device?.name)
+      .filter(Boolean);
+    return {
+      customerName: customer.fullName?.trim() || null,
+      branchId: selectedBranch,
+      branchLabel,
+      deviceNames,
+      bookingFrom: isValid(t1) ? t1.toISOString() : null,
+      bookingTo: isValid(t2) ? t2.toISOString() : null,
+      total: payableTotal,
+    };
+  }, [
+    selectedBranch,
+    rentalInfoPerDevice,
+    customer.fullName,
+    t1,
+    t2,
+    payableTotal,
+  ]);
   const earnedPointPreview = useMemo(() => {
     const tierKey = hasGoogleSession
       ? memberTierKeyFromTotalSpent(memberTotalSpent)
@@ -2093,6 +2117,14 @@ export default function QuickBookModal({
                     thanh toán.
                   </p>
                 </div>
+
+                <OrderSummaryPanel
+                  details={checkoutSummaryDetails}
+                  title="📋 Tóm tắt đơn hàng"
+                  subtitle="Rà soát đủ thông tin trước khi thanh toán."
+                  compact
+                  className="border-[#F0E8EC] shadow-none"
+                />
 
                 {/* 1) Thiết bị — ưu tiên trên cùng */}
                 <div className="p-3.5 sm:p-4 bg-white rounded-xl border border-[#F0E8EC] space-y-3">

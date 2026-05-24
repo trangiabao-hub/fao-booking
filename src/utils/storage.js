@@ -140,6 +140,14 @@ export function loadRecentOrder() {
   }
 }
 
+export function clearRecentOrder() {
+  try {
+    localStorage.removeItem(RECENT_ORDER_KEY);
+  } catch (e) {
+    console.warn("Failed to clear recent order:", e);
+  }
+}
+
 // Booking preferences storage
 const PREFS_KEY = "fao_booking_prefs";
 
