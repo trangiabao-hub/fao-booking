@@ -101,6 +101,16 @@ function buildQuickBookNoteVoucher({
 
 const AFTERNOON_PICKUP_TIME = "15:00";
 
+/** Tạm thời tắt Instagram trong quick book — chỉ nhận link Facebook. */
+const QUICK_BOOK_IG_TEMPORARILY_DISABLED = true;
+
+function pickStoredSocialLink(source) {
+  const ig = (source?.ig || "").trim();
+  const fb = (source?.fb || "").trim();
+  if (QUICK_BOOK_IG_TEMPORARILY_DISABLED) return fb;
+  return ig || fb;
+}
+
 /** Giống catalog: local datetime không hậu tố Z — backend parse LocalDateTime. */
 function formatLocalDateTimeForDeviceApi(date) {
   if (!date || !isValid(date)) return null;
@@ -471,10 +481,11 @@ export default function QuickBookModal({
       fullName: saved?.fullName || "",
       phone: normalizeValidPhoneOrEmpty(saved?.phone),
       gmail: saved?.gmail || "",
-      ig: saved?.ig || saved?.fb || "",
+      ig: pickStoredSocialLink(saved),
     };
   });
   const [socialPlatform, setSocialPlatform] = useState(() => {
+    if (QUICK_BOOK_IG_TEMPORARILY_DISABLED) return "facebook";
     const saved = loadCustomerInfo();
     const link = (saved?.ig || saved?.fb || "").trim();
     const detected = detectSocialPlatformFromLink(link);
@@ -484,6 +495,9 @@ export default function QuickBookModal({
     if (hasFb && !hasIg) return "facebook";
     return "instagram";
   });
+  const effectiveSocialPlatform = QUICK_BOOK_IG_TEMPORARILY_DISABLED
+    ? "facebook"
+    : socialPlatform;
   const [checkoutMode, setCheckoutMode] = useState("GOOGLE");
   const [hasGoogleSession, setHasGoogleSession] = useState(
     () => !!loadCustomerSession()?.token,
@@ -987,7 +1001,10 @@ export default function QuickBookModal({
             normalizeValidPhoneOrEmpty(saved.phone) ||
             "",
           gmail: account.email || saved.gmail || "",
-          ig: account.ig || account.fb || saved.ig || saved.fb || "",
+          ig: pickStoredSocialLink({
+            ig: account.ig || saved.ig,
+            fb: account.fb || saved.fb,
+          }),
         };
         setCustomer((c) => ({ ...c, ...nextCustomer }));
         saveCustomerInfo(nextCustomer);
@@ -1043,6 +1060,10 @@ export default function QuickBookModal({
   }, [hasGoogleSession, checkoutMode]);
 
   useLayoutEffect(() => {
+    if (QUICK_BOOK_IG_TEMPORARILY_DISABLED) {
+      setSocialPlatform("facebook");
+      return;
+    }
     const detected = detectSocialPlatformFromLink(customer.ig);
     if (detected) setSocialPlatform(detected);
   }, [customer.ig]);
@@ -1051,13 +1072,13 @@ export default function QuickBookModal({
   const socialLinkError = useMemo(() => {
     const raw = (customer.ig || "").trim();
     if (!raw) return "Vui lòng nhập link.";
-    if (!isUrlForPlatform(raw, socialPlatform)) {
-      return socialPlatform === "instagram"
+    if (!isUrlForPlatform(raw, effectiveSocialPlatform)) {
+      return effectiveSocialPlatform === "instagram"
         ? "Link phải là URL Instagram hợp lệ (https://instagram.com/...)."
         : "Link phải là URL Facebook hợp lệ (https://facebook.com/...).";
     }
     return "";
-  }, [customer.ig, socialPlatform]);
+  }, [customer.ig, effectiveSocialPlatform]);
   const fullNameError = useMemo(() => {
     return customer.fullName?.trim().length >= 2
       ? ""
@@ -1188,7 +1209,10 @@ export default function QuickBookModal({
       !!savedCustomer?.fullName &&
       /^0\d{9}$/.test(phone) &&
       isValidEmail(savedCustomer?.gmail || "") &&
-      isSavedSocialValid(savedCustomer)
+      (QUICK_BOOK_IG_TEMPORARILY_DISABLED
+        ? !!(savedCustomer?.fb || "").trim() &&
+          isUrlForPlatform(savedCustomer.fb, "facebook")
+        : isSavedSocialValid(savedCustomer))
     );
   }, [savedCustomer]);
 
@@ -1246,8 +1270,8 @@ export default function QuickBookModal({
         fullName: (customer.fullName || "").trim(),
         phone: normalizePhone(customer.phone),
         gmail: (customer.gmail || "").trim(),
-        ig: socialPlatform === "instagram" ? socialLink : "",
-        fb: socialPlatform === "facebook" ? socialLink : "",
+        ig: effectiveSocialPlatform === "instagram" ? socialLink : "",
+        fb: effectiveSocialPlatform === "facebook" ? socialLink : "",
       };
       saveCustomerInfo(normalizedCustomer);
 
@@ -1456,7 +1480,10 @@ export default function QuickBookModal({
         fullName: account.fullName || data.fullName || c.fullName,
         phone: normalizeValidPhoneOrEmpty(account.phone) || c.phone,
         gmail: account.email || data.email || c.gmail,
-        ig: account.ig || account.fb || c.ig,
+        ig: pickStoredSocialLink({
+          ig: account.ig || c.ig,
+          fb: account.fb,
+        }),
       }));
     } catch (err) {
       setError(
@@ -1924,7 +1951,7 @@ export default function QuickBookModal({
                             savedCustomer.phone,
                           ),
                           gmail: savedCustomer.gmail || "",
-                          ig: savedCustomer.ig || savedCustomer.fb || "",
+                          ig: pickStoredSocialLink(savedCustomer),
                         }))
                       }
                       className="w-full rounded-2xl border-2 border-dashed border-[#FF9FCA]/50 bg-[#FFF9FC] px-3 py-2.5 text-sm font-bold text-[#E85C9C] hover:bg-[#FFF0F7] transition-colors"
@@ -2042,30 +2069,39 @@ export default function QuickBookModal({
 
                       <div>
                         <label className="text-[11px] font-black text-[#666] mb-1.5 block uppercase tracking-[0.2em] px-1">
-                          Instagram / Facebook
+                          {QUICK_BOOK_IG_TEMPORARILY_DISABLED
+                            ? "Facebook"
+                            : "Instagram / Facebook"}
                         </label>
-                        <div className="flex flex-wrap gap-4 mb-2 px-1">
-                          <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[#444]">
-                            <input
-                              type="radio"
-                              name="socialPlatform"
-                              checked={socialPlatform === "instagram"}
-                              onChange={() => setSocialPlatform("instagram")}
-                              className="h-4 w-4 accent-[#E85C9C] shrink-0"
-                            />
-                            Instagram
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[#444]">
-                            <input
-                              type="radio"
-                              name="socialPlatform"
-                              checked={socialPlatform === "facebook"}
-                              onChange={() => setSocialPlatform("facebook")}
-                              className="h-4 w-4 accent-[#E85C9C] shrink-0"
-                            />
-                            Facebook
-                          </label>
-                        </div>
+                        {QUICK_BOOK_IG_TEMPORARILY_DISABLED ? (
+                          <p className="mb-2 px-1 text-[11px] text-[#888] font-medium">
+                            Instagram tạm thời không khả dụng — vui lòng nhập
+                            link Facebook.
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-4 mb-2 px-1">
+                            <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[#444]">
+                              <input
+                                type="radio"
+                                name="socialPlatform"
+                                checked={socialPlatform === "instagram"}
+                                onChange={() => setSocialPlatform("instagram")}
+                                className="h-4 w-4 accent-[#E85C9C] shrink-0"
+                              />
+                              Instagram
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[#444]">
+                              <input
+                                type="radio"
+                                name="socialPlatform"
+                                checked={socialPlatform === "facebook"}
+                                onChange={() => setSocialPlatform("facebook")}
+                                className="h-4 w-4 accent-[#E85C9C] shrink-0"
+                              />
+                              Facebook
+                            </label>
+                          </div>
+                        )}
                         <label className="text-[10px] font-bold text-[#888] mb-1 block uppercase tracking-wider px-1">
                           Link{" "}
                           <span className="text-red-500 normal-case font-semibold">
@@ -2077,11 +2113,7 @@ export default function QuickBookModal({
                           onChange={(e) =>
                             setCustomer((c) => ({ ...c, ig: e.target.value }))
                           }
-                          placeholder={
-                            socialPlatform === "instagram"
-                              ? "https://instagram.com/username"
-                              : "https://facebook.com/username"
-                          }
+                          placeholder="https://facebook.com/username"
                           className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
                             socialLinkError
                               ? "border-red-300 focus:border-red-400"
@@ -2095,8 +2127,9 @@ export default function QuickBookModal({
                         )}
                         {!socialLinkError && (
                           <p className="mt-1 text-[11px] text-[#999] px-1">
-                            Dán link đầy đủ (https://...) đúng với nền tảng đã
-                            chọn.
+                            {QUICK_BOOK_IG_TEMPORARILY_DISABLED
+                              ? "Dán link Facebook đầy đủ (https://...)."
+                              : "Dán link đầy đủ (https://...) đúng với nền tảng đã chọn."}
                           </p>
                         )}
                       </div>
@@ -2639,7 +2672,7 @@ export default function QuickBookModal({
                     if (step === 2 && isCustomerValid) {
                       const snap = buildCustomerInfoSnapshot(
                         customer,
-                        socialPlatform,
+                        effectiveSocialPlatform,
                       );
                       if (isCustomerInfoSnapshotDifferent(loadCustomerInfo(), snap)) {
                         saveCustomerInfo(snap);
