@@ -2,6 +2,8 @@
  * Trang SEO tĩnh — từ khóa hot thuê máy ảnh (Cập nhật xu hướng Mùa Hè 2026).
  * Mỗi entry = 1 landing page với meta, nội dung và FAQ riêng được tối ưu theo Google Trend.
  */
+import { BRANCHES, branchToLocalBusiness } from "./localBusiness.js";
+
 export const SEO_PAGES = [
   {
     slug: "thue-may-anh-tphcm",
@@ -289,43 +291,60 @@ export const SEO_PAGES = [
   },
   {
     slug: "thue-may-anh-phu-nhuan",
-    title: "Thuê máy ảnh Phú Nhuận — FAO Camera 475 Huỳnh Văn Bánh",
+    title: "Thuê máy ảnh Phú Nhuận giá rẻ — FAO Camera 475 Huỳnh Văn Bánh",
     description:
-      "Cửa hàng cho thuê máy ảnh FAO tại Phú Nhuận — Lầu 1, 475 Huỳnh Văn Bánh. Vị trí trung tâm sát Q1, Q3. Kho máy đa dạng, mở cửa 9h-22h. Đặt online giữ máy.",
+      "Thuê máy ảnh Phú Nhuận tại FAO — Lầu 1, 475 Huỳnh Văn Bánh. Giá sinh viên từ 150k/ngày, Fujifilm/Sony/Canon/DJI. Mở cửa 9h–22h, đặt online giữ máy, chỉ cần CCCD.",
     aiSummary:
-      "Chi nhánh FAO trung tâm Phú Nhuận: Lầu 1, số 475 Huỳnh Văn Bánh. Vị trí thuận lợi cho khách hàng quận 1, quận 3, Tân Bình, Bình Thạnh. Thời gian làm việc 9h–22h.",
-    aiHighlight: "Gần Q1, Q3, Bình Thạnh",
-    h1: "Thuê máy ảnh Phú Nhuận — Cửa hàng trung tâm FAO Camera",
+      "FAO Camera Phú Nhuận cho thuê máy ảnh, ống kính và phụ kiện tại Lầu 1, 475 Huỳnh Văn Bánh — giá từ 150.000đ/ngày, thủ tục chỉ cần CCCD. Kho máy đa dạng (Fujifilm, Sony, Canon, DJI), hỗ trợ kỹ thuật tận tình. Mở cửa 9h–22h mỗi ngày, thuận tiện khách Q1, Q3, Tân Bình, Bình Thạnh.",
+    aiHighlight: "Từ 150.000đ/ngày — chỉ cần CCCD",
+    h1: "Thuê máy ảnh Phú Nhuận — FAO Camera uy tín",
     intro:
-      "Bạn ở trung tâm Sài Gòn và cần thuê máy gấp? Chi nhánh FAO Phú Nhuận (475 Huỳnh Văn Bánh) nằm tại khu vực kết nối giữa Q1, Q3, Tân Bình và Bình Thạnh. Cực kỳ tiện lợi để bạn ghé lấy máy trên đường ra sân bay Tân Sơn Nhất hoặc đi chụp loanh quanh các khu tổ hợp cafe sầm uất. Đừng quên thao tác đặt lịch online để check slot trước khi ghé nhé!",
+      "Tại Quận Phú Nhuận, bạn có thể thuê máy ảnh và thiết bị quay phim uy tín tại FAO Camera — cửa hàng tập trung kho máy lớn nhất hệ thống. Chi nhánh nằm Lầu 1, 475 Huỳnh Văn Bánh, kết nối thuận tiện Q1, Q3, Tân Bình và Bình Thạnh. Giá thuê minh bạch trên web, thủ tục nhanh gọn, nhân viên hỗ trợ test máy và cài profile màu trước khi giao.",
+    pros: [
+      "Giá thuê sinh viên từ 150.000đ/ngày, hiển thị rõ trên faocamera.vn",
+      "Thủ tục đơn giản: chỉ cần CCCD/VNeID, không yêu cầu hộ khẩu",
+      "Kho máy đa dạng: Fujifilm, Sony, Canon, DJI, GoPro — 100+ thiết bị",
+      "Hỗ trợ kỹ thuật tận tình: test máy, cài sẵn profile màu trước khi giao",
+      "Đặt lịch online — lịch trống realtime, giữ máy trước khi đến shop",
+    ],
     highlights: [
-      "Địa chỉ dễ tìm: Lầu 1, 475 Huỳnh Văn Bánh, P.13, Q. Phú Nhuận (Vui lòng gửi xe phía dưới)",
-      "Hotline hỗ trợ kỹ thuật và check máy: 0901 355 198",
-      "Kho máy tập trung nhiều nhất: Fuji, Sony, Canon, DJI, GoPro",
-      "Nhân viên hỗ trợ test máy, cài đặt sẵn profile màu nhiệt tình",
+      "Địa chỉ: Lầu 1, 475 Huỳnh Văn Bánh, P.13, Q. Phú Nhuận (gửi xe phía dưới)",
+      "Hotline: 0901 355 198 — Zalo & Messenger hỗ trợ nhanh",
+      "Giờ mở cửa: 9h00 – 22h00, Thứ 2 – Chủ Nhật",
+      "Thanh toán: tiền mặt, chuyển khoản QR, quẹt thẻ",
     ],
     devices: [
-      { name: "Truy cập Catalog", desc: "Xem 100+ thiết bị đang có tại Phú Nhuận", link: "/catalog?branchId=PHU_NHUAN" },
+      { name: "Fujifilm X100 / X-T series", desc: "Màu film cực chất — chụp cafe, du lịch", link: "/catalog?branchId=PHU_NHUAN&category=fuji" },
+      { name: "Sony ZV-E10", desc: "Máy vlog quốc dân — quay TikTok, YouTube", link: "/catalog?branchId=PHU_NHUAN&category=sony" },
+      { name: "Canon G7X Mark III", desc: "Compact sống ảo — selfie, quay vlog", link: "/catalog?branchId=PHU_NHUAN&category=canon" },
+      { name: "DJI Osmo Pocket 3", desc: "Gimbal bỏ túi — du lịch, TikTok", link: "/catalog?branchId=PHU_NHUAN&category=pocket" },
     ],
     faq: [
       {
-        q: "Shop có mở cửa vào cuối tuần không?",
-        a: "Chi nhánh Phú Nhuận hoạt động liên tục từ Thứ 2 đến Chủ Nhật (9h00 sáng - 22h00 tối). Bạn có thể thoải mái nhận trả máy sau giờ làm việc.",
+        q: "Thuê máy ảnh Phú Nhuận giá bao nhiêu?",
+        a: "Giá thuê tại FAO Phú Nhuận dao động khoảng 150.000–600.000đ/ngày tùy dòng máy và lens. Gói 6 tiếng phù hợp chụp nhanh; thuê 2–3 ngày đi du lịch được chiết khấu thêm. Xem bảng giá realtime trên faocamera.vn/catalog.",
       },
       {
-        q: "Thanh toán bằng hình thức nào?",
-        a: "Chúng tôi hỗ trợ quẹt thẻ, chuyển khoản (QR Code) và tiền mặt.",
+        q: "Địa chỉ thuê máy ảnh Phú Nhuận ở đâu?",
+        a: "FAO Camera Phú Nhuận: Lầu 1, số 475 Huỳnh Văn Bánh, Phường 13, Quận Phú Nhuận, TP.HCM. Shop nằm gần ranh giới Q1, Q3 — thuận tiện khách trung tâm Sài Gòn và sân bay Tân Sơn Nhất.",
+      },
+      {
+        q: "Thuê máy ảnh Phú Nhuận cần giấy tờ gì?",
+        a: "Chỉ cần CCCD gắn chip (hoặc Hộ chiếu/VNeID). Không yêu cầu hộ khẩu. Sinh viên được hỗ trợ tối đa — hợp đồng minh bạch, bảo vệ quyền lợi hai bên.",
+      },
+      {
+        q: "Shop có mở cửa cuối tuần không?",
+        a: "Chi nhánh Phú Nhuận mở cửa liên tục Thứ 2 – Chủ Nhật, 9h00 – 22h00. Bạn có thể nhận và trả máy cả cuối tuần.",
+      },
+      {
+        q: "Có thể đặt giữ máy trước khi đến shop không?",
+        a: "Có. Truy cập faocamera.vn, chọn chi nhánh Phú Nhuận, xem lịch trống realtime và đặt online. Hệ thống giữ slot máy cho bạn — tránh hết máy vào mùa cao điểm.",
       },
     ],
-    relatedSlugs: ["thue-may-anh-thu-duc", "thue-may-anh-tphcm"],
+    relatedSlugs: ["thue-may-anh-thu-duc", "thue-may-anh-tphcm", "thue-may-anh-fujifilm"],
     ctaLink: "/catalog?branchId=PHU_NHUAN",
     ctaLabel: "Đặt máy nhận tại Phú Nhuận",
-    localBusiness: {
-      name: "FAO Camera Phú Nhuận",
-      address: "Lầu 1, 475 Huỳnh Văn Bánh, Quận Phú Nhuận, TP.HCM",
-      phone: "0901355198",
-      mapUrl: "https://maps.app.goo.gl/Lg6KoXzXWrdiurWj9?g_st=ic",
-    },
+    localBusiness: branchToLocalBusiness(BRANCHES.PHU_NHUAN),
   },
   {
     slug: "thue-may-anh-thu-duc",
@@ -360,12 +379,7 @@ export const SEO_PAGES = [
     relatedSlugs: ["thue-may-anh-phu-nhuan", "thue-may-anh-tphcm"],
     ctaLink: "/catalog?branchId=Q9",
     ctaLabel: "Đặt máy nhận tại Thủ Đức",
-    localBusiness: {
-      name: "FAO Camera Q9 Thủ Đức",
-      address: "465 Lê Văn Việt (Elan Cafe), Q.9, Thủ Đức, TP.HCM",
-      phone: "0775844479",
-      mapUrl: "https://www.google.com/maps/search/?api=1&query=465+L%C3%AA+V%C4%83n+Vi%E1%BB%87t+Elan+Cafe+Th%E1%BB%A7+%C4%90%E1%BB%A9c",
-    },
+    localBusiness: branchToLocalBusiness(BRANCHES.Q9),
   },
   {
     slug: "thue-may-anh-du-lich",

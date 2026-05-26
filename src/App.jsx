@@ -21,8 +21,8 @@ const App = () => {
       path: "/",
       element: (
         <SeoMeta
-          title="Đặt máy ảnh và ống kính"
-          description="Đặt thuê máy ảnh, ống kính và phụ kiện nhanh chóng tại FAO với lịch trống minh bạch và thanh toán thuận tiện."
+          title="Thuê máy ảnh TP.HCM — đặt online nhanh"
+          description="Thuê máy ảnh TP.HCM tại FAO — Fujifilm, Sony, Canon, DJI. Giá sinh viên từ 150k/ngày, chi nhánh Phú Nhuận & Thủ Đức. Đặt lịch online realtime."
           path="/"
         >
           <HomePage />

@@ -12,9 +12,11 @@ import {
   renderSiteFooter,
   renderBreadcrumb,
   renderAiAnswerBox,
+  renderLocalBusinessCard,
   stringifySchemaGraph,
   buildWebPageNode,
   buildBreadcrumbNode,
+  buildLocalBusinessNode,
   SITE_CONFIG,
   catalogHref,
   renderAttributionBootstrapScript,
@@ -64,18 +66,7 @@ function buildSchema(page, pageUrl) {
   }
 
   if (page.localBusiness) {
-    graph.push({
-      "@type": "LocalBusiness",
-      name: page.localBusiness.name,
-      telephone: page.localBusiness.phone,
-      address: {
-        "@type": "PostalAddress",
-        streetAddress: page.localBusiness.address,
-        addressLocality: "TP.HCM",
-        addressCountry: "VN",
-      },
-      url: pageUrl,
-    });
+    graph.push(buildLocalBusinessNode(page.localBusiness, pageUrl));
   }
 
   return stringifySchemaGraph(graph);
@@ -120,6 +111,10 @@ function renderPage(page) {
       sourceLabel: "FAO Booking",
     });
 
+  const localCard =
+    page.localBusiness &&
+    renderLocalBusinessCard(page.localBusiness, page.pros || []);
+
   return `${renderHead({
     title: page.title,
     description: page.description,
@@ -139,6 +134,8 @@ function renderPage(page) {
         ${aiBox || ""}
         <p class="intro" itemprop="description">${escapeHtml(page.intro)}</p>
         <p class="byline">Cập nhật bởi <span itemprop="author">${escapeHtml(SITE_CONFIG.brand)}</span></p>
+
+        ${localCard || ""}
 
         <section class="block">
           <h2 class="accent">Vì sao chọn FAO?</h2>

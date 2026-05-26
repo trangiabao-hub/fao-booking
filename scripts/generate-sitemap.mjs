@@ -30,6 +30,7 @@ const entries = [
     changefreq: "weekly",
     priority: p.slug.includes("phu-nhuan") || p.slug.includes("tphcm") ? "0.9" : "0.85",
   })),
+  { loc: "/catalog?branchId=PHU_NHUAN", changefreq: "daily", priority: "0.85" },
 ];
 
 const xml = `<?xml version="1.0" encoding="UTF-8"?>

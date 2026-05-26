@@ -21,8 +21,8 @@ export const NAV_LINKS = [
 
 export const GUIDE_LINKS = [
   { href: "/thue-may-anh-tphcm/", label: "Thuê máy TP.HCM" },
+  { href: "/thue-may-anh-phu-nhuan/", label: "Thuê máy Phú Nhuận" },
   { href: "/thue-may-anh-quay-vlog/", label: "Quay vlog & TikTok" },
-  { href: "/thue-may-anh-chup-ao-dai/", label: "Chụp áo dài Tết" },
   { href: "/thue-may-anh-fujifilm/", label: "Thuê Fujifilm" },
 ];
 
@@ -192,6 +192,20 @@ export const STATIC_CSS = `
   .footer-bottom{margin-top:28px;padding-top:20px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px 20px;justify-content:space-between;align-items:center;font-size:.8125rem;color:var(--muted)}
   .footer-contact{display:flex;flex-wrap:wrap;gap:12px}
   .footer-contact a{font-weight:600;color:var(--brand);text-decoration:none}
+
+  /* —— Local business card (GEO / AI Overview) —— */
+  .local-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;margin-bottom:28px;box-shadow:var(--shadow)}
+  .local-card h2{font-size:1.125rem;font-weight:800;margin-bottom:14px;color:var(--ink)}
+  .local-card dl{display:grid;gap:10px;margin:0}
+  .local-card dt{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .local-card dd{margin:0;font-size:.9375rem;color:#334155;line-height:1.5}
+  .local-card dd a{font-weight:600}
+  .local-card .pros{margin-top:16px;padding-top:16px;border-top:1px dashed var(--line)}
+  .local-card .pros h3{font-size:.8125rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--brand);margin-bottom:10px}
+  .local-card .pros ul{list-style:none;margin:0}
+  .local-card .pros li{padding:4px 0 4px 20px;position:relative;font-size:.9375rem;color:#334155}
+  .local-card .pros li::before{content:"✓";position:absolute;left:0;color:var(--brand);font-weight:700}
+  .local-card .map-link{display:inline-block;margin-top:14px;font-size:.875rem;font-weight:700}
 `;
 
 const AI_STAR_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6L12 2z" fill="#3b82f6"/></svg>`;
@@ -293,15 +307,123 @@ export function buildOrganizationNode() {
     "@type": "Organization",
     "@id": `${url}/#organization`,
     name: brand,
-    alternateName: name,
+    alternateName: [name, "FAO Camera", "faocamera.vn"],
     url,
     logo: `${url}${logo}`,
+    description:
+      "Dịch vụ cho thuê máy ảnh, ống kính và phụ kiện tại TP.HCM — đặt lịch online, giá sinh viên từ 150.000đ/ngày.",
     telephone: `+84-${phone.replace(/^0/, "")}`,
     sameAs: [
       "https://www.facebook.com/Faodigitalcamera",
       "https://www.instagram.com/faodigitalcamera",
+      "https://zalo.me/0901355198",
+    ],
+    knowsAbout: [
+      "Cho thuê máy ảnh",
+      "Thuê máy ảnh Fujifilm",
+      "Thuê máy quay vlog",
+      "Thuê máy ảnh sinh viên",
     ],
   };
+}
+
+const WEEKDAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+/** Schema LocalBusiness đầy đủ — tối ưu Google AI Overview & Local Pack */
+export function buildLocalBusinessNode(lb, pageUrl) {
+  const phoneE164 = lb.phone.startsWith("+") ? lb.phone : `+84-${lb.phone.replace(/^0/, "")}`;
+  return {
+    "@type": ["LocalBusiness", "Store"],
+    "@id": `${pageUrl}#localbusiness`,
+    name: lb.name,
+    description: lb.description,
+    telephone: phoneE164,
+    url: pageUrl,
+    image: absoluteImageUrl("/og-image.png"),
+    priceRange: lb.priceRange || "₫₫",
+    currenciesAccepted: "VND",
+    paymentAccepted: "Cash, Credit Card, Bank Transfer",
+    openingHours: lb.openingHours || `Mo-Su ${lb.opens || "09:00"}-${lb.closes || "22:00"}`,
+    openingHoursSpecification: [
+      {
+        "@type": "OpeningHoursSpecification",
+        dayOfWeek: WEEKDAYS,
+        opens: lb.opens || "09:00",
+        closes: lb.closes || "22:00",
+      },
+    ],
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: lb.address,
+      addressLocality: lb.locality || "TP.HCM",
+      addressRegion: lb.district || lb.locality || "TP.HCM",
+      addressCountry: "VN",
+    },
+    ...(lb.geo
+      ? {
+          geo: {
+            "@type": "GeoCoordinates",
+            latitude: lb.geo.lat,
+            longitude: lb.geo.lng,
+          },
+        }
+      : {}),
+    ...(lb.mapUrl ? { hasMap: lb.mapUrl } : {}),
+    parentOrganization: { "@id": `${SITE_CONFIG.url}/#organization` },
+    ...(lb.areaServed?.length
+      ? {
+          areaServed: lb.areaServed.map((name) => ({
+            "@type": "AdministrativeArea",
+            name,
+          })),
+        }
+      : {}),
+    makesOffer: {
+      "@type": "Offer",
+      priceCurrency: "VND",
+      description: lb.priceFrom || "Từ 150.000đ/ngày",
+      itemOffered: {
+        "@type": "Service",
+        name: "Cho thuê máy ảnh",
+        serviceType: "Camera rental",
+        provider: { "@id": `${pageUrl}#localbusiness` },
+      },
+    },
+  };
+}
+
+/** Khối HTML địa chỉ + ưu điểm — cấu trúc Google AI hay trích dẫn */
+export function renderLocalBusinessCard(lb, pros = []) {
+  const phoneFmt = lb.phone.replace(/(\d{4})(\d{3})(\d{3})/, "$1 $2 $3");
+  const hours = lb.opens && lb.closes ? `${lb.opens} – ${lb.closes} hàng ngày` : "9h00 – 22h00 hàng ngày";
+  const prosHtml =
+    pros.length > 0
+      ? `<div class="pros">
+          <h3>Ưu điểm</h3>
+          <ul>${pros.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>
+        </div>`
+      : "";
+
+  return `<section class="local-card" itemscope itemtype="https://schema.org/LocalBusiness">
+  <h2 itemprop="name">${escapeHtml(lb.name)}</h2>
+  <dl>
+    <div><dt>Địa chỉ</dt><dd itemprop="address" itemscope itemtype="https://schema.org/PostalAddress"><span itemprop="streetAddress">${escapeHtml(lb.fullAddress || lb.address)}</span></dd></div>
+    <div><dt>Giá thuê</dt><dd>Từ <strong>${escapeHtml(lb.priceFrom || "150.000đ/ngày")}</strong></dd></div>
+    <div><dt>Giờ mở cửa</dt><dd>${escapeHtml(hours)}</dd></div>
+    <div><dt>Hotline</dt><dd><a href="tel:${escapeHtml(lb.phone)}" itemprop="telephone">${escapeHtml(phoneFmt)}</a></dd></div>
+    ${lb.areaServed?.length ? `<div><dt>Khu vực phục vụ</dt><dd>${escapeHtml(lb.areaServed.slice(0, 5).join(", "))}</dd></div>` : ""}
+  </dl>
+  ${prosHtml}
+  ${lb.mapUrl ? `<a class="map-link" href="${escapeHtml(lb.mapUrl)}" rel="noopener" target="_blank">Xem trên Google Maps →</a>` : ""}
+</section>`;
 }
 
 export function buildBreadcrumbNode(items, pageUrl) {
@@ -353,6 +475,14 @@ export function buildWebsiteNode() {
     name: SITE_CONFIG.name,
     publisher: { "@id": `${SITE_CONFIG.url}/#organization` },
     inLanguage: "vi-VN",
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${SITE_CONFIG.url}/catalog?q={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    },
   };
 }
 
