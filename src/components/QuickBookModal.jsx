@@ -55,6 +55,8 @@ import {
   computeDiscountedPrice,
   computeDiscountBreakdown,
   computeQ9BranchFlatDiscountVnd,
+  computeQ9BranchDiscountBreakdown,
+  isQ9MayPromoEligible,
   Q9_BRANCH_VOUCHER_ID,
 } from "../utils/bookingHelpers";
 import {
@@ -85,7 +87,13 @@ function buildQuickBookNoteVoucher({
   selectedBranch,
 }) {
   const parts = [];
-  if (selectedBranch === "Q9" && price > 0) {
+  if (
+    selectedBranch === "Q9" &&
+    price > 0 &&
+    isValid(t1) &&
+    isValid(t2) &&
+    isQ9MayPromoEligible(t1, t2)
+  ) {
     parts.push(Q9_BRANCH_VOUCHER_ID);
   } else if (price > 0 && isValid(t1) && isValid(t2)) {
     const b = computeDiscountBreakdown(price, t1, t2);
@@ -707,7 +715,13 @@ export default function QuickBookModal({
   }, [hasInitialPrefs, pricing?.discounted, pricing?.original, price]);
 
   const discountedTotal = useMemo(() => {
-    if (selectedBranch === "Q9" && price > 0) {
+    if (
+      selectedBranch === "Q9" &&
+      price > 0 &&
+      isValid(t1) &&
+      isValid(t2) &&
+      isQ9MayPromoEligible(t1, t2)
+    ) {
       return Math.max(0, price - computeQ9BranchFlatDiscountVnd(price));
     }
     if (isMulti) {
@@ -746,15 +760,8 @@ export default function QuickBookModal({
     const savingVsRetail = Math.max(0, retailPrice - packagePrice);
 
     let base = null;
-    if (selectedBranch === "Q9" && price > 0) {
-      const disc = computeQ9BranchFlatDiscountVnd(price);
-      base = {
-        original: price,
-        discount: disc,
-        discounted: Math.max(0, price - disc),
-        discountLabel:
-          disc > 0 ? "Giảm sốc mừng khai trương" : null,
-      };
+    if (selectedBranch === "Q9" && price > 0 && isValidDateRange(t1, t2)) {
+      base = computeQ9BranchDiscountBreakdown(price, t1, t2);
     } else if (catalogPricingStillValid) {
       const discount = Math.max(0, pricing.original - pricing.discounted);
       base = {
@@ -1326,25 +1333,27 @@ export default function QuickBookModal({
           Math.round(r?.price || 0),
         );
         const totalRaw = rawAmounts.reduce((a, b) => a + b, 0);
-        const totalQ9Off =
-          selectedBranch === "Q9"
-            ? computeQ9BranchFlatDiscountVnd(totalRaw)
-            : 0;
-        const perDeviceAmounts =
-          selectedBranch === "Q9"
-            ? rawAmounts
-            : rentalInfoPerDevice.map((r) =>
-                Math.round(computeDiscountedPrice(r?.price || 0, t1, t2)),
-              );
-        const distributedVoucher =
-          selectedBranch === "Q9"
-            ? allocateDiscountByRatio(rawAmounts, totalQ9Off)
-            : isFirstOrderVoucherSelected
-              ? allocateDiscountByRatio(
-                  perDeviceAmounts,
-                  firstOrderAdditionalDiscount,
-                )
-              : perDeviceAmounts.map(() => 0);
+        const q9MayPromo =
+          selectedBranch === "Q9" &&
+          isValid(t1) &&
+          isValid(t2) &&
+          isQ9MayPromoEligible(t1, t2);
+        const totalQ9Off = q9MayPromo
+          ? computeQ9BranchFlatDiscountVnd(totalRaw)
+          : 0;
+        const perDeviceAmounts = q9MayPromo
+          ? rawAmounts
+          : rentalInfoPerDevice.map((r) =>
+              Math.round(computeDiscountedPrice(r?.price || 0, t1, t2)),
+            );
+        const distributedVoucher = q9MayPromo
+          ? allocateDiscountByRatio(rawAmounts, totalQ9Off)
+          : isFirstOrderVoucherSelected
+            ? allocateDiscountByRatio(
+                perDeviceAmounts,
+                firstOrderAdditionalDiscount,
+              )
+            : perDeviceAmounts.map(() => 0);
         const perDeviceAfterVoucher = perDeviceAmounts.map((baseAmount, idx) =>
           Math.max(0, baseAmount - (distributedVoucher[idx] || 0)),
         );
@@ -1358,10 +1367,9 @@ export default function QuickBookModal({
         const bookingRequests = rentalInfoPerDevice.map((r, idx) => {
           const dev = r.device;
           const devPrice = Math.round(r?.price || 0);
-          const baseDiscounted =
-            selectedBranch === "Q9"
-              ? devPrice
-              : Math.round(computeDiscountedPrice(devPrice, t1, t2));
+          const baseDiscounted = q9MayPromo
+            ? devPrice
+            : Math.round(computeDiscountedPrice(devPrice, t1, t2));
           const voucherDiscount = distributedVoucher[idx] || 0;
           const pointDiscount = distributedPointDiscount[idx] || 0;
           const finalAmount = Math.max(

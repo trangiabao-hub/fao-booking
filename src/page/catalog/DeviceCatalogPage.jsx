@@ -36,7 +36,7 @@ import {
   calculateRentalInfo,
   roundDownToThousand,
 } from "../../utils/pricing";
-import { formatPriceK, computeQ9BranchFlatDiscountVnd } from "../../utils/bookingHelpers";
+import { formatPriceK, computeQ9BranchFlatDiscountVnd, isQ9MayPromoEligible } from "../../utils/bookingHelpers";
 import { BRANCHES, isBranchBookable } from "../../data/bookingConstants";
 import {
   devicesForBookingBranch,
@@ -1137,10 +1137,14 @@ export default function DeviceCatalogPage() {
   }, [availabilityPrefs]);
 
   const catalogPriceFootnote = useMemo(() => {
-    return normalizeBookingBranchId(availabilityPrefs.branchId) === "Q9"
+    if (normalizeBookingBranchId(availabilityPrefs.branchId) !== "Q9") {
+      return "Giá đã áp dụng ưu đãi trong tuần";
+    }
+    const { fromDateTime, toDateTime } = pricingContext;
+    return isQ9MayPromoEligible(fromDateTime, toDateTime)
       ? "Giảm sốc mừng khai trương"
       : "Giá đã áp dụng ưu đãi trong tuần";
-  }, [availabilityPrefs.branchId]);
+  }, [availabilityPrefs.branchId, pricingContext]);
 
   const getDevicePricing = useCallback(
     (device, opts = {}) => {
@@ -1149,6 +1153,8 @@ export default function DeviceCatalogPage() {
       const applyQ9ListPrice = (row) => {
         const o = row.original ?? 0;
         if (skipQ9 || branchNorm !== "Q9" || o <= 0) return row;
+        const { fromDateTime, toDateTime } = pricingContext;
+        if (!isQ9MayPromoEligible(fromDateTime, toDateTime)) return row;
         const off = computeQ9BranchFlatDiscountVnd(o);
         return { ...row, discounted: Math.max(0, o - off) };
       };

@@ -12,6 +12,7 @@ import {
 } from "../data/bookingConstants";
 import {
   computeDiscountBreakdown as computeDiscountBreakdownFromPricing,
+  getAdjustedRange,
 } from "./pricing";
 
 dayjs.extend(utc);
@@ -191,12 +192,69 @@ export function computeDiscountBreakdown(price, startDateTime, endDateTime) {
 /** Voucher chi nhánh Q9 — noteVoucher backend / UI đặt lịch */
 export const Q9_BRANCH_VOUCHER_ID = "Q9_30_MAX200K";
 export const Q9_BRANCH_VOUCHER_MAX_VND = 200_000;
+/** Promo khai trương Q9: 30% max 200k — chỉ trong tháng 5/2026. */
+export const Q9_BRANCH_PROMO_MONTH = 5;
+export const Q9_BRANCH_PROMO_YEAR = 2026;
 
 /** Giảm 30% giá thuê gói, tối đa 200.000đ (một đơn). */
 export function computeQ9BranchFlatDiscountVnd(subTotalVnd) {
   const n = Number(subTotalVnd);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.min(Math.floor(n * 0.3), Q9_BRANCH_VOUCHER_MAX_VND);
+}
+
+/**
+ * Promo 30% max 200k chỉ khi mọi ngày tính phí (getAdjustedRange) đều thuộc tháng 5/2026.
+ * Lịch cắt qua 31/05→01/06 hoặc bắt đầu từ tháng 6 → không đủ điều kiện.
+ */
+export function isQ9MayPromoEligible(startDateTime, endDateTime) {
+  const start = dayjs(startDateTime);
+  const end = dayjs(endDateTime);
+  if (!start.isValid() || !end.isValid() || !end.isAfter(start)) return false;
+
+  const range = getAdjustedRange(start, end);
+  if (!range) return false;
+  const [adjStart, adjEnd] = range;
+  if (adjEnd.isBefore(adjStart)) return false;
+
+  let cur = adjStart.clone();
+  let safety = 0;
+  while (!cur.isAfter(adjEnd)) {
+    if (
+      cur.month() + 1 !== Q9_BRANCH_PROMO_MONTH ||
+      cur.year() !== Q9_BRANCH_PROMO_YEAR
+    ) {
+      return false;
+    }
+    cur = cur.add(1, "day");
+    if (++safety > 10000) break;
+  }
+  return true;
+}
+
+/** Giảm chi nhánh Q9: 30% max 200k (tháng 5) hoặc 20% ngày trong tuần (sau tháng 5). */
+export function computeQ9BranchDiscountBreakdown(
+  subTotalVnd,
+  startDateTime,
+  endDateTime,
+) {
+  if (isQ9MayPromoEligible(startDateTime, endDateTime)) {
+    const original = subTotalVnd;
+    const discount = computeQ9BranchFlatDiscountVnd(original);
+    return {
+      original,
+      discount,
+      discounted: Math.max(0, original - discount),
+      discountLabel: discount > 0 ? "Giảm sốc mừng khai trương" : null,
+      discountableDays: 0,
+      totalDays: 0,
+    };
+  }
+  return computeDiscountBreakdownFromPricing(
+    subTotalVnd,
+    startDateTime,
+    endDateTime,
+  );
 }
 
 export function getSlotButtonClasses(count, active) {
