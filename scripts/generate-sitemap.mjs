@@ -1,7 +1,7 @@
 /**
  * Sinh public/sitemap.xml từ SEO + blog data.
  */
-import { writeFileSync } from "fs";
+import { writeFileSync, readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { SEO_PAGES } from "../src/data/seoPages.js";
@@ -11,9 +11,23 @@ import { SITE_CONFIG } from "./static-site-layout.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SITE = SITE_CONFIG.url;
 
+function loadDeviceSlugs() {
+  const snapPath = join(__dirname, "../src/data/deviceSeoSnapshot.json");
+  if (!existsSync(snapPath)) return [];
+  try {
+    const snap = JSON.parse(readFileSync(snapPath, "utf8"));
+    return (snap.models || []).map((m) => m.slug);
+  } catch {
+    return [];
+  }
+}
+
+const deviceSlugs = loadDeviceSlugs();
+
 const entries = [
   { loc: "/", changefreq: "daily", priority: "1.0" },
   { loc: "/catalog", changefreq: "daily", priority: "0.95" },
+  { loc: "/bang-gia-thue-may-anh", changefreq: "daily", priority: "0.95" },
   { loc: "/menu", changefreq: "weekly", priority: "0.7" },
   { loc: "/feedback", changefreq: "weekly", priority: "0.7" },
   { loc: "/catalog?branchId=Q9", changefreq: "weekly", priority: "0.7" },
@@ -31,6 +45,11 @@ const entries = [
     priority: p.slug.includes("phu-nhuan") || p.slug.includes("tphcm") ? "0.9" : "0.85",
   })),
   { loc: "/catalog?branchId=PHU_NHUAN", changefreq: "daily", priority: "0.85" },
+  ...deviceSlugs.map((slug) => ({
+    loc: `/${slug}`,
+    changefreq: "weekly",
+    priority: "0.8",
+  })),
 ];
 
 const xml = `<?xml version="1.0" encoding="UTF-8"?>

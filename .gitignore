@@ -14,6 +14,7 @@ dist-ssr
 
 # Blog generate manifest (local state)
 scripts/.blog-slugs-manifest.json
+src/data/.blog-slugs-manifest.json
 
 # Editor directories and files
 .vscode/*

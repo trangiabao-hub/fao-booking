@@ -2,6 +2,8 @@
  * Layout + schema dùng chung cho trang SEO & blog tĩnh.
  * Tối ưu Google AI Overview: câu trả lời trực tiếp, Speakable, Breadcrumb, Organization.
  */
+import { BRANCHES, branchToLocalBusiness } from "../src/data/localBusiness.js";
+
 export const SITE_CONFIG = {
   url: (process.env.VITE_SITE_URL || "https://faocamera.vn").replace(/\/+$/, ""),
   name: "FAO Booking",
@@ -20,10 +22,10 @@ export const NAV_LINKS = [
 ];
 
 export const GUIDE_LINKS = [
+  { href: "/bang-gia-thue-may-anh/", label: "Bảng giá" },
   { href: "/thue-may-anh-tphcm/", label: "Thuê máy TP.HCM" },
-  { href: "/thue-may-anh-phu-nhuan/", label: "Thuê máy Phú Nhuận" },
-  { href: "/thue-may-anh-quay-vlog/", label: "Quay vlog & TikTok" },
-  { href: "/thue-may-anh-fujifilm/", label: "Thuê Fujifilm" },
+  { href: "/thue-may-anh-phu-nhuan/", label: "Phú Nhuận" },
+  { href: "/thue-may-anh-fujifilm/", label: "Fujifilm" },
 ];
 
 export const escapeHtml = (s) =>
@@ -38,13 +40,14 @@ export const STATIC_CSS = `
   :root{
     --ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--brand:#E85C9C;--brand-soft:#FFF1F8;
     --bg:#f8fafc;--card:#fff;--radius:14px;--shadow:0 4px 24px rgba(15,23,42,.06);
-    --content:42rem;--wide:72rem;
+    --content:42rem;--wide:94rem;--article-wide:110rem;
   }
   html{scroll-behavior:smooth}
   body{font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.65;-webkit-font-smoothing:antialiased}
   a{color:var(--brand);text-decoration:none}a:hover{text-decoration:underline}
-  .wrap{max-width:var(--wide);margin:0 auto;padding:0 20px}
+  .wrap{max-width:var(--wide);margin:0 auto;padding:0 clamp(16px,3vw,40px)}
   .content-narrow{max-width:var(--content);margin:0 auto}
+  .device-wrap{max-width:var(--article-wide)}
 
   /* —— Site chrome —— */
   .site-header{position:sticky;top:0;z-index:50;border-bottom:1px solid var(--line);background:rgba(255,255,255,.92);backdrop-filter:blur(12px)}
@@ -147,10 +150,18 @@ export const STATIC_CSS = `
   .post-card h2{font-size:1.05rem;font-weight:700;color:var(--ink);line-height:1.35;margin-bottom:8px;flex:1}
   .post-card p{font-size:.875rem;color:var(--muted);line-height:1.5}
   .post-card .read-more{margin-top:14px;font-size:.8125rem;font-weight:700;color:var(--brand)}
+  .blog-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;align-items:center}
+  .blog-filters-label{font-size:.8125rem;font-weight:700;color:var(--muted);margin-right:4px}
+  .filter-chip{border:1px solid var(--line);background:var(--card);color:var(--muted);font-size:.8125rem;font-weight:600;padding:8px 14px;border-radius:999px;cursor:pointer;transition:all .15s}
+  .filter-chip:hover{border-color:var(--brand);color:var(--brand)}
+  .filter-chip.active{background:var(--brand);border-color:var(--brand);color:#fff}
+  .post-card.is-hidden{display:none!important}
+  .blog-section-title{font-size:1.25rem;font-weight:800;margin:32px 0 16px;color:var(--ink)}
 
   /* —— Blog article —— */
-  .article-layout{display:grid;gap:32px}
-  @media(min-width:960px){.article-layout{grid-template-columns:minmax(0,1fr) 260px;align-items:start}}
+  .article-layout{display:grid;gap:28px}
+  @media(min-width:960px){.article-layout{grid-template-columns:minmax(0,1fr) 280px;align-items:start;gap:32px}}
+  @media(min-width:1200px){.article-layout{grid-template-columns:minmax(0,1fr) 320px;gap:36px}}
   .article-main{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:clamp(24px,4vw,40px);box-shadow:var(--shadow)}
   .article-hero{margin:0 0 24px;border-radius:16px;overflow:hidden;aspect-ratio:2/1;max-height:360px;background:#f1f5f9;box-shadow:var(--shadow)}
   .article-hero img{width:100%;height:100%;object-fit:cover;display:block}
@@ -206,6 +217,91 @@ export const STATIC_CSS = `
   .local-card .pros li{padding:4px 0 4px 20px;position:relative;font-size:.9375rem;color:#334155}
   .local-card .pros li::before{content:"✓";position:absolute;left:0;color:var(--brand);font-weight:700}
   .local-card .map-link{display:inline-block;margin-top:14px;font-size:.875rem;font-weight:700}
+
+  /* Chi nhánh FAO — một card, nhiều địa điểm */
+  .fao-branches-unified{margin-bottom:0}
+  .fao-branches-unified > h2{font-size:1.125rem;font-weight:800;margin-bottom:16px;color:var(--ink)}
+  .fao-branches-shared{display:flex;flex-wrap:wrap;gap:12px 28px;padding:14px 16px;margin-bottom:18px;background:var(--bg);border-radius:12px;border:1px solid var(--line);font-size:.875rem}
+  .fao-branches-shared span{color:var(--muted)}
+  .fao-branches-shared strong{color:var(--ink);font-weight:700}
+  .fao-branches-grid{display:grid;gap:14px}
+  @media(min-width:640px){.fao-branches-grid{grid-template-columns:repeat(2,1fr)}}
+  .fao-branch-loc{padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--card);display:flex;flex-direction:column;gap:10px}
+  .fao-branch-loc h3{font-size:.9375rem;font-weight:800;color:var(--ink);margin:0;line-height:1.3}
+  .fao-branch-loc .branch-tag{font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--brand);margin-bottom:2px}
+  .fao-branch-loc address{font-style:normal;font-size:.875rem;color:#334155;line-height:1.55;margin:0}
+  .fao-branch-loc .branch-meta{font-size:.8125rem;color:var(--muted);line-height:1.5}
+  .fao-branch-loc .branch-meta a{color:var(--brand);font-weight:700;text-decoration:none}
+  .fao-branch-loc .branch-meta a:hover{text-decoration:underline}
+  .fao-branch-loc .map-link{margin-top:auto;padding-top:8px;font-size:.8125rem;font-weight:700}
+  .fao-branches-policy{margin-top:16px;padding-top:14px;border-top:1px dashed var(--line);font-size:.8125rem;color:var(--muted);line-height:1.6}
+  .fao-branches-policy ul{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px 16px}
+  .fao-branches-policy li{padding-left:16px;position:relative}
+  .fao-branches-policy li::before{content:"✓";position:absolute;left:0;color:var(--brand);font-weight:700}
+
+  /* —— Bảng giá thuê máy (GEO) —— */
+  .price-table-wrap{overflow-x:auto;margin-bottom:28px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card)}
+  table.price-table{width:100%;border-collapse:collapse;font-size:.875rem}
+  table.price-table th,table.price-table td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line)}
+  table.price-table th{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:#f8fafc}
+  table.price-table tr:last-child td{border-bottom:none}
+  table.price-table a{font-weight:600;color:var(--ink)}
+  table.price-table a:hover{color:var(--brand)}
+  table.price-table .price{font-weight:700;color:var(--brand);white-space:nowrap}
+  .brand-section{margin-bottom:36px}
+  .brand-section h2{font-size:1rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--brand-soft)}
+  .price-grid{display:grid;gap:10px}
+  @media(min-width:640px){.price-grid.cols-3{grid-template-columns:repeat(3,1fr)}}
+  .price-chip{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .price-chip strong{display:block;font-size:.9375rem;margin-bottom:4px}
+  .price-chip .amt{font-size:1.125rem;font-weight:800;color:var(--brand)}
+  .price-chip span{font-size:.8125rem;color:var(--muted)}
+  .shop-strip{display:grid;gap:14px;margin:28px 0}
+  @media(min-width:560px){.shop-strip{grid-template-columns:1fr 1fr}}
+  .shop-mini{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+  .shop-mini h3{font-size:.9375rem;font-weight:800;margin-bottom:8px}
+  .shop-mini p{font-size:.8125rem;color:var(--muted);margin:4px 0;line-height:1.5}
+  .shop-mini a{font-weight:600;font-size:.8125rem}
+
+  /* —— Device review (blog-style) —— */
+  .device-head{display:grid;gap:20px;margin-bottom:24px}
+  @media(min-width:900px){.device-head{grid-template-columns:1.15fr 0.85fr;gap:24px;align-items:stretch}}
+  @media(min-width:1200px){.device-head{grid-template-columns:1.2fr 0.8fr;gap:28px}}
+  .device-hero{margin:0;border-radius:16px;overflow:hidden;aspect-ratio:4/3;max-height:none;background:#f1f5f9;box-shadow:var(--shadow)}
+  @media(min-width:900px){.device-hero{aspect-ratio:auto;height:100%;min-height:280px;max-height:420px}}
+  .device-hero img{width:100%;height:100%;object-fit:cover;display:block}
+  .device-quick-facts{background:linear-gradient(160deg,var(--brand-soft) 0%,#fff 55%);border:1px solid #fbcfe8;border-radius:18px;padding:22px 24px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow)}
+  .device-quick-facts h2{font-size:1rem;font-weight:800;color:var(--ink);margin:0;line-height:1.3}
+  .device-quick-facts .fact-grid{display:grid;gap:10px}
+  @media(min-width:520px){.device-quick-facts .fact-grid{grid-template-columns:1fr 1fr}}
+  @media(min-width:900px){.device-quick-facts .fact-grid{grid-template-columns:1fr}}
+  .device-fact{background:rgba(255,255,255,.85);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .device-fact dt{font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px}
+  .device-fact dd{margin:0;font-size:1rem;font-weight:800;color:var(--ink);line-height:1.3}
+  .device-fact dd small{display:block;font-size:.75rem;font-weight:600;color:var(--muted);margin-top:2px}
+  .device-quick-facts .cta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:auto;padding-top:4px}
+  .device-quick-facts .btn-primary{flex:1;min-width:140px;text-align:center;background:var(--brand);color:#fff!important;font-weight:800;padding:12px 18px;border-radius:999px;text-decoration:none!important;font-size:.9375rem}
+  .device-quick-facts .btn-secondary{background:#fff;border:1px solid var(--line);color:var(--ink)!important;font-weight:700;padding:12px 16px;border-radius:999px;text-decoration:none!important;font-size:.8125rem}
+  .device-trust{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .device-trust span{font-size:.6875rem;font-weight:700;background:#fff;border:1px solid var(--line);color:#475569;padding:4px 10px;border-radius:999px}
+  .device-bottom-grid{display:grid;gap:24px;margin-top:8px}
+  @media(min-width:1100px){.device-bottom-grid{grid-template-columns:1fr 1fr;gap:28px;align-items:start}}
+  .seo-compare{background:#f8fafc;border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin:24px 0}
+  .seo-compare h2{font-size:1.05rem;margin:0 0 12px}
+  .seo-compare ul{list-style:none;margin:0;display:grid;gap:8px}
+  @media(min-width:640px){.seo-compare ul{grid-template-columns:1fr 1fr}}
+  .seo-compare li{padding:8px 0 8px 22px;position:relative;font-size:.9375rem;color:#334155;line-height:1.5}
+  .seo-compare li::before{content:"✓";position:absolute;left:0;color:var(--brand);font-weight:800}
+  .device-geo-strip{display:grid;gap:14px;margin:28px 0}
+  @media(min-width:720px){.device-geo-strip{grid-template-columns:1fr 1fr}}
+  .book-inline{display:inline-flex;align-items:center;gap:6px;background:var(--brand);color:#fff!important;font-weight:700;padding:10px 20px;border-radius:999px;text-decoration:none!important;font-size:.9375rem;margin-top:12px}
+  .book-inline:hover{filter:brightness(1.05)}
+  .price-table .book-cell a{display:inline-block;background:var(--brand-soft);color:var(--brand)!important;padding:6px 12px;border-radius:999px;font-size:.8125rem;font-weight:700;white-space:nowrap}
+  .price-table .book-cell a:hover{background:var(--brand);color:#fff!important}
+  .related-devices{display:grid;gap:10px}
+  .related-devices a{display:block;padding:12px 14px;border:1px solid var(--line);border-radius:12px;text-decoration:none!important;background:var(--card)}
+  .related-devices a strong{display:block;color:var(--ink);font-size:.9375rem;margin-bottom:2px}
+  .related-devices a span{font-size:.8125rem;color:var(--brand);font-weight:700}
 `;
 
 const AI_STAR_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6L12 2z" fill="#3b82f6"/></svg>`;
@@ -426,6 +522,59 @@ export function renderLocalBusinessCard(lb, pros = []) {
 </section>`;
 }
 
+const BRANCH_HIGHLIGHTS = {
+  PHU_NHUAN: "Gần trung tâm Sài Gòn · Fujifilm, Canon, Sony đầy đủ",
+  Q9: "Tiện sinh viên Làng Đại Học · Đông Sài Gòn",
+};
+
+/** Một card chi nhánh — chính sách chung, khác địa chỉ/hotline */
+export function renderFaoBranchesUnifiedCard(branchKeys = ["PHU_NHUAN", "Q9"]) {
+  const keys = [...new Set(branchKeys.filter((k) => BRANCHES[k]))];
+  if (!keys.length) keys.push("PHU_NHUAN");
+
+  const branches = keys.map((k) => ({ key: k, raw: BRANCHES[k], lb: branchToLocalBusiness(BRANCHES[k]) }));
+  const ref = branches[0].lb;
+  const hours =
+    ref.opens && ref.closes ? `${ref.opens} – ${ref.closes} hàng ngày` : "9h00 – 22h00 hàng ngày";
+
+  const locations = branches
+    .map(({ key, raw, lb }) => {
+      const phoneFmt = raw.phoneDisplay || lb.phone;
+      return `<article class="fao-branch-loc" itemscope itemtype="https://schema.org/LocalBusiness">
+        <div class="branch-tag">Chi nhánh</div>
+        <h3 itemprop="name">${escapeHtml(lb.name)}</h3>
+        <address itemprop="address" itemscope itemtype="https://schema.org/PostalAddress">
+          <span itemprop="streetAddress">${escapeHtml(lb.fullAddress || lb.address)}</span>
+        </address>
+        <p class="branch-meta">${escapeHtml(BRANCH_HIGHLIGHTS[key] || "")}</p>
+        <p class="branch-meta">
+          Hotline: <a href="tel:${escapeHtml(lb.phone)}" itemprop="telephone">${escapeHtml(phoneFmt)}</a>
+          · ${escapeHtml((lb.areaServed || []).slice(0, 4).join(", "))}
+        </p>
+        ${lb.mapUrl ? `<a class="map-link" href="${escapeHtml(lb.mapUrl)}" rel="noopener" target="_blank">Google Maps →</a>` : ""}
+      </article>`;
+    })
+    .join("");
+
+  return `<section class="local-card fao-branches-unified" aria-label="Chi nhánh FAO Camera">
+    <h2>Chi nhánh FAO Camera TP.HCM</h2>
+    <div class="fao-branches-shared">
+      <span>Giá thuê: <strong>Từ ${escapeHtml(ref.priceFrom || "150.000đ/ngày")}</strong></span>
+      <span>Giờ mở cửa: <strong>${escapeHtml(hours)}</strong></span>
+      <span>Nhận/trả: <strong>Online · lịch trống realtime</strong></span>
+    </div>
+    <div class="fao-branches-grid">${locations}</div>
+    <div class="fao-branches-policy">
+      Chính sách đồng bộ 2 chi nhánh:
+      <ul>
+        <li>HSSV CỌC 0Đ (minh chứng lịch học)</li>
+        <li>Giảm 20% T2–T6 đặt online</li>
+        <li>Hoàn cọc sau khi trả máy</li>
+      </ul>
+    </div>
+  </section>`;
+}
+
 export function buildBreadcrumbNode(items, pageUrl) {
   return {
     "@type": "BreadcrumbList",
@@ -530,6 +679,7 @@ export function renderAttributionBootstrapScript(contentType, slug) {
     a.setAttribute("href",u.pathname+u.search);
   }
   document.querySelectorAll('a[href^="/catalog"]').forEach(decorate);
+  document.querySelectorAll('a[data-catalog-book="1"]').forEach(decorate);
 })();
 </script>`;
 }
@@ -547,19 +697,32 @@ export function renderHead({
   jsonLd,
   ogType = "website",
   image,
+  geo = false,
+  extraCss = "",
 }) {
   const pageUrl = `${SITE_CONFIG.url}${path}`;
   const fullTitle = `${title} | ${SITE_CONFIG.name}`;
   const ogImage = absoluteImageUrl(image);
+  const geoMeta = geo
+    ? `<meta name="geo.region" content="VN-SG" />
+  <meta name="geo.placename" content="TP.HCM" />
+  <meta name="ICBM" content="10.7997, 106.6878" />`
+    : "";
   return `<!DOCTYPE html>
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+  <meta name="theme-color" content="#E85C9C" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(fullTitle)}</title>
   <meta name="description" content="${escapeHtml(description)}" />
   <meta name="robots" content="index, follow, max-image-preview:large" />
   <link rel="canonical" href="${escapeHtml(pageUrl)}" />
+  ${geoMeta}
   <meta property="og:type" content="${ogType}" />
   <meta property="og:locale" content="vi_VN" />
   <meta property="og:site_name" content="${escapeHtml(SITE_CONFIG.name)}" />
@@ -572,6 +735,6 @@ export function renderHead({
   <meta name="twitter:description" content="${escapeHtml(description)}" />
   <meta name="twitter:image" content="${escapeHtml(ogImage)}" />
   ${jsonLd ? `<script type="application/ld+json">${jsonLd}</script>` : ""}
-  <style>${STATIC_CSS}</style>
+  <style>${STATIC_CSS}${extraCss}</style>
 </head>`;
 }

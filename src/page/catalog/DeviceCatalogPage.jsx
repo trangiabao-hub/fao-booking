@@ -177,6 +177,8 @@ export default function DeviceCatalogPage() {
     : null;
   const initialAvailabilityConfirmed = searchParams.get("availability") === "1";
   const focusModelParam = searchParams.get("focusModel") || "";
+  const autoBookParam = searchParams.get("book") === "1";
+  const modelKeyFromUrl = (searchParams.get("modelKey") || "").trim();
 
   const {
     devices,
@@ -1834,6 +1836,27 @@ export default function DeviceCatalogPage() {
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   }, [focusModelParam, filteredDevices]);
+
+  const lastAutoBookRef = React.useRef("");
+  useEffect(() => {
+    if (!autoBookParam || !modelKeyFromUrl || isLoading) return;
+    if (lastAutoBookRef.current === modelKeyFromUrl) return;
+
+    const mk = modelKeyFromUrl.toLowerCase();
+    const matched = processedDevicesLocalBranch.find(
+      (d) => (d.modelKey || "").trim().toLowerCase() === mk,
+    );
+    if (!matched) return;
+
+    lastAutoBookRef.current = modelKeyFromUrl;
+    handleQuickBook(matched);
+  }, [
+    autoBookParam,
+    modelKeyFromUrl,
+    isLoading,
+    processedDevicesLocalBranch,
+    handleQuickBook,
+  ]);
 
   return (
     <div

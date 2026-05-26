@@ -7,6 +7,7 @@ import FloatingContactButton from "../../components/FloatingContactButton";
 import QuickBookModal from "../../components/QuickBookModal";
 import { loadBookingPrefs } from "../../utils/storage";
 import { normalizeDevicesListResponse } from "../../utils/deviceBranch";
+import deviceSeoSnapshot from "../../data/deviceSeoSnapshot.json";
 
 const FALLBACK_IMG =
   "https://placehold.co/1200x800/FFE4F0/E85C9C?text=Anh+khach+chup";
@@ -245,8 +246,115 @@ function buildModelFeedbackMap(items = []) {
 function normalizeFromCatalogPath(value = "") {
   const raw = String(value || "").trim();
   if (!raw.startsWith("/")) return "/catalog";
-  if (!raw.startsWith("/catalog")) return "/catalog";
+  if (!raw.startsWith("/catalog")) return raw.startsWith("/") ? raw : `/catalog`;
   return raw;
+}
+
+function catalogCategoryKeyToParam(categoryKey, apiCategories = []) {
+  if (!categoryKey || categoryKey === DEFAULT_CATEGORY_KEY) return null;
+  if (!String(categoryKey).startsWith("cat_")) return null;
+  const id = String(categoryKey).replace(/^cat_/, "");
+  const cat = apiCategories.find((c) => String(c.id) === id);
+  const name = String(cat?.name || "").trim();
+  return name ? name.toLowerCase() : null;
+}
+
+function resolveCategoryKeyForModelRow(row, categoryOptions) {
+  if (!row?.groupDeviceIds?.size) return null;
+  for (const opt of categoryOptions) {
+    if (!opt.deviceIds) continue;
+    for (const gid of row.groupDeviceIds) {
+      if (opt.deviceIds.has(normalizeId(gid))) return opt.key;
+    }
+  }
+  return null;
+}
+
+const SEO_SLUG_INDEX = Object.fromEntries(
+  (deviceSeoSnapshot.models || []).map((m) => [
+    String(m.slug || "").replace(/^\/|\/$/g, ""),
+    { modelKey: m.modelKey, displayName: m.displayName },
+  ]),
+);
+
+/** Đọc intent deep-link một lần — trước khi URL sync xóa modelKey. */
+function readPendingDeepLink(searchParams) {
+  const modelKey = String(searchParams.get("modelKey") || "").trim();
+  const displayNameHint = String(searchParams.get("model") || "").trim();
+  const fromRaw = String(searchParams.get("from") || "").trim();
+
+  if (modelKey) {
+    return { modelKey, displayNameHint, fromPath: fromRaw || null };
+  }
+
+  const fromSlug = fromRaw.replace(/^\/|\/$/g, "");
+  const fromSeo = SEO_SLUG_INDEX[fromSlug];
+  if (fromSeo?.modelKey) {
+    return {
+      modelKey: fromSeo.modelKey,
+      displayNameHint: fromSeo.displayName || displayNameHint,
+      fromPath: fromRaw || null,
+    };
+  }
+
+  if (displayNameHint) {
+    return { modelKey: null, displayNameHint, fromPath: fromRaw || null };
+  }
+
+  return null;
+}
+
+function findModelRowForDeepLink(modelRows, { modelKey, displayNameHint }) {
+  if (!modelRows?.length) return null;
+
+  const key = String(modelKey || "").trim().toLowerCase();
+  if (key) {
+    const byKey = modelRows.find(
+      (item) => String(item.modelKey || "").trim().toLowerCase() === key,
+    );
+    if (byKey) return byKey;
+  }
+
+  const hint = String(displayNameHint || "").trim();
+  if (!hint) return null;
+
+  const token = compactToken(hint);
+  const seoEntry = Object.values(SEO_SLUG_INDEX).find((entry) => {
+    const seoName = compactToken(entry.displayName || "");
+    const seoKey = compactToken(entry.modelKey || "");
+    return seoName === token || seoName.includes(token) || token.includes(seoName) || seoKey === token;
+  });
+  if (seoEntry?.modelKey) {
+    const bySeoKey = modelRows.find(
+      (item) =>
+        String(item.modelKey || "").trim().toLowerCase() ===
+        String(seoEntry.modelKey).trim().toLowerCase(),
+    );
+    if (bySeoKey) return bySeoKey;
+  }
+
+  return (
+    modelRows.find((item) => {
+      const mk = compactToken(item.modelKey);
+      const dn = compactToken(item.displayName);
+      const fmt = compactToken(formatFeedbackModelTitle(item.displayName));
+      return (
+        mk === token ||
+        dn === token ||
+        fmt === token ||
+        dn.includes(token) ||
+        token.includes(dn) ||
+        fmt.includes(token) ||
+        token.includes(fmt)
+      );
+    }) || null
+  );
+}
+
+/** Tên gửi API gallery — phải khớp backend (vd. CANON EOS R50, không phải Canon R50). */
+function galleryModelParamForRow(row) {
+  if (!row) return null;
+  return String(row.displayName || row.modelKey || "").trim() || null;
 }
 
 /** Quay catalog: giữ query (ngày, chi nhánh, giá…), bỏ lọc/scroll theo từng máy; đồng bộ tab category. */
@@ -318,12 +426,12 @@ export default function FeedbackPage() {
 
   const initialCategory =
     searchParams.get("category") || searchParams.get("line") || DEFAULT_CATEGORY_KEY;
-  const initialModel = searchParams.get("model") || "";
-  const initialModelKey = searchParams.get("modelKey") || "";
   const fromCatalogPath = normalizeFromCatalogPath(searchParams.get("from"));
+  const pendingDeepLinkRef = useRef(readPendingDeepLink(searchParams));
+  const deepLinkAppliedRef = useRef(false);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
-  const [selectedModel, setSelectedModel] = useState(initialModel || DEFAULT_MODEL);
-  const appliedInitialModelKeyRef = useRef("");
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
+  const [selectedModelKey, setSelectedModelKey] = useState("");
   const [quickBookDevice, setQuickBookDevice] = useState(null);
   const [showQuickBookModal, setShowQuickBookModal] = useState(false);
   const [galleryPage, setGalleryPage] = useState(0);
@@ -510,43 +618,52 @@ export default function FeedbackPage() {
   }, [categoryFilteredRows]);
 
   useEffect(() => {
-    if (!initialModelKey || modelRows.length === 0) return;
-    if (appliedInitialModelKeyRef.current === initialModelKey) return;
-
-    const byKey = modelRows.find(
-      (item) =>
-        String(item.modelKey || "").trim().toLowerCase() ===
-        String(initialModelKey).trim().toLowerCase(),
-    );
-    if (byKey && selectedModel !== byKey.displayName) {
-      setSelectedModel(byKey.displayName);
+    if (modelRows.length === 0 || categoryOptions.length === 0) return;
+    if (deepLinkAppliedRef.current) return;
+    if (!pendingDeepLinkRef.current) {
+      deepLinkAppliedRef.current = true;
+      return;
     }
-    appliedInitialModelKeyRef.current = initialModelKey;
-  }, [initialModelKey, modelRows, selectedModel]);
 
-  const backToCatalogHref = useMemo(
-    () => buildCatalogBackHref(fromCatalogPath, selectedCategory),
-    [fromCatalogPath, selectedCategory],
-  );
+    const row = findModelRowForDeepLink(modelRows, pendingDeepLinkRef.current);
+    if (row) {
+      const galleryModel = galleryModelParamForRow(row);
+      if (galleryModel) setSelectedModel(galleryModel);
+      setSelectedModelKey(String(row.modelKey || "").trim());
+      const catKey = resolveCategoryKeyForModelRow(row, categoryOptions);
+      if (catKey) setSelectedCategory(catKey);
+    }
+    deepLinkAppliedRef.current = true;
+  }, [modelRows, categoryOptions]);
 
   useEffect(() => {
     if (modelRows.length === 0) return;
+    if (!deepLinkAppliedRef.current) return;
     if (modelOptions.includes(selectedModel)) return;
     if (selectedModel === DEFAULT_MODEL) return;
 
-    const target = compactToken(selectedModel);
-    const matched = modelRows.find((item) => {
-      const display = compactToken(item.displayName);
-      return (
-        display === target ||
-        display.includes(target) ||
-        target.includes(display)
-      );
+    const row = findModelRowForDeepLink(modelRows, {
+      modelKey: selectedModelKey,
+      displayNameHint: selectedModel,
     });
 
-    if (matched) setSelectedModel(matched.displayName);
-    else setSelectedModel(DEFAULT_MODEL);
-  }, [modelRows, modelOptions, selectedModel]);
+    if (row) {
+      const galleryModel = galleryModelParamForRow(row);
+      if (galleryModel && galleryModel !== selectedModel) setSelectedModel(galleryModel);
+      if (row.modelKey && row.modelKey !== selectedModelKey) {
+        setSelectedModelKey(String(row.modelKey).trim());
+      }
+      return;
+    }
+
+    setSelectedModel(DEFAULT_MODEL);
+    setSelectedModelKey("");
+  }, [modelRows, modelOptions, selectedModel, selectedModelKey]);
+
+  const backToCatalogHref = useMemo(
+    () => buildCatalogBackHref(fromCatalogPath, selectedCategory, apiCategories),
+    [fromCatalogPath, selectedCategory, apiCategories],
+  );
 
   const filteredRows = useMemo(() => {
     return categoryFilteredRows.filter((item) => {
@@ -562,6 +679,14 @@ export default function FeedbackPage() {
 
   const selectedModelRow = useMemo(() => {
     if (selectedModel === DEFAULT_MODEL) return null;
+    if (selectedModelKey) {
+      const byKey = categoryFilteredRows.find(
+        (item) =>
+          String(item.modelKey || "").trim().toLowerCase() ===
+          selectedModelKey.toLowerCase(),
+      );
+      if (byKey) return byKey;
+    }
     const target = compactToken(selectedModel);
     return (
       categoryFilteredRows.find((item) => compactToken(item.displayName) === target) ||
@@ -570,7 +695,7 @@ export default function FeedbackPage() {
       ) ||
       null
     );
-  }, [categoryFilteredRows, selectedModel]);
+  }, [categoryFilteredRows, selectedModel, selectedModelKey]);
 
   const resolveModelMeta = useCallback(
     (row) => {
@@ -588,7 +713,7 @@ export default function FeedbackPage() {
 
   const galleryItems = useMemo(() => {
     const rows = Array.isArray(galleryPayload?.content) ? galleryPayload.content : [];
-    return rows.map((row) => {
+    const mapped = rows.map((row) => {
       const bid = row.bookDeviceId != null ? normalizeId(row.bookDeviceId) : "";
       const bookDevice = bid ? deviceById.get(bid) || null : null;
       return {
@@ -600,7 +725,14 @@ export default function FeedbackPage() {
         bookDevice,
       };
     });
-  }, [galleryPayload, deviceById]);
+    if (selectedModelKey && selectedModel !== DEFAULT_MODEL) {
+      const key = selectedModelKey.toLowerCase();
+      return mapped.filter(
+        (item) => String(item.modelKey || "").trim().toLowerCase() === key,
+      );
+    }
+    return mapped;
+  }, [galleryPayload, deviceById, selectedModelKey, selectedModel]);
 
   const galleryTotal = galleryPayload?.totalElements ?? 0;
   const galleryTotalPages = Math.max(1, galleryPayload?.totalPages ?? 1);
@@ -710,6 +842,24 @@ export default function FeedbackPage() {
     return null;
   }, [fromCatalogPath]);
 
+  const handleModelSelectChange = useCallback(
+    (value) => {
+      setSelectedModel(value);
+      if (value === DEFAULT_MODEL) {
+        setSelectedModelKey("");
+        return;
+      }
+      const row =
+        modelRows.find((item) => item.displayName === value) ||
+        findModelRowForDeepLink(modelRows, { modelKey: null, displayNameHint: value });
+      setSelectedModelKey(row?.modelKey ? String(row.modelKey).trim() : "");
+      if (row?.displayName && row.displayName !== value) {
+        setSelectedModel(galleryModelParamForRow(row));
+      }
+    },
+    [modelRows],
+  );
+
   const handleOpenQuickBook = useCallback((item) => {
     if (!item?.bookDevice) return;
     setQuickBookDevice(item.bookDevice);
@@ -731,6 +881,8 @@ export default function FeedbackPage() {
   );
 
   useEffect(() => {
+    if (!deepLinkAppliedRef.current) return;
+
     const next = new URLSearchParams(searchParams);
     if (selectedCategory && selectedCategory !== DEFAULT_CATEGORY_KEY) {
       next.set("category", selectedCategory);
@@ -779,9 +931,36 @@ export default function FeedbackPage() {
             className="inline-flex items-center gap-2 text-sm font-bold text-[#5c4a42] hover:text-[#b03060] transition-colors"
           >
             <ArrowRight size={16} className="rotate-180" />
-            Quay lại danh mục
+            {fromCatalogPath.startsWith("/thue-may-anh-") ? "Quay lại review" : "Quay lại danh mục"}
           </Link>
         </div>
+
+        {selectedModel && selectedModel !== DEFAULT_MODEL && (
+          <div className="mb-5 rounded-xl border border-[#e8c4d4] bg-[#fff5f9] px-4 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-[#9d3d5c]">Ảnh thật từ khách thuê</p>
+              <p className="font-feedback-display text-[clamp(1.25rem,3vw,1.65rem)] text-[#a01e58] leading-tight mt-0.5">
+                {formatFeedbackModelTitle(selectedModel)}
+              </p>
+              {filterDescription && (
+                <p className="mt-1.5 text-xs text-[#7a5c48] leading-relaxed line-clamp-2">
+                  {filterDescription}
+                </p>
+              )}
+            </div>
+            {selectedModelBookDevice && (
+              <button
+                type="button"
+                onClick={() =>
+                  handleOpenQuickBook({ bookDevice: selectedModelBookDevice })
+                }
+                className="inline-flex shrink-0 rounded-lg bg-[#1F1F1F] px-4 py-2.5 text-sm font-bold text-[#FF9FCA] hover:bg-[#333] transition-colors"
+              >
+                Đặt {formatFeedbackModelTitle(selectedModel)}
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="relative rounded-[18px] sm:rounded-[22px] border-[3px] border-double border-[#c9b49a] bg-[#fffdf7] py-4 px-3 sm:py-5 sm:px-4 md:py-6 md:px-5 shadow-[0_22px_60px_-18px_rgba(60,40,30,0.22),inset_0_1px_0_rgba(255,255,255,0.85)] ring-1 ring-[#e8dcc8]/80">
           <div className="pointer-events-none absolute inset-x-4 sm:inset-x-6 top-3 h-px bg-gradient-to-r from-transparent via-[#d4c4b0]/60 to-transparent opacity-70 hidden sm:block" aria-hidden />
@@ -801,9 +980,9 @@ export default function FeedbackPage() {
           </div>
 
           <div className="mt-6 grid gap-3 md:grid-cols-2">
-            <div className="relative rounded-xl border-2 border-dashed border-[#d4b8a8]/90 bg-[#fffaf3] p-3 shadow-[2px_3px_0_rgba(180,150,120,0.12)] rotate-[0.25deg]">
-              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[#8a6f62]">
-                Lọc theo category
+            <div className="rounded-xl border border-[#e5d5c8] bg-white p-3 shadow-sm">
+              <p className="mb-1.5 text-xs font-semibold text-[#8a6f62]">
+                Loại máy
               </p>
               <div className="relative">
                 <Filter
@@ -813,7 +992,7 @@ export default function FeedbackPage() {
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full h-11 rounded-lg border border-[#e5d5c8] bg-white pl-9 pr-3 text-sm font-semibold text-[#333] focus:outline-none focus:ring-2 focus:ring-[#e8a4bc]/50 focus:border-[#d498a8]"
+                  className="w-full h-11 rounded-lg border border-[#e5d5c8] bg-[#fffcf7] pl-9 pr-3 text-sm font-semibold text-[#333] focus:outline-none focus:ring-2 focus:ring-[#e8a4bc]/50 focus:border-[#d498a8]"
                 >
                   {categoryOptions.map((category) => (
                     <option key={category.key} value={category.key}>
@@ -824,9 +1003,9 @@ export default function FeedbackPage() {
               </div>
             </div>
 
-            <div className="relative rounded-xl border-2 border-dashed border-[#d4b8a8]/90 bg-[#fffaf3] p-3 shadow-[2px_3px_0_rgba(180,150,120,0.12)] rotate-[-0.2deg] md:rotate-[0.15deg]">
-              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[#8a6f62]">
-                Chọn model cụ thể
+            <div className="rounded-xl border border-[#e5d5c8] bg-white p-3 shadow-sm">
+              <p className="mb-1.5 text-xs font-semibold text-[#8a6f62]">
+                Dòng máy
               </p>
               <div className="relative">
                 <Filter
@@ -835,57 +1014,25 @@ export default function FeedbackPage() {
                 />
                 <select
                   value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  className="w-full h-11 rounded-lg border border-[#e5d5c8] bg-white pl-9 pr-3 text-sm font-semibold text-[#333] focus:outline-none focus:ring-2 focus:ring-[#e8a4bc]/50 focus:border-[#d498a8]"
+                  onChange={(e) => handleModelSelectChange(e.target.value)}
+                  className="w-full h-11 rounded-lg border border-[#e5d5c8] bg-[#fffcf7] pl-9 pr-3 text-sm font-semibold text-[#333] focus:outline-none focus:ring-2 focus:ring-[#e8a4bc]/50 focus:border-[#d498a8]"
                 >
                   {modelOptions.map((model) => (
                     <option key={model} value={model}>
-                      {model}
+                      {model === DEFAULT_MODEL
+                        ? model
+                        : formatFeedbackModelTitle(model)}
                     </option>
                   ))}
                 </select>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="mt-4 rounded-xl border border-[#e8d89c]/80 bg-[#fffbeb] px-3 py-3 sm:px-3.5 sm:py-3.5 shadow-[3px_5px_0_rgba(200,170,90,0.15),0_8px_24px_-12px_rgba(120,90,40,0.12)] grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center rotate-[0.35deg] ring-1 ring-[#f5e6c8]/90 relative before:content-[''] before:absolute before:-top-2 before:left-1/2 before:-translate-x-1/2 before:w-14 before:h-4 before:bg-gradient-to-b before:from-[#f5e6d0] before:to-[#e8d4b8] before:opacity-90 before:shadow-sm before:rotate-[-3deg] before:rounded-[2px] before:border before:border-white/40">
-          <div className="font-feedback-ui text-sm text-[#6b5344] font-semibold min-w-0 pt-2">
-            {selectedModel && selectedModel !== DEFAULT_MODEL ? (
-              <>
-                <p>
-                  Bạn đang xem ảnh thực tế của{" "}
-                  <span className="font-feedback-display normal-case text-[clamp(1.25rem,2.8vw,1.65rem)] font-normal text-[#a01e58] leading-[1.15]">
-                    {formatFeedbackModelTitle(selectedModel)}
-                  </span>
-                  .
-                </p>
-                <p className="mt-2 text-xs text-[#7a5c48] font-medium leading-relaxed whitespace-pre-line break-words">
-                  {filterDescription}
-                </p>
-              </>
-            ) : (
-              <p className="whitespace-pre-line break-words leading-relaxed">
-                {filterDescription}
-              </p>
-            )}
-          </div>
-          {selectedModel && selectedModel !== DEFAULT_MODEL && (
-            <button
-              type="button"
-              onClick={() =>
-                selectedModelBookDevice &&
-                handleOpenQuickBook({ bookDevice: selectedModelBookDevice })
-              }
-              disabled={!selectedModelBookDevice}
-              className={`inline-flex w-fit shrink-0 rounded-lg px-3 py-2 text-xs font-black uppercase tracking-wide leading-tight transition-colors ${
-                selectedModelBookDevice
-                  ? "bg-[#1F1F1F] text-[#FF9FCA] hover:bg-[#333]"
-                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
-              }`}
-            >
-              Đặt {selectedModel}
-            </button>
+          {(!selectedModel || selectedModel === DEFAULT_MODEL) && filterDescription && (
+            <p className="mt-4 text-sm text-[#6a5a52] leading-relaxed">
+              {filterDescription}
+            </p>
           )}
         </div>
 

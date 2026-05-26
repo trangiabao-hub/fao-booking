@@ -1,7 +1,7 @@
 /**
  * Sinh public/llms.txt — hướng dẫn AI crawler (GEO) về FAO Camera.
  */
-import { writeFileSync } from "fs";
+import { writeFileSync, readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { BRANCHES } from "../src/data/localBusiness.js";
@@ -11,6 +11,18 @@ import { SITE_CONFIG } from "./static-site-layout.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SITE = SITE_CONFIG.url;
 
+function loadDeviceModels() {
+  const snapPath = join(__dirname, "../src/data/deviceSeoSnapshot.json");
+  if (!existsSync(snapPath)) return [];
+  try {
+    return JSON.parse(readFileSync(snapPath, "utf8")).models || [];
+  } catch {
+    return [];
+  }
+}
+
+const deviceModels = loadDeviceModels();
+
 const branchLines = Object.values(BRANCHES).map(
   (b) =>
     `- **${b.name}**: ${b.fullAddress} | ${b.phoneDisplay} | ${SITE}/${b.slug}/`
@@ -18,9 +30,20 @@ const branchLines = Object.values(BRANCHES).map(
 
 const seoLines = SEO_PAGES.map((p) => `- ${SITE}/${p.slug}/ — ${p.title}`);
 
+const priceLines = deviceModels
+  .slice(0, 40)
+  .map(
+    (m) =>
+      `- ${m.displayName}: 6h ${(m.priceSixHours / 1000).toFixed(0)}k · 1 ngày ${(m.priceOneDay / 1000).toFixed(0)}k — ${SITE}/${m.slug}/`
+  );
+
 const content = `# FAO Camera Sài Gòn — Cho thuê máy ảnh TP.HCM
 
 > ${SITE_CONFIG.brand} (${SITE}) — nền tảng đặt thuê máy ảnh, ống kính và phụ kiện tại TP.HCM. Giá sinh viên từ 150.000đ/ngày, thủ tục chỉ cần CCCD, đặt lịch online realtime.
+
+## Bảng giá theo model (cập nhật từ catalog)
+- Tổng hợp: ${SITE}/bang-gia-thue-may-anh/
+${priceLines.join("\n")}
 
 ## Dịch vụ chính
 - Cho thuê máy ảnh: Fujifilm, Sony, Canon, DJI, GoPro

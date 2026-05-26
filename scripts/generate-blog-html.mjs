@@ -1,5 +1,5 @@
 /**
- * Sinh trang blog tĩnh — UI magazine + schema AI-friendly.
+ * Sinh trang blog tĩnh — editorial magazine UI + SEO/AI-friendly.
  */
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "fs";
 import { join, dirname } from "path";
@@ -12,6 +12,11 @@ import {
   getBlogPostImage,
   DEFAULT_BLOG_IMAGE,
 } from "../src/data/blogPosts.js";
+import {
+  getAllBlogListingPosts,
+  getBlogListingCategories,
+  loadDeviceReviewBlogPosts,
+} from "./lib/deviceReviewBlog.mjs";
 import { readdirSync } from "fs";
 import { SEO_PAGES, SEO_PAGES_BY_SLUG } from "../src/data/seoPages.js";
 import {
@@ -29,23 +34,45 @@ import {
   catalogHref,
   renderAttributionBootstrapScript,
 } from "./static-site-layout.mjs";
+import {
+  BLOG_CSS,
+  renderCategoryPill,
+  renderReadingProgress,
+  renderBlogSearch,
+  renderThemeToggle,
+  renderInlineCta,
+  renderRelatedCards,
+  renderArticleNav,
+  renderTocRail,
+  renderTocMobile,
+  renderBlogIndexScripts,
+  renderBlogArticleScripts,
+} from "./lib/blogUi.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, "../public");
 const BLOG_DIR = join(PUBLIC_DIR, "blog");
-const SLUG_MANIFEST = join(__dirname, ".blog-slugs-manifest.json");
+const SLUG_MANIFEST = join(__dirname, "../src/data/.blog-slugs-manifest.json");
 const SEO_SLUGS = new Set(SEO_PAGES.map((p) => p.slug));
+const DEVICE_REVIEW_SLUGS = new Set(loadDeviceReviewBlogPosts().map((p) => p.slug));
+const PROTECTED_STATIC_SLUGS = new Set([
+  ...SEO_SLUGS,
+  ...DEVICE_REVIEW_SLUGS,
+  "bang-gia-thue-may-anh",
+]);
 
-/** Thư mục public/<slug>/ có index.html, không phải trang SEO */
+function isProtectedStaticSlug(slug) {
+  return PROTECTED_STATIC_SLUGS.has(slug);
+}
+
 function discoverBlogDirsOnDisk() {
   if (!existsSync(PUBLIC_DIR)) return [];
   return readdirSync(PUBLIC_DIR, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && e.name !== "blog" && !SEO_SLUGS.has(e.name))
+    .filter((e) => e.isDirectory() && e.name !== "blog" && !isProtectedStaticSlug(e.name))
     .filter((e) => existsSync(join(PUBLIC_DIR, e.name, "index.html")))
     .map((e) => e.name);
 }
 
-/** Xóa public/<slug>/ và public/blog/<slug>/ của bài đã bỏ khỏi blogPosts.js */
 function cleanupRemovedBlogPosts(currentSlugs) {
   const current = new Set(currentSlugs);
   let previous = [];
@@ -57,12 +84,11 @@ function cleanupRemovedBlogPosts(currentSlugs) {
       previous = [];
     }
   } else {
-    // Lần đầu: quét disk để dọn bài orphan (đã xóa trong blogPosts.js trước đó)
     previous = discoverBlogDirsOnDisk();
   }
 
   for (const slug of previous) {
-    if (current.has(slug)) continue;
+    if (current.has(slug) || isProtectedStaticSlug(slug)) continue;
     const rootDir = join(PUBLIC_DIR, slug);
     const legacyDir = join(BLOG_DIR, slug);
     if (existsSync(rootDir)) {
@@ -75,19 +101,31 @@ function cleanupRemovedBlogPosts(currentSlugs) {
     }
   }
 
-  writeFileSync(SLUG_MANIFEST, JSON.stringify([...current], null, 2), "utf8");
+  try {
+    writeFileSync(SLUG_MANIFEST, JSON.stringify([...current], null, 2), "utf8");
+  } catch (err) {
+    console.warn(`  ⚠ could not update blog slug manifest: ${err.message}`);
+  }
 }
 
 function postImageAlt(post) {
   return post.imageAlt || post.title;
 }
 
-function renderImg(src, alt, className = "") {
-  return `<img class="${className}" src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" />`;
+function renderImg(src, alt, className = "", opts = {}) {
+  const loading = opts.eager ? "eager" : "lazy";
+  const fetch = opts.eager ? ' fetchpriority="high"' : "";
+  const dims =
+    opts.width && opts.height ? ` width="${opts.width}" height="${opts.height}"` : "";
+  return `<img class="${className}" src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="${loading}" decoding="async"${fetch}${dims} />`;
 }
 
-function renderPostThumb(post, className) {
-  return renderImg(getBlogPostImage(post), postImageAlt(post), className);
+function renderPostThumb(post, className, eager = false) {
+  return renderImg(getBlogPostImage(post), postImageAlt(post), className, {
+    eager,
+    width: 800,
+    height: 500,
+  });
 }
 
 const formatDateVi = (iso) => {
@@ -99,33 +137,34 @@ const formatDateVi = (iso) => {
   });
 };
 
-function buildToc(sections) {
-  const headings = sections.filter((s) => s.type === "h2");
-  if (headings.length < 2) return "";
-  const links = headings
-    .map((h, i) => {
-      const id = `section-${i + 1}`;
-      return `<a href="#${id}">${escapeHtml(h.text)}</a>`;
-    })
-    .join("");
-  return `<nav class="toc sidebar-box" aria-label="Mục lục"><h3>Mục lục</h3>${links}</nav>`;
+function getHeadings(sections) {
+  return sections.filter((s) => s.type === "h2");
 }
 
-function renderSections(sections) {
+function renderSectionsWithInlineCta(sections, post) {
   let h2Index = 0;
+  let insertedCta = false;
+  const h2Total = sections.filter((s) => s.type === "h2").length;
+  const ctaAfter = Math.max(1, Math.floor(h2Total / 2));
+
   return sections
     .map((s) => {
+      let html = "";
       if (s.type === "h2") {
         h2Index += 1;
-        return `<h2 id="section-${h2Index}">${escapeHtml(s.text)}</h2>`;
+        html = `<h2 id="section-${h2Index}">${escapeHtml(s.text)}</h2>`;
+        if (!insertedCta && h2Index === ctaAfter) {
+          insertedCta = true;
+          html += renderInlineCta(post);
+        }
+      } else if (s.type === "p") {
+        html = `<p>${escapeHtml(s.text)}</p>`;
+      } else if (s.type === "ul") {
+        html = `<ul>${s.items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`;
       }
-      if (s.type === "p") return `<p>${escapeHtml(s.text)}</p>`;
-      if (s.type === "ul") {
-        return `<ul>${s.items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>`;
-      }
-      return "";
+      return html;
     })
-    .join("\n        ");
+    .join("\n              ");
 }
 
 function buildArticleSchema(post, pageUrl) {
@@ -133,6 +172,7 @@ function buildArticleSchema(post, pageUrl) {
     .map((s) => (s.text || "") + (s.items || []).join(" "))
     .join(" ")
     .split(/\s+/).length;
+  const aiSummary = post.aiSummary || post.excerpt;
 
   return stringifySchemaGraph([
     buildWebPageNode({
@@ -165,32 +205,29 @@ function buildArticleSchema(post, pageUrl) {
       articleSection: post.category,
       image: [absoluteImageUrl(getBlogPostImage(post))],
       thumbnailUrl: absoluteImageUrl(getBlogPostImage(post)),
-      ...(post.aiSummary
-        ? {
-            abstract: post.aiSummary,
-          }
-        : {}),
+      ...(aiSummary ? { abstract: aiSummary } : {}),
     },
-    ...(post.aiSummary
+    ...(aiSummary
       ? [
           {
-            "@type": "QAPage",
-            mainEntity: {
-              "@type": "Question",
-              name: post.title,
-              acceptedAnswer: {
-                "@type": "Answer",
-                text: post.aiSummary,
+            "@type": "FAQPage",
+            "@id": `${pageUrl}#faq`,
+            mainEntity: [
+              {
+                "@type": "Question",
+                name: post.title,
+                acceptedAnswer: { "@type": "Answer", text: aiSummary },
               },
-            },
+            ],
           },
         ]
       : []),
   ]);
 }
 
-function renderArticleSidebar(post, relatedBlog, relatedSeo) {
-  const relatedPosts = relatedBlog
+function renderArticleSidebar(post, relatedBlog, relatedSeo, catalogLink) {
+  const relatedList = relatedBlog
+    .slice(0, 4)
     .map(
       (b) =>
         `<li><a href="${getBlogPostPath(b.slug)}/">${escapeHtml(b.title)}</a></li>`
@@ -200,32 +237,33 @@ function renderArticleSidebar(post, relatedBlog, relatedSeo) {
     .map((s) => `<li><a href="/${s.slug}/">${escapeHtml(s.h1)}</a></li>`)
     .join("");
 
-  return `<aside class="article-sidebar">
-    ${buildToc(post.sections)}
+  return `<aside class="blog-sidebar-rail">
     <div class="sidebar-box sidebar-cta">
       <h3>Đặt thuê máy</h3>
       <p>Lịch trống realtime — Phú Nhuận &amp; Q9 Thủ Đức.</p>
-      <a class="btn" href="${escapeHtml(catalogHref(post.ctaLink || "/catalog", "blog", post.slug))}">${escapeHtml(post.ctaLabel || "Xem catalog")}</a>
+      <a class="btn" href="${escapeHtml(catalogLink)}">${escapeHtml(post.ctaLabel || "Xem catalog")}</a>
     </div>
-    ${
-      relatedPosts
-        ? `<div class="sidebar-box"><h3>Bài liên quan</h3><ul>${relatedPosts}</ul></div>`
-        : ""
-    }
-    ${
-      seoLinks
-        ? `<div class="sidebar-box"><h3>Dịch vụ FAO</h3><ul>${seoLinks}</ul></div>`
-        : ""
-    }
+    ${relatedList ? `<div class="sidebar-box"><h3>Bài liên quan</h3><ul>${relatedList}</ul></div>` : ""}
+    ${seoLinks ? `<div class="sidebar-box"><h3>Dịch vụ FAO</h3><ul>${seoLinks}</ul></div>` : ""}
     <div class="sidebar-box">
-      <h3>Liên kết</h3>
+      <h3>Khám phá</h3>
       <ul>
-        <li><a href="/">Trang chủ đặt máy</a></li>
-        <li><a href="/catalog">Catalog thiết bị</a></li>
+        <li><a href="/bang-gia-thue-may-anh/">Bảng giá thuê máy</a></li>
+        <li><a href="/blog/?tag=Review">Review thiết bị</a></li>
+        <li><a href="/catalog">Catalog đặt lịch</a></li>
         <li><a href="/feedback">Feedback khách thuê</a></li>
       </ul>
     </div>
   </aside>`;
+}
+
+function getAdjacentPosts(slug) {
+  const idx = BLOG_POSTS_SORTED.findIndex((p) => p.slug === slug);
+  if (idx < 0) return { prev: null, next: null };
+  return {
+    prev: idx > 0 ? BLOG_POSTS_SORTED[idx - 1] : null,
+    next: idx < BLOG_POSTS_SORTED.length - 1 ? BLOG_POSTS_SORTED[idx + 1] : null,
+  };
 }
 
 function renderArticle(post) {
@@ -237,8 +275,12 @@ function renderArticle(post) {
   const relatedSeo = (post.relatedSeoSlugs || [])
     .map((s) => SEO_PAGES_BY_SLUG[s])
     .filter(Boolean);
-
+  const catalogLink = catalogHref(post.ctaLink || "/catalog", "blog", post.slug);
   const aiSummary = post.aiSummary || post.excerpt;
+  const headings = getHeadings(post.sections);
+  const tocMobile = renderTocMobile(headings);
+  const { prev, next } = getAdjacentPosts(post.slug);
+
   const aiBox = renderAiAnswerBox({
     summary: aiSummary,
     highlight: post.aiHighlight,
@@ -247,9 +289,9 @@ function renderArticle(post) {
   });
 
   const articleHero = `<figure class="article-hero" itemprop="image" itemscope itemtype="https://schema.org/ImageObject">
-              ${renderPostThumb(post, "")}
-              <meta itemprop="caption" content="${escapeHtml(postImageAlt(post))}" />
-            </figure>`;
+                ${renderPostThumb(post, "", true)}
+                <meta itemprop="caption" content="${escapeHtml(postImageAlt(post))}" />
+              </figure>`;
 
   return `${renderHead({
     title: post.title,
@@ -258,39 +300,53 @@ function renderArticle(post) {
     jsonLd: buildArticleSchema({ ...post, aiSummary }, pageUrl),
     ogType: "article",
     image: getBlogPostImage(post),
+    extraCss: BLOG_CSS,
   })}
-<body>
-  ${renderSiteHeader({ active: "blog" })}
+<body class="blog-page blog-article">
+  ${renderReadingProgress()}
+  ${renderSiteHeader({ active: "blog", ctaHref: catalogLink, ctaLabel: "Đặt máy" })}
   <main>
-    <div class="wrap">
+    <div class="wrap blog-wrap">
       ${renderBreadcrumb([
         { label: "Trang chủ", href: "/" },
         { label: "Blog", href: "/blog/" },
-        { label: post.category, href: "/blog/" },
+        { label: post.category, href: `/blog/?tag=${encodeURIComponent(post.category)}` },
       ])}
-      <div class="article-layout">
-        <div class="article-main">
-          <article itemscope itemtype="https://schema.org/BlogPosting">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">${renderThemeToggle()}</div>
+      <div class="blog-article-shell">
+        ${renderTocRail(headings)}
+        <div class="blog-prose-wrap">
+          <article class="blog-prose" itemscope itemtype="https://schema.org/BlogPosting">
             ${articleHero}
             <h1 itemprop="headline">${escapeHtml(post.title)}</h1>
             <div class="article-meta">
               <time datetime="${post.date}" itemprop="datePublished">${formatDateVi(post.date)}</time>
-              <span class="tag" itemprop="articleSection">${escapeHtml(post.category)}</span>
+              ${renderCategoryPill(post.category)}
               <span>${post.readMinutes} phút đọc</span>
-              <span>Bởi ${escapeHtml(SITE_CONFIG.brand)}</span>
+              <span>${escapeHtml(SITE_CONFIG.brand)}</span>
             </div>
             ${aiBox}
-            <p class="article-lead" itemprop="description">${escapeHtml(post.excerpt)}</p>
-            <div itemprop="articleBody">
-              ${renderSections(post.sections)}
+            <p class="article-lead intro" itemprop="description">${escapeHtml(post.excerpt)}</p>
+            <div class="blog-prose-body" itemprop="articleBody">
+              ${renderSectionsWithInlineCta(post.sections, { ...post, ctaLink: catalogLink })}
             </div>
+            ${renderInlineCta({ ...post, ctaLink: catalogLink })}
+            ${renderRelatedCards(relatedBlog, getBlogPostPath, getBlogPostImage, formatDateVi)}
+            ${renderArticleNav(prev, next, getBlogPostPath)}
           </article>
         </div>
-        ${renderArticleSidebar(post, relatedBlog, relatedSeo)}
+        ${renderArticleSidebar(post, relatedBlog, relatedSeo, catalogLink)}
       </div>
     </div>
   </main>
   ${renderSiteFooter()}
+  ${tocMobile.fab}
+  ${tocMobile.sheet}
+  <div class="mobile-cta-bar" aria-label="Hành động nhanh">
+    <a class="secondary" href="/blog/">← Blog</a>
+    <a class="primary" href="${escapeHtml(catalogLink)}">${escapeHtml(post.ctaLabel || "Đặt máy")}</a>
+  </div>
+  ${renderBlogArticleScripts()}
   ${renderAttributionBootstrapScript("blog", post.slug)}
 </body>
 </html>`;
@@ -298,15 +354,21 @@ function renderArticle(post) {
 
 function renderBlogIndex() {
   const path = "/blog";
+  const allPosts = getAllBlogListingPosts(BLOG_POSTS);
+  const categories = getBlogListingCategories(allPosts);
   const [featured, ...rest] = BLOG_POSTS_SORTED;
 
   const featuredMain = featured
     ? `<a class="featured-main" href="${getBlogPostPath(featured.slug)}/">
-      ${renderPostThumb(featured, "thumb-bg")}
+      ${renderPostThumb(featured, "thumb-bg", true)}
       <div class="card-content">
-        <span class="tag">${escapeHtml(featured.category)}</span>
+        ${renderCategoryPill(featured.category)}
         <h2>${escapeHtml(featured.title)}</h2>
         <p>${escapeHtml(featured.excerpt)}</p>
+        <div class="meta-row">
+          <span>${formatDateVi(featured.date)}</span>
+          <span>${featured.readMinutes} phút đọc</span>
+        </div>
       </div>
     </a>`
     : "";
@@ -317,7 +379,7 @@ function renderBlogIndex() {
       (p) => `<a class="mini-card" href="${getBlogPostPath(p.slug)}/">
       ${renderPostThumb(p, "mini-thumb")}
       <div class="mini-body">
-        <span class="tag">${escapeHtml(p.category)}</span>
+        ${renderCategoryPill(p.category)}
         <h3>${escapeHtml(p.title)}</h3>
         <p>${escapeHtml(p.excerpt)}</p>
       </div>
@@ -325,20 +387,30 @@ function renderBlogIndex() {
     )
     .join("");
 
-  const gridPosts = BLOG_POSTS_SORTED.map(
-    (p) => `<a class="post-card" href="${getBlogPostPath(p.slug)}/">
+  const gridPosts = allPosts
+    .map((p) => {
+      const searchBlob = `${p.title} ${p.excerpt} ${p.category}`.toLowerCase();
+      return `<a class="post-card" href="${getBlogPostPath(p.slug)}/" data-category="${escapeHtml(p.category)}" data-search="${escapeHtml(searchBlob)}">
       <div class="post-card-thumb">${renderPostThumb(p, "")}</div>
       <div class="post-card-body">
         <div class="meta">
-          <span class="tag-pill">${escapeHtml(p.category)}</span>
+          ${renderCategoryPill(p.category)}
           <span>${formatDateVi(p.date)} · ${p.readMinutes} phút</span>
         </div>
         <h2>${escapeHtml(p.title)}</h2>
         <p>${escapeHtml(p.excerpt)}</p>
         <span class="read-more">Đọc tiếp →</span>
       </div>
-    </a>`
-  ).join("\n      ");
+    </a>`;
+    })
+    .join("\n      ");
+
+  const filterChips = `<button type="button" class="filter-chip" data-filter="all">Tất cả</button>${categories
+    .map(
+      (c) =>
+        `<button type="button" class="filter-chip" data-filter="${escapeHtml(c)}">${escapeHtml(c)}</button>`
+    )
+    .join("")}`;
 
   const seoLinks = Object.values(SEO_PAGES_BY_SLUG)
     .slice(0, 8)
@@ -368,56 +440,71 @@ function renderBlogIndex() {
       url: `${SITE_CONFIG.url}/blog/`,
       inLanguage: "vi-VN",
       publisher: { "@id": `${SITE_CONFIG.url}/#organization` },
-      blogPost: BLOG_POSTS.map((p) => ({
+      blogPost: allPosts.map((p) => ({
         "@type": "BlogPosting",
         headline: p.title,
         url: `${SITE_CONFIG.url}${getBlogPostPath(p.slug)}`,
         datePublished: p.date,
         image: absoluteImageUrl(getBlogPostImage(p)),
+        articleSection: p.category,
       })),
     },
   ]);
 
-  const indexOgImage = featured
-    ? getBlogPostImage(featured)
-    : DEFAULT_BLOG_IMAGE;
+  const indexOgImage = featured ? getBlogPostImage(featured) : DEFAULT_BLOG_IMAGE;
 
   return `${renderHead({
     title: "Blog thuê máy ảnh & tips chụp ảnh",
     description:
-      "Blog FAO — kinh nghiệm thuê máy ảnh, review vlog/TikTok, hướng dẫn chụp áo dài Tết và tips Fujifilm tại Sài Gòn.",
+      "Blog FAO — kinh nghiệm thuê máy ảnh, review thiết bị, hướng dẫn chụp kỷ yếu và tips Fujifilm tại Sài Gòn. Đọc miễn phí, đặt máy online.",
     path,
     jsonLd,
     image: indexOgImage,
+    extraCss: BLOG_CSS,
   })}
-<body>
-  ${renderSiteHeader({ active: "blog" })}
+<body class="blog-page">
+  ${renderSiteHeader({ active: "blog", ctaHref: "/catalog", ctaLabel: "Đặt máy" })}
   <main>
-    <div class="wrap">
+    <div class="wrap blog-wrap">
       ${renderBreadcrumb([
         { label: "Trang chủ", href: "/" },
         { label: "Blog", href: "/blog/" },
       ])}
-      <header class="blog-hero">
-        <h1>Blog FAO</h1>
+      <header class="blog-index-hero">
+        <p class="eyebrow">FAO Camera · Editorial</p>
+        <h1>Blog thuê máy &amp; nhiếp ảnh</h1>
         <p>Kinh nghiệm thuê máy, review thiết bị và mẹo chụp ảnh — từ đội ngũ FAO Camera Sài Gòn.</p>
       </header>
+      <div class="blog-toolbar">
+        ${renderBlogSearch()}
+        ${renderThemeToggle()}
+      </div>
       <section class="blog-featured" aria-label="Bài nổi bật">
         ${featuredMain}
         <div class="featured-side">${featuredSide}</div>
       </section>
+      <div class="blog-filters-scroll">
+        <div class="blog-filters" role="group" aria-label="Lọc theo chủ đề">
+          ${filterChips}
+        </div>
+      </div>
       <section aria-label="Tất cả bài viết">
-        <div class="post-grid">
+        <div class="post-grid" id="post-grid">
           ${gridPosts}
         </div>
+        <div class="blog-empty" id="blog-empty" hidden>
+          <h3>Không tìm thấy bài viết</h3>
+          <p>Thử từ khóa khác hoặc chọn chủ đề &quot;Tất cả&quot;.</p>
+        </div>
       </section>
-      <section class="cross-links">
+      <section class="blog-services" aria-label="Dịch vụ FAO">
         <h2>Dịch vụ cho thuê tại FAO</h2>
         <div class="cross-grid">${seoLinks}</div>
       </section>
     </div>
   </main>
   ${renderSiteFooter()}
+  ${renderBlogIndexScripts(["all", ...categories])}
   ${renderAttributionBootstrapScript("blog", "")}
 </body>
 </html>`;

@@ -129,13 +129,13 @@ export const SEO_PAGES = [
   },
   {
     slug: "thue-may-anh-chup-ao-dai",
-    title: "Thuê máy ảnh chụp Concept, Kỷ Yếu & Áo dài tại TP.HCM",
+    title: "Thuê máy ảnh chụp kỷ yếu, áo dài & concept TP.HCM — FAO Camera",
     description:
-      "Mùa kỷ yếu, lễ Tết đến rồi! Thuê ngay Fujifilm (tông cổ điển) hoặc Canon (màu da sáng) để chụp áo dài, thanh xuân tại FAO. Giá sinh viên, máy có sẵn lịch.",
+      "Thuê máy ảnh chụp kỷ yếu, áo dài Tết, concept sinh viên tại FAO TP.HCM. Fujifilm film look từ 150k/ngày, Canon R50 từ 210k. Đặt online giữ máy — Phú Nhuận & Thủ Đức.",
     aiSummary:
-      "Dịch vụ cho thuê máy ảnh chụp concept, kỷ yếu, áo dài lễ/Tết: Lựa chọn hàng đầu là Fujifilm X-T series hoặc X100V/VI. Đặt trước 1-2 tuần mùa cao điểm.",
-    aiHighlight: "Khuyên dùng Fujifilm",
-    h1: "Thuê máy ảnh chụp Kỷ Yếu, Concept & Áo Dài",
+      "Thuê máy chụp kỷ yếu tại FAO: Fujifilm X-T30/X-A series (150–350k/ngày) cho màu film cổ điển; Canon R50/R50V (210–250k) cho màu da sáng. Xem bảng giá từng model tại faocamera.vn/bang-gia-thue-may-anh/. Đặt trước 1–2 tuần mùa cao điểm.",
+    aiHighlight: "Fujifilm từ 150k · Canon R50 từ 210k",
+    h1: "Thuê máy ảnh chụp Kỷ Yếu, Áo Dài & Concept",
     intro:
       "Từ mùa hè chụp kỷ yếu thanh xuân đến mùa lễ Tết chụp áo dài phố cổ, nhu cầu thuê thiết bị luôn quá tải. Để có được bộ ảnh mang đậm chất thơ, concept hoài cổ hoặc trong trẻo Hàn Quốc, việc chọn đúng máy và đúng ống kính (lens) là điều kiện kiên quyết. Đừng để cận ngày mới tìm máy, hệ thống FAO Booking cho phép bạn chốt slot giữ máy sớm.",
     highlights: [
