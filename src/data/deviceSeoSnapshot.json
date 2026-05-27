@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-05-26T19:16:03.579Z",
+  "fetchedAt": "2026-05-27T03:17:43.034Z",
   "source": "api",
   "apiUrl": "https://api.faodigital.vn/api",
   "models": [
@@ -41,7 +41,7 @@
     },
     {
       "modelKey": "R50V",
-      "displayName": "Canon R50",
+      "displayName": "Canon R50V",
       "categoryName": "Canon",
       "brandLabel": "Canon",
       "categoryOrder": 0,
@@ -60,8 +60,8 @@
       "defaultBranchId": "PHU_NHUAN",
       "image": "https://api.faodigital.vn/uploads/devices/65/8a55e378-f780-44bf-8180-775cf1e90528.webp",
       "catalogQuery": "/catalog?q=R50V",
-      "bookPath": "/catalog?modelKey=R50V&q=R50V&focusModel=canonr50&book=1&branchId=PHU_NHUAN",
-      "feedbackPath": "/feedback?modelKey=R50V&model=Canon+R50&from=%2Fthue-may-anh-canon-r50v",
+      "bookPath": "/catalog?modelKey=R50V&q=R50V&focusModel=canonr50v&book=1&branchId=PHU_NHUAN",
+      "feedbackPath": "/feedback?modelKey=R50V&model=Canon+R50V&from=%2Fthue-may-anh-canon-r50v",
       "kitLabel": "CANON EOS R50V",
       "useCase": "Các bạn mới tập chụp, thích máy nhỏ gọn, dễ dùng",
       "pros": [
@@ -182,7 +182,7 @@
     },
     {
       "modelKey": "M50M1",
-      "displayName": "Canon EOS M50 Mark 1",
+      "displayName": "Canon M50 Mark 1",
       "categoryName": "Canon",
       "brandLabel": "Canon",
       "categoryOrder": 0,
@@ -202,10 +202,10 @@
       "defaultBranchId": "PHU_NHUAN",
       "image": "https://api.faodigital.vn/uploads/devices/24/88ff8335-97cd-4315-8a78-a1cbc8d27cb8.jpg",
       "catalogQuery": "/catalog?q=M50M1",
-      "bookPath": "/catalog?modelKey=M50M1&q=M50M1&focusModel=canoneosm50mark1&book=1",
-      "feedbackPath": "/feedback?modelKey=M50M1&model=Canon+EOS+M50+Mark+1&from=%2Fthue-may-anh-canon-m50m1",
+      "bookPath": "/catalog?modelKey=M50M1&q=M50M1&focusModel=canonm50mark1&book=1",
+      "feedbackPath": "/feedback?modelKey=M50M1&model=Canon+M50+Mark+1&from=%2Fthue-may-anh-canon-m50m1",
       "kitLabel": "CANON EOS M50 Mark 1",
-      "useCase": "Thuê Canon EOS M50 Mark 1 tại FAO Camera TP.HCM",
+      "useCase": "Thuê Canon M50 Mark 1 tại FAO Camera TP.HCM",
       "pros": [],
       "comboNote": "Giá thuê theo combo trên catalog (thường gồm pin, sạc, thẻ nhớ, túi — tùy máy).",
       "feedbackRaw": null
@@ -247,7 +247,7 @@
     },
     {
       "modelKey": "RP24105",
-      "displayName": "Canon EOS RP + RF 24-105",
+      "displayName": "Canon RP + RF 24-105",
       "categoryName": "Canon",
       "brandLabel": "Canon",
       "categoryOrder": 0,
@@ -266,10 +266,10 @@
       "defaultBranchId": "Q9",
       "image": "https://api.faodigital.vn/uploads/devices/185/057d8687-4778-4bcb-baa8-f20d356927ac.jpg",
       "catalogQuery": "/catalog?q=RP24105",
-      "bookPath": "/catalog?modelKey=RP24105&q=RP24105&focusModel=canoneosrp%2Brf24-105&book=1&branchId=Q9",
-      "feedbackPath": "/feedback?modelKey=RP24105&model=Canon+EOS+RP+%2B+RF+24-105&from=%2Fthue-may-anh-canon-rp-24-105",
+      "bookPath": "/catalog?modelKey=RP24105&q=RP24105&focusModel=canonrp%2Brf24-105&book=1&branchId=Q9",
+      "feedbackPath": "/feedback?modelKey=RP24105&model=Canon+RP+%2B+RF+24-105&from=%2Fthue-may-anh-canon-rp-24-105",
       "kitLabel": "CANON EOS RP + RF 24-105",
-      "useCase": "Thuê Canon EOS RP + RF 24-105 tại FAO Camera TP.HCM",
+      "useCase": "Thuê Canon RP + RF 24-105 tại FAO Camera TP.HCM",
       "pros": [],
       "comboNote": "Combo kèm lens/phụ kiện theo tên máy trên catalog — giá có thể khác tùy bộ kit.",
       "feedbackRaw": null
@@ -444,7 +444,7 @@
     },
     {
       "modelKey": "910",
-      "displayName": "Canon EOS 200D Mark II",
+      "displayName": "IXY 910is",
       "categoryName": "Canon",
       "brandLabel": "Canon",
       "categoryOrder": 0,
@@ -463,8 +463,8 @@
       "defaultBranchId": "PHU_NHUAN",
       "image": "https://api.faodigital.vn/uploads/devices/1/97bc794e-8edc-40d6-bffd-30afea1e30ce.jpg",
       "catalogQuery": "/catalog?q=910",
-      "bookPath": "/catalog?modelKey=910&q=910&focusModel=canoneos200dmarkii&book=1&branchId=PHU_NHUAN",
-      "feedbackPath": "/feedback?modelKey=910&model=Canon+EOS+200D+Mark+II&from=%2Fthue-may-anh-canon-ixy-910",
+      "bookPath": "/catalog?modelKey=910&q=910&focusModel=ixy910is&book=1&branchId=PHU_NHUAN",
+      "feedbackPath": "/feedback?modelKey=910&model=IXY+910is&from=%2Fthue-may-anh-canon-ixy-910",
       "kitLabel": "IXY 910is",
       "useCase": "Các bạn mới tập chụp, thích nhỏ gọn, màu sắc tươi tắn",
       "pros": [
@@ -478,7 +478,7 @@
     },
     {
       "modelKey": "170",
-      "displayName": "Canon EOS 200D Mark II",
+      "displayName": "Canon IXY 170",
       "categoryName": "Canon",
       "brandLabel": "Canon",
       "categoryOrder": 0,
@@ -497,8 +497,8 @@
       "defaultBranchId": "PHU_NHUAN",
       "image": "https://api.faodigital.vn/uploads/devices/3/2a266a59-711c-4957-ba3e-89cdaea58486.webp",
       "catalogQuery": "/catalog?q=170",
-      "bookPath": "/catalog?modelKey=170&q=170&focusModel=canoneos200dmarkii&book=1&branchId=PHU_NHUAN",
-      "feedbackPath": "/feedback?modelKey=170&model=Canon+EOS+200D+Mark+II&from=%2Fthue-may-anh-canon-ixy-170",
+      "bookPath": "/catalog?modelKey=170&q=170&focusModel=canonixy170&book=1&branchId=PHU_NHUAN",
+      "feedbackPath": "/feedback?modelKey=170&model=Canon+IXY+170&from=%2Fthue-may-anh-canon-ixy-170",
       "kitLabel": "CANON IXY 170",
       "useCase": "Các bạn mới bắt đầu, thích nhỏ gọn, dễ dùng",
       "pros": [

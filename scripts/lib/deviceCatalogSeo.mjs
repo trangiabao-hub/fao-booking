@@ -282,18 +282,46 @@ function pickRepresentativeDevice(devices) {
   }, null);
 }
 
-function formatDisplayName(name, feedbackTitle) {
-  if (feedbackTitle) return feedbackTitle;
-  const n = normalizeDisplayName(name);
-  return n
+const MODEL_DISPLAY_OVERRIDES = {
+  R50V: "Canon R50V",
+};
+
+function applyBrandCasing(raw) {
+  return normalizeDisplayName(raw)
     .replace(/\bCANON\b/g, "Canon")
     .replace(/\bSONY\b/g, "Sony")
     .replace(/\bFUJIFILM\b/g, "Fujifilm")
     .replace(/\bDJI\b/g, "DJI")
-    .replace(/\bEOS\b/g, "EOS")
+    .replace(/\bEOS\b/gi, "")
     .replace(/\bMARK\b/g, "Mark")
     .replace(/\bOSMO\b/g, "Osmo")
-    .replace(/\bPOCKET\b/g, "Pocket");
+    .replace(/\bPOCKET\b/g, "Pocket")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatDisplayName(name, feedbackTitle, modelKey) {
+  if (modelKey && MODEL_DISPLAY_OVERRIDES[modelKey]) {
+    return MODEL_DISPLAY_OVERRIDES[modelKey];
+  }
+
+  const fromDevice = applyBrandCasing(name);
+
+  if (feedbackTitle) {
+    const fb = applyBrandCasing(feedbackTitle);
+    const mk = String(modelKey || "").trim();
+    if (mk.length >= 2) {
+      const mkLower = mk.toLowerCase();
+      const fbNorm = fb.toLowerCase().replace(/[\s-]/g, "");
+      const devNorm = fromDevice.toLowerCase().replace(/[\s-]/g, "");
+      if (devNorm.includes(mkLower) && !fbNorm.includes(mkLower)) {
+        return fromDevice;
+      }
+    }
+    return fb;
+  }
+
+  return fromDevice;
 }
 
 function mergeModelGroup(modelKey, devices, meta = {}) {
@@ -302,7 +330,8 @@ function mergeModelGroup(modelKey, devices, meta = {}) {
   const categoryName = meta.categoryName || normalizeLegacyCategory(rep.category);
   const displayName = formatDisplayName(
     meta.deviceName || rep.name,
-    feedback.title || (rep.shortName ? normalizeDisplayName(rep.shortName) : null)
+    feedback.title || (rep.shortName ? normalizeDisplayName(rep.shortName) : null),
+    modelKey
   );
   const branches = [...new Set(devices.map((d) => d.branch).filter(Boolean))];
   const image =

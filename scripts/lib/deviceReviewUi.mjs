@@ -35,8 +35,8 @@ export const DEVICE_REVIEW_CSS = `
     .review-hero-inner{grid-template-columns:1fr minmax(280px,340px);align-items:center;min-height:460px}
   }
   .review-hero-copy{display:flex;flex-direction:column;gap:var(--space-4)}
-  .review-hero-eyebrow{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center}
-  .review-hero-eyebrow .tag-pill{font-size:.6875rem}
+  .review-hero-eyebrow{display:flex;flex-wrap:wrap;gap:var(--space-2);align-items:center;align-self:flex-start}
+  .review-hero-eyebrow .tag-pill{font-size:.6875rem;flex:0 0 auto;width:fit-content}
   .review-hero h1{
     font-family:var(--font-display);font-size:clamp(1.875rem,4.5vw,3rem);font-weight:800;
     line-height:1.08;letter-spacing:-.035em;color:#fff;margin:0;
@@ -277,7 +277,7 @@ export function renderReviewHero(m, bookHref, branchLabel) {
     <div class="review-hero-inner">
       <div class="review-hero-copy">
         <div class="review-hero-eyebrow">
-          ${renderCategoryPill("Review")}
+          ${renderCategoryPill("Cho thuê")}
           ${renderCategoryPill(m.brandLabel)}
         </div>
         <h1 itemprop="headline">Thuê ${escapeHtml(m.displayName)}</h1>

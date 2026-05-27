@@ -975,6 +975,24 @@ export default function QuickBookModal({
     checkAvailability,
   ]);
 
+  // initialPrefs có thể nhảy thẳng bước 2 — kéo về bước 1 khi slot đã kín.
+  useEffect(() => {
+    if (!isOpen || isAvailable || isCheckingAvailability) return;
+    if (step > 1) {
+      setStep(1);
+      setError(
+        step1AvailabilityMessage ||
+          "⚠️ Máy đã được đặt trong khung giờ này. Vui lòng chọn ngày khác.",
+      );
+    }
+  }, [
+    isOpen,
+    isAvailable,
+    isCheckingAvailability,
+    step,
+    step1AvailabilityMessage,
+  ]);
+
   useEffect(() => {
     if (!isOpen) return;
     const session = loadCustomerSession();
@@ -1231,6 +1249,15 @@ export default function QuickBookModal({
       !isCustomerValid
     )
       return;
+
+    if (!isAvailable || isCheckingAvailability) {
+      setError(
+        step1AvailabilityMessage ||
+          "⚠️ Máy đã được đặt trong khung giờ này. Vui lòng chọn ngày khác.",
+      );
+      setStep(1);
+      return;
+    }
 
     const nextAgreementErrors = {
       noScamElsewhere: !agreeNoScamElsewhere,
@@ -2706,7 +2733,12 @@ export default function QuickBookModal({
                         isCheckingAvailability ||
                         !!timeSelectionError ||
                         !sameModelAvailabilityReady)) ||
-                    (step === 2 && !isCustomerValid)
+                    (step === 2 &&
+                      (!isCustomerValid ||
+                        !isAvailable ||
+                        isCheckingAvailability)) ||
+                    (step === 3 &&
+                      (!isAvailable || isCheckingAvailability))
                   }
                   className="min-w-0 py-3 rounded-xl bg-[#222] text-[#FF9FCA] text-sm sm:text-base font-black uppercase tracking-wider hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999] order-1 sm:order-2"
                 >
@@ -2717,7 +2749,12 @@ export default function QuickBookModal({
               ) : (
                 <button
                   onClick={handleSubmit}
-                  disabled={!isCustomerValid || isSubmitting}
+                  disabled={
+                    !isCustomerValid ||
+                    isSubmitting ||
+                    !isAvailable ||
+                    isCheckingAvailability
+                  }
                   className="min-w-0 py-3 rounded-xl bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white text-sm sm:text-base font-black uppercase tracking-wider hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 order-1 sm:order-2"
                 >
                   {isSubmitting ? (

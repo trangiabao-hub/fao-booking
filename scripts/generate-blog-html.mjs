@@ -331,8 +331,8 @@ function renderArticle(post) {
               ${renderSectionsWithInlineCta(post.sections, { ...post, ctaLink: catalogLink })}
             </div>
             ${renderInlineCta({ ...post, ctaLink: catalogLink })}
-            ${renderRelatedCards(relatedBlog, getBlogPostPath, getBlogPostImage, formatDateVi)}
-            ${renderArticleNav(prev, next, getBlogPostPath)}
+            ${renderRelatedCards(relatedBlog, (p) => getBlogPostPath(p.slug), getBlogPostImage, formatDateVi)}
+            ${renderArticleNav(prev, next, (p) => getBlogPostPath(p.slug))}
           </article>
         </div>
         ${renderArticleSidebar(post, relatedBlog, relatedSeo, catalogLink)}
@@ -394,7 +394,7 @@ function renderBlogIndex() {
       <div class="post-card-thumb">${renderPostThumb(p, "")}</div>
       <div class="post-card-body">
         <div class="meta">
-          ${renderCategoryPill(p.category)}
+          ${renderCategoryPill(p.tagLabel || p.category)}
           <span>${formatDateVi(p.date)} · ${p.readMinutes} phút</span>
         </div>
         <h2>${escapeHtml(p.title)}</h2>

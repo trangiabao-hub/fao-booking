@@ -25,6 +25,7 @@ export function loadDeviceReviewBlogPosts() {
       excerpt,
       date: fetchedDate,
       category: "Review",
+      tagLabel: "Cho thuê",
       readMinutes: 3,
       image: m.image || "/og-image.png",
       imageAlt: `${m.displayName} — thuê tại FAO Camera`,

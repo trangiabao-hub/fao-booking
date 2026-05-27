@@ -1,12 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, Filter } from "lucide-react";
+import { format, addDays } from "date-fns";
 import api from "../../config/axios";
 import SlideNav from "../../components/SlideNav";
 import FloatingContactButton from "../../components/FloatingContactButton";
 import QuickBookModal from "../../components/QuickBookModal";
-import { loadBookingPrefs } from "../../utils/storage";
-import { normalizeDevicesListResponse } from "../../utils/deviceBranch";
+import {
+  computeAvailabilityRange,
+  getAvailabilityRangeError,
+} from "../../components/BookingPrefsForm";
+import {
+  buildQuickBookInitialPrefs,
+  parseCatalogBookingPrefs,
+} from "../../utils/catalogBookingContext";
+import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
+import {
+  devicesForBookingBranch,
+  normalizeDevicesListResponse,
+} from "../../utils/deviceBranch";
 import deviceSeoSnapshot from "../../data/deviceSeoSnapshot.json";
 
 const FALLBACK_IMG =
@@ -184,27 +196,13 @@ function resolveModelIdentityFromItem(item, deviceById) {
   return (String(device?.modelKey || "").trim() || normalizeDeviceName(device?.name || "") || null);
 }
 
-function parseLocalDateParam(value) {
-  if (!value) return null;
-  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  if (
-    Number.isNaN(date.getTime()) ||
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return null;
+function modelKeyForAvailability(deviceOrKey) {
+  if (typeof deviceOrKey === "string") {
+    return String(deviceOrKey).trim();
   }
-  return date;
-}
-
-function isValidTimeParam(value) {
-  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || ""));
+  const mk = String(deviceOrKey?.modelKey || "").trim();
+  if (mk) return mk;
+  return normalizeDeviceName(deviceOrKey?.name || "");
 }
 
 function buildModelFeedbackMap(items = []) {
@@ -438,6 +436,8 @@ export default function FeedbackPage() {
   const [galleryPayload, setGalleryPayload] = useState(null);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryError, setGalleryError] = useState("");
+  const [slotModelAvailability, setSlotModelAvailability] = useState(null);
+  const [slotAvailabilityLoading, setSlotAvailabilityLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -768,79 +768,128 @@ export default function FeedbackPage() {
     return null;
   }, [selectedModel, selectedModelRow]);
 
-  const quickBookInitialPrefs = useMemo(() => {
-    // Ưu tiên lấy context từ catalog để hành vi giống 100% khi mở modal.
-    try {
-      const url = new URL(fromCatalogPath, "https://fao.local");
-      const p = url.searchParams;
-      const durationType = ["SIX_HOURS", "ONE_DAY"].includes(
-        p.get("durationType"),
-      )
-        ? p.get("durationType")
-        : null;
-      const branchId = p.get("branchId");
-      const date = parseLocalDateParam(p.get("date"));
-      const endDate = parseLocalDateParam(p.get("endDate"));
-      const timeFrom = isValidTimeParam(p.get("timeFrom"))
-        ? p.get("timeFrom")
-        : null;
-      const timeTo = isValidTimeParam(p.get("timeTo")) ? p.get("timeTo") : null;
-      const pickupType = ["MORNING", "EVENING", "AFTERNOON"].includes(
-        p.get("pickupType"),
-      )
-        ? p.get("pickupType")
-        : null;
-      const pickupSlot = isValidTimeParam(p.get("pickupSlot"))
-        ? p.get("pickupSlot")
-        : null;
-      const availabilityConfirmed = p.get("availability") === "1";
+  const catalogSlotPrefs = useMemo(
+    () => parseCatalogBookingPrefs(fromCatalogPath),
+    [fromCatalogPath],
+  );
 
-      if (availabilityConfirmed && durationType && branchId && date && timeFrom) {
-        return {
-          step: 2,
-          branchId,
-          durationType,
-          date,
-          endDate: endDate || date,
-          timeFrom,
-          timeTo: timeTo || timeFrom,
-          pickupType: pickupType || null,
-          pickupSlot: pickupSlot || null,
+  const quickBookInitialPrefs = useMemo(
+    () => buildQuickBookInitialPrefs(fromCatalogPath),
+    [fromCatalogPath],
+  );
+
+  useEffect(() => {
+    if (!catalogSlotPrefs || devices.length === 0) {
+      setSlotModelAvailability(null);
+      setSlotAvailabilityLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      setSlotAvailabilityLoading(true);
+      try {
+        const prefs = {
+          date: catalogSlotPrefs.date,
+          endDate: catalogSlotPrefs.endDate,
+          timeFrom: catalogSlotPrefs.timeFrom,
+          timeTo: catalogSlotPrefs.timeTo,
+          durationType: catalogSlotPrefs.durationType,
+          pickupType: catalogSlotPrefs.pickupType,
+          pickupSlot: catalogSlotPrefs.pickupSlot,
         };
-      }
-    } catch {
-      // no-op, fallback bên dưới
-    }
+        const { fromDateTime, toDateTime } = computeAvailabilityRange(prefs);
+        const rangeError = getAvailabilityRangeError(
+          prefs,
+          fromDateTime,
+          toDateTime,
+        );
+        if (rangeError || !fromDateTime || !toDateTime) {
+          if (!cancelled) setSlotModelAvailability(null);
+          return;
+        }
 
-    const stored = loadBookingPrefs();
-    if (!stored) return null;
-    const durationType = ["SIX_HOURS", "ONE_DAY"].includes(stored.durationType)
-      ? stored.durationType
-      : null;
-    const date = stored?.date ? new Date(stored.date) : null;
-    const endDate = stored?.endDate ? new Date(stored.endDate) : null;
-    if (
-      durationType &&
-      stored.branchId &&
-      date &&
-      !Number.isNaN(date.getTime()) &&
-      stored.timeFrom
-    ) {
-      return {
-        step: 2,
-        branchId: stored.branchId,
-        durationType,
-        date,
-        endDate:
-          endDate && !Number.isNaN(endDate.getTime()) ? endDate : date,
-        timeFrom: stored.timeFrom,
-        timeTo: stored.timeTo || stored.timeFrom,
-        pickupType: stored.pickupType || null,
-        pickupSlot: stored.pickupSlot || null,
-      };
-    }
-    return null;
-  }, [fromCatalogPath]);
+        const fromStr = format(fromDateTime, "yyyy-MM-dd'T'HH:mm:ss");
+        const lookupTo =
+          catalogSlotPrefs.durationType === "ONE_DAY"
+            ? addDays(toDateTime, 1)
+            : toDateTime;
+        const toStr = format(lookupTo, "yyyy-MM-dd'T'HH:mm:ss");
+        if (!fromStr || !toStr) {
+          if (!cancelled) setSlotModelAvailability(null);
+          return;
+        }
+
+        const resp = await api.get("v1/devices/booking", {
+          params: {
+            startDate: fromStr.slice(0, 10),
+            endDate: toStr.slice(0, 10),
+            branchId: catalogSlotPrefs.branchId,
+          },
+        });
+        if (cancelled) return;
+
+        const branchDevices = devicesForBookingBranch(
+          devices,
+          catalogSlotPrefs.branchId,
+        );
+        const branchModelKeys = new Set(
+          branchDevices
+            .filter((d) => String(d.type || "").toUpperCase() === "DEVICE")
+            .map((d) => modelKeyForAvailability(d)),
+        );
+
+        const filterRowBySlot = (row) => ({
+          ...row,
+          bookingDtos: filterBookingsOverlappingSlot(
+            Array.isArray(row?.bookingDtos) ? row.bookingDtos : [],
+            fromDateTime,
+            toDateTime,
+          ),
+        });
+
+        const data = (resp.data || []).map(filterRowBySlot);
+        const counts = new Map();
+        for (const row of data) {
+          const mk = modelKeyForAvailability(row);
+          if (!branchModelKeys.has(mk)) continue;
+          const busy =
+            Array.isArray(row.bookingDtos) && row.bookingDtos.length > 0;
+          const entry = counts.get(mk) || { free: 0, total: 0 };
+          entry.total += 1;
+          if (!busy) entry.free += 1;
+          counts.set(mk, entry);
+        }
+
+        const availMap = new Map();
+        for (const mk of branchModelKeys) {
+          const entry = counts.get(mk);
+          availMap.set(mk, entry ? entry.free > 0 : false);
+        }
+        setSlotModelAvailability(availMap);
+      } catch {
+        if (!cancelled) setSlotModelAvailability(null);
+      } finally {
+        if (!cancelled) setSlotAvailabilityLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogSlotPrefs, devices]);
+
+  const isModelSlotBookable = useCallback(
+    (modelKey) => {
+      if (!catalogSlotPrefs) return true;
+      if (slotAvailabilityLoading) return false;
+      const key = modelKeyForAvailability(modelKey);
+      if (!key || !slotModelAvailability) return true;
+      return slotModelAvailability.get(key) !== false;
+    },
+    [catalogSlotPrefs, slotAvailabilityLoading, slotModelAvailability],
+  );
 
   const handleModelSelectChange = useCallback(
     (value) => {
@@ -860,11 +909,17 @@ export default function FeedbackPage() {
     [modelRows],
   );
 
-  const handleOpenQuickBook = useCallback((item) => {
-    if (!item?.bookDevice) return;
-    setQuickBookDevice(item.bookDevice);
-    setShowQuickBookModal(true);
-  }, []);
+  const handleOpenQuickBook = useCallback(
+    (item) => {
+      if (!item?.bookDevice) return;
+      const mk =
+        item.modelKey || modelKeyForAvailability(item.bookDevice);
+      if (!isModelSlotBookable(mk)) return;
+      setQuickBookDevice(item.bookDevice);
+      setShowQuickBookModal(true);
+    },
+    [isModelSlotBookable],
+  );
 
   const handleCloseQuickBook = useCallback(() => {
     setShowQuickBookModal(false);
@@ -952,11 +1007,29 @@ export default function FeedbackPage() {
               <button
                 type="button"
                 onClick={() =>
-                  handleOpenQuickBook({ bookDevice: selectedModelBookDevice })
+                  handleOpenQuickBook({
+                    bookDevice: selectedModelBookDevice,
+                    modelKey: selectedModelRow?.modelKey,
+                  })
                 }
-                className="inline-flex shrink-0 rounded-lg bg-[#1F1F1F] px-4 py-2.5 text-sm font-bold text-[#FF9FCA] hover:bg-[#333] transition-colors"
+                disabled={
+                  !isModelSlotBookable(selectedModelRow?.modelKey) ||
+                  slotAvailabilityLoading
+                }
+                title={
+                  slotAvailabilityLoading
+                    ? "Đang kiểm tra lịch trống..."
+                    : !isModelSlotBookable(selectedModelRow?.modelKey)
+                      ? "Máy đã kín trong khung giờ bạn chọn ở danh mục"
+                      : undefined
+                }
+                className="inline-flex shrink-0 rounded-lg bg-[#1F1F1F] px-4 py-2.5 text-sm font-bold text-[#FF9FCA] hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999] disabled:cursor-not-allowed"
               >
-                Đặt {formatFeedbackModelTitle(selectedModel)}
+                {slotAvailabilityLoading
+                  ? "Đang kiểm tra..."
+                  : !isModelSlotBookable(selectedModelRow?.modelKey)
+                    ? "Đã kín — đổi giờ"
+                    : `Đặt ${formatFeedbackModelTitle(selectedModel)}`}
               </button>
             )}
           </div>
@@ -1147,14 +1220,34 @@ export default function FeedbackPage() {
                         <button
                           type="button"
                           onClick={() => handleOpenQuickBook(item)}
-                          disabled={!item.bookDevice}
+                          disabled={
+                            !item.bookDevice ||
+                            !isModelSlotBookable(item.modelKey) ||
+                            slotAvailabilityLoading
+                          }
+                          title={
+                            item.bookDevice &&
+                            catalogSlotPrefs &&
+                            !slotAvailabilityLoading &&
+                            !isModelSlotBookable(item.modelKey)
+                              ? "Máy đã kín trong khung giờ bạn chọn ở danh mục"
+                              : undefined
+                          }
                           className={`rounded-full border px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-sm transition-all ${
-                            item.bookDevice
+                            item.bookDevice &&
+                            isModelSlotBookable(item.modelKey) &&
+                            !slotAvailabilityLoading
                               ? "border-[#e8c8d0] bg-gradient-to-r from-[#fdf2f5] to-[#f8e4eb] text-[#7a2d48] hover:from-[#fce8f0] hover:to-[#f5d0de] hover:text-[#5c1f36]"
                               : "border-[#e5dcd6] bg-[#f5f0ec] text-[#a09088] cursor-not-allowed"
                           }`}
                         >
-                          Đặt ngay
+                          {slotAvailabilityLoading
+                            ? "..."
+                            : item.bookDevice &&
+                                catalogSlotPrefs &&
+                                !isModelSlotBookable(item.modelKey)
+                              ? "Đã kín"
+                              : "Đặt ngay"}
                         </button>
                       </div>
                     </div>

@@ -151,7 +151,6 @@ function buildDeviceSchema(m, pageUrl) {
     buildBreadcrumbNode(
       [
         { label: "Trang chủ", href: "/" },
-        { label: "Blog", href: "/blog/?tag=Review" },
         { label: "Bảng giá", href: "/bang-gia-thue-may-anh/" },
         { label: m.displayName, href: `/${m.slug}/` },
       ],
@@ -283,17 +282,16 @@ function renderDevicePage(m, allModels) {
   })}
 <body class="blog-page blog-article device-review-page">
   ${renderReadingProgress()}
-  ${renderSiteHeader({ active: "blog", ctaHref: bookHref, ctaLabel: "Đặt lịch ngay" })}
+  ${renderSiteHeader({ active: "catalog", ctaHref: bookHref, ctaLabel: "Đặt lịch ngay" })}
   <main>
     <div class="wrap blog-wrap">
       ${renderBreadcrumb([
         { label: "Trang chủ", href: "/" },
-        { label: "Blog", href: "/blog/?tag=Review" },
         { label: "Bảng giá", href: "/bang-gia-thue-may-anh/" },
         { label: m.displayName, href: `${path}/` },
       ])}
       <div class="review-toolbar">
-        <a class="review-toolbar-back" href="/blog/?tag=Review">← Tất cả review</a>
+        <a class="review-toolbar-back" href="/bang-gia-thue-may-anh/">← Bảng giá thuê máy</a>
         ${renderThemeToggle()}
       </div>
       <div class="blog-article-shell">
