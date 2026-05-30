@@ -6,7 +6,10 @@ import OrderInfoPage from "./page/order-info";
 import AccountBookingsPage from "./page/account-bookings";
 import AccountPage from "./page/account";
 import Menu from "./page/menu";
+import InAnhIntroPage from "./page/in-anh";
 import PhotoBoothPage from "./page/photobooth";
+import CreatePhotoboothPage from "./features/photobooth/pages/CreatePhotoboothPage";
+import RoomPhotoboothPage from "./features/photobooth/pages/RoomPhotoboothPage";
 import FeedbackPage from "./page/feedback";
 import RentalContractSamplePage from "./page/rental-contract-sample";
 import SeoMeta from "./components/SeoMeta";
@@ -140,14 +143,52 @@ const App = () => {
       ),
     },
     {
+      path: "/in-anh",
+      element: (
+        <SeoMeta
+          title="Photobooth miễn phí — FAO"
+          description="Khách đặt lịch online: chọn khung, gắn ảnh, tải về hoặc in tại FAO."
+          path="/in-anh"
+        >
+          <InAnhIntroPage />
+        </SeoMeta>
+      ),
+    },
+    {
       path: "/photobooth",
       element: (
         <SeoMeta
-          title="Photo Booth"
-          description="Đặt lịch trải nghiệm Photo Booth tại FAO với quy trình nhanh gọn."
+          title="Photobooth miễn phí — FAO"
+          description="Khách đặt lịch online: chọn khung, gắn ảnh, tải về hoặc in tại FAO."
           path="/photobooth"
         >
           <PhotoBoothPage />
+        </SeoMeta>
+      ),
+    },
+    {
+      path: "/photobooth/create",
+      element: (
+        <SeoMeta
+          title="Tạo photobooth"
+          description="Tạo strip ảnh photobooth và lưu vào đơn thuê máy FAO."
+          path="/photobooth/create"
+          noindex
+        >
+          <CreatePhotoboothPage />
+        </SeoMeta>
+      ),
+    },
+    {
+      path: "/photobooth/room/:shareToken",
+      element: (
+        <SeoMeta
+          title="Album photobooth nhóm"
+          description="Cùng bạn bè tạo ảnh photobooth kỷ niệm chuyến đi."
+          path="/photobooth/room"
+          noindex
+        >
+          <RoomPhotoboothPage />
         </SeoMeta>
       ),
     },

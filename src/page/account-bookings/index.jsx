@@ -7,6 +7,7 @@ import "dayjs/locale/vi";
 import {
   MagnifyingGlassIcon,
   ArrowPathIcon,
+  CameraIcon,
 } from "@heroicons/react/24/outline";
 import api from "../../config/axios";
 import SlideNav from "../../components/SlideNav";
@@ -52,6 +53,8 @@ const STATUS_STYLES = {
 
 const COMPLETED_STATUSES = new Set(["DONE"]);
 const CANCELLED_STATUSES = new Set(["CANCEL", "REFUNDED"]);
+/** Đơn có thể tạo album photobooth (API ptb không nhận đơn đã hủy) */
+const PHOTOBOOTH_BLOCKED = new Set(["CANCEL", "REFUNDED"]);
 /** Không còn ở tab Sắp nhận / Sắp trả */
 const CLOSED_FOR_PICKUP_RETURN = new Set([
   "DONE",
@@ -158,6 +161,27 @@ function getStatusClasses(status) {
   return (
     STATUS_STYLES[status] || "border-[#E7D8E4] bg-[#FAF6F8] text-[#8A5871]"
   );
+}
+
+function getPhotoboothCreateHref(booking) {
+  const orderIdNew =
+    booking?.orderIdNew != null ? String(booking.orderIdNew).trim() : "";
+  if (orderIdNew) {
+    return `/photobooth/create?orderIdNew=${encodeURIComponent(orderIdNew)}`;
+  }
+  const payosCode = parsePayOsCodeFromNote(booking?.note);
+  if (payosCode) {
+    return `/photobooth/create?orderCode=${encodeURIComponent(payosCode)}`;
+  }
+  if (booking?.id != null) {
+    return `/photobooth/create?bookingId=${encodeURIComponent(booking.id)}`;
+  }
+  return null;
+}
+
+function canCreatePhotobooth(booking) {
+  if (!booking || PHOTOBOOTH_BLOCKED.has(booking.status)) return false;
+  return booking.id != null;
 }
 
 export default function AccountBookingsPage() {
@@ -631,6 +655,15 @@ export default function AccountBookingsPage() {
                         >
                           Xem chi tiết đơn
                         </Link>
+                        {canCreatePhotobooth(booking) && (
+                          <Link
+                            to={getPhotoboothCreateHref(booking)}
+                            className="inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm shadow-pink-500/25 transition hover:bg-pink-700 sm:w-auto sm:px-6 sm:py-3"
+                          >
+                            <CameraIcon className="h-5 w-5 shrink-0" />
+                            Album photobooth
+                          </Link>
+                        )}
                       </div>
                     </li>
                   );

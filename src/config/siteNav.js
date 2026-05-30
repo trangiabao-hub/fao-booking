@@ -2,6 +2,7 @@
 export const SITE_NAV = [
   { href: "/", label: "Trang chủ", spa: true },
   { href: "/catalog", label: "Đặt máy", spa: true },
+  { href: "/in-anh", label: "In ảnh", spa: true },
   { href: "/blog/", label: "Blog", spa: false },
   { href: "/feedback", label: "Feedback", spa: true },
 ];

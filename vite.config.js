@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
@@ -23,7 +23,11 @@ function staticSlugHtml() {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const apiOrigin = (env.VITE_API_URL || "https://api.faodigital.vn/api/").replace(/\/api\/?$/, "");
+
+  return {
   plugins: [staticSlugHtml(), react(), tailwindcss()],
   define: {
     global: "globalThis",
@@ -32,5 +36,12 @@ export default defineConfig({
     fs: {
       allow: [path.resolve(__dirname), path.resolve(__dirname, "../fao")],
     },
+    proxy: {
+      "/uploads": {
+        target: apiOrigin,
+        changeOrigin: true,
+      },
+    },
   },
+};
 });

@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-05-27T03:17:43.034Z",
+  "fetchedAt": "2026-05-30T10:35:38.083Z",
   "source": "api",
   "apiUrl": "https://api.faodigital.vn/api",
   "models": [
@@ -17,7 +17,7 @@
       "priceThreeDay": 590000,
       "priceNextDay": 160000,
       "deposit": 2000000,
-      "unitCount": 45,
+      "unitCount": 46,
       "branches": [
         "PHU_NHUAN",
         "Q9"
@@ -259,14 +259,15 @@
       "priceThreeDay": 900000,
       "priceNextDay": 300000,
       "deposit": 3000000,
-      "unitCount": 1,
+      "unitCount": 2,
       "branches": [
-        "Q9"
+        "Q9",
+        "PHU_NHUAN"
       ],
-      "defaultBranchId": "Q9",
+      "defaultBranchId": "PHU_NHUAN",
       "image": "https://api.faodigital.vn/uploads/devices/185/057d8687-4778-4bcb-baa8-f20d356927ac.jpg",
       "catalogQuery": "/catalog?q=RP24105",
-      "bookPath": "/catalog?modelKey=RP24105&q=RP24105&focusModel=canonrp%2Brf24-105&book=1&branchId=Q9",
+      "bookPath": "/catalog?modelKey=RP24105&q=RP24105&focusModel=canonrp%2Brf24-105&book=1",
       "feedbackPath": "/feedback?modelKey=RP24105&model=Canon+RP+%2B+RF+24-105&from=%2Fthue-may-anh-canon-rp-24-105",
       "kitLabel": "CANON EOS RP + RF 24-105",
       "useCase": "Thuê Canon RP + RF 24-105 tại FAO Camera TP.HCM",
@@ -392,7 +393,7 @@
       "priceThreeDay": 400000,
       "priceNextDay": 90000,
       "deposit": 1000000,
-      "unitCount": 6,
+      "unitCount": 8,
       "branches": [
         "PHU_NHUAN",
         "Q9"

@@ -37,6 +37,7 @@ import {
   openGoogleCalendarPickup,
   openGoogleCalendarReturn,
 } from "../../utils/orderCalendar";
+import OrderPhotoboothSection from "../../features/photobooth/components/OrderPhotoboothSection";
 
 const FALLBACK_IMG = "https://placehold.co/640x360/fdf2f8/ec4899?text=No+Image";
 
@@ -489,6 +490,16 @@ export default function OrderInfoPage() {
                 onAddCalendar={handleAddCalendar}
               />
             </motion.div>
+
+            {orderDetails.orderIdNew && (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.08 }}
+              >
+                <OrderPhotoboothSection orderIdNew={orderDetails.orderIdNew} />
+              </motion.div>
+            )}
 
             <motion.section
               initial={{ opacity: 0, y: 16 }}

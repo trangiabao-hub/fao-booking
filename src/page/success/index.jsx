@@ -32,6 +32,7 @@ import {
   getBranchLabelFromId,
   parseCustomerNameFromBookingNote,
 } from "../../utils/orderSummary";
+import PhotoboothCTA from "../../features/photobooth/components/PhotoboothCTA";
 
 function branchMetaFromId(branchIdRaw) {
   const id = normalizeBookingBranchId(branchIdRaw);
@@ -367,6 +368,11 @@ function SuccessCard({ details }) {
           </div>
         </div>
       </motion.div>
+
+      <PhotoboothCTA
+        orderIdNew={details.orderIdNew}
+        orderCode={details.orderCode}
+      />
 
       <motion.div
         initial={{ opacity: 0, y: 12 }}
