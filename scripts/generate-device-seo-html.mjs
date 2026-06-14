@@ -9,6 +9,7 @@ import {
   escapeHtml,
   renderHead,
   renderSiteHeader,
+  renderHeaderNavScript,
   renderSiteFooter,
   renderBreadcrumb,
   renderAiAnswerBox,
@@ -62,6 +63,7 @@ import {
   buildDevicePageH1,
   pickRelatedModels,
   formatVnd,
+  applyOnlineWeekdayDiscount,
 } from "./lib/deviceCatalogSeo.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -329,6 +331,7 @@ function renderDevicePage(m, allModels) {
     </div>
   </main>
   ${renderSiteFooter()}
+  ${renderHeaderNavScript()}
   ${tocMobile.fab}
   ${tocMobile.sheet}
   <div class="mobile-cta-bar" aria-label="Hành động nhanh">
@@ -352,6 +355,97 @@ function groupByBrand(models) {
   }
   const seen = [...order.filter((b) => groups.has(b)), ...[...groups.keys()].filter((k) => !order.includes(k))];
   return seen.map((brand) => ({ brand, models: groups.get(brand) }));
+}
+
+function brandSlug(brand) {
+  return String(brand)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "-");
+}
+
+function brandAccentClass(brand) {
+  const slug = brandSlug(brand);
+  const known = ["fujifilm", "canon", "sony", "dji", "insta-360", "ricoh"];
+  return known.includes(slug) ? `brand-accent-${slug}` : "";
+}
+
+function discountPrice(price) {
+  return applyOnlineWeekdayDiscount(price);
+}
+
+function renderPriceCell(original) {
+  const sale = discountPrice(original);
+  if (!original || sale >= original) {
+    return `<span class="price-sale">${escapeHtml(formatVnd(original))}</span>`;
+  }
+  return `<div class="price-cell"><span class="price-sale">${escapeHtml(formatVnd(sale))}</span><span class="price-was">${escapeHtml(formatVnd(original))}</span></div>`;
+}
+
+function renderPriceHero(original, unit = "/ngày") {
+  const sale = discountPrice(original);
+  if (!original || sale >= original) {
+    return `<span class="price-sale">${escapeHtml(formatVnd(original))}<small>${unit}</small></span>`;
+  }
+  return `<span class="price-was">${escapeHtml(formatVnd(original))}</span><span class="price-sale">${escapeHtml(formatVnd(sale))}<small>${unit}</small></span>`;
+}
+
+function renderMiniChip(label, original) {
+  const sale = discountPrice(original);
+  if (!original || sale >= original) {
+    return `<div class="price-mini-chip"><em>${escapeHtml(label)}</em><strong>${escapeHtml(formatVnd(original))}</strong></div>`;
+  }
+  return `<div class="price-mini-chip"><em>${escapeHtml(label)}</em><span class="price-was">${escapeHtml(formatVnd(original))}</span><strong>${escapeHtml(formatVnd(sale))}</strong></div>`;
+}
+
+function renderPriceCardImage(m, tilt = 0) {
+  if (!m.image) return "";
+  return `<div class="price-card-photo" style="--img-tilt:${tilt}deg" aria-hidden="true"><img src="${escapeHtml(m.image)}" alt="" loading="lazy" decoding="async" width="160" height="120" /></div>`;
+}
+
+function renderModelThumb(m) {
+  if (!m.image) return "";
+  return `<img class="model-thumb" src="${escapeHtml(m.image)}" alt="" loading="lazy" decoding="async" width="44" height="44" />`;
+}
+
+function renderPricePageScript() {
+  return `<script>
+(function(){
+  var search=document.getElementById("price-search");
+  var chips=document.querySelectorAll(".brand-jump [data-brand]");
+  var sections=document.querySelectorAll(".brand-section");
+  function norm(s){return (s||"").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"");}
+  var activeBrand="all";
+  function filter(){
+    var q=norm(search?search.value:"");
+    sections.forEach(function(sec){
+      var secBrand=sec.dataset.brand||"";
+      var secMatch=!activeBrand||activeBrand==="all"||secBrand===activeBrand;
+      var anyVisible=false;
+      sec.querySelectorAll("[data-search]").forEach(function(el){
+        var match=!q||norm(el.dataset.search).indexOf(q)>=0;
+        var show=secMatch&&match;
+        el.style.display=show?"":"none";
+        if(show)anyVisible=true;
+      });
+      sec.style.display=anyVisible?"":"none";
+    });
+  }
+  chips.forEach(function(chip){
+    chip.addEventListener("click",function(){
+      activeBrand=chip.dataset.brand||"all";
+      chips.forEach(function(c){c.classList.toggle("active",c===chip);});
+      filter();
+      if(activeBrand!=="all"){
+        var target=document.getElementById("brand-"+activeBrand);
+        if(target)target.scrollIntoView({behavior:"smooth",block:"start"});
+      }
+    });
+  });
+  if(search)search.addEventListener("input",filter);
+})();
+</script>`;
 }
 
 function buildPriceIndexSchema(models, pageUrl) {
@@ -400,24 +494,54 @@ function renderPriceIndexPage(models) {
   const title = "Bảng giá thuê máy ảnh TP.HCM — FAO Camera theo từng model";
   const description = `Bảng giá thuê máy ảnh FAO ${models.length}+ model: Fujifilm, Canon, Sony, DJI. Giá 6 tiếng & theo ngày minh bạch. Phú Nhuận & Thủ Đức — đặt online faocamera.vn.`;
 
-  const brandSections = groupByBrand(models)
+  const brands = groupByBrand(models);
+  const brandSections = brands
     .map(({ brand, models: list }) => {
+      const slug = brandSlug(brand);
+      const searchKey = (m) =>
+        `${m.displayName} ${m.brandLabel || ""} ${m.categoryName || ""}`.toLowerCase();
+
+      const mobileCards = list
+        .map((m, i) => {
+          const tilt = i % 2 === 0 ? -7 : 5;
+          return `<a class="price-card${m.image ? " has-img" : ""}" href="/${escapeHtml(m.slug)}/" data-search="${escapeHtml(searchKey(m))}">
+            <div class="price-card-inner">
+              ${renderPriceCardImage(m, tilt)}
+              <div class="price-card-body">
+                <div class="price-card-top">
+                  <span class="price-card-name">${escapeHtml(m.displayName)}</span>
+                  <span class="price-disc-badge">-20%</span>
+                </div>
+                <div class="price-card-hero">${renderPriceHero(m.priceOneDay)}</div>
+                <div class="price-chip-row">
+                  ${renderMiniChip("6 tiếng", m.priceSixHours)}
+                  ${renderMiniChip("2 ngày", m.priceTwoDay)}
+                  ${renderMiniChip("3 ngày", m.priceThreeDay)}
+                </div>
+              </div>
+            </div>
+          </a>`;
+        })
+        .join("");
+
       const rows = list
         .map((m) => {
           const bookHref = deviceBookHref(m, "bang-gia-thue-may-anh");
-          return `<tr>
-              <td><a href="/${escapeHtml(m.slug)}/">${escapeHtml(m.displayName)}</a></td>
-              <td class="price">${escapeHtml(formatVnd(m.priceSixHours))}</td>
-              <td class="price">${escapeHtml(formatVnd(m.priceOneDay))}</td>
-              <td class="price">${escapeHtml(formatVnd(m.priceTwoDay))}</td>
-              <td class="price">${escapeHtml(formatVnd(m.priceThreeDay))}</td>
+          return `<tr data-search="${escapeHtml(searchKey(m))}">
+              <td class="model-cell"><a href="/${escapeHtml(m.slug)}/" class="model-link">${renderModelThumb(m)}<span>${escapeHtml(m.displayName)}</span></a></td>
+              <td class="price">${renderPriceCell(m.priceSixHours)}</td>
+              <td class="price">${renderPriceCell(m.priceOneDay)}</td>
+              <td class="price">${renderPriceCell(m.priceTwoDay)}</td>
+              <td class="price">${renderPriceCell(m.priceThreeDay)}</td>
               <td class="book-cell"><a href="${escapeHtml(bookHref)}" data-catalog-book="1">Đặt lịch →</a></td>
             </tr>`;
         })
         .join("");
-      return `<section class="brand-section">
-        <h2>${escapeHtml(brand)}</h2>
-        <div class="price-table-wrap">
+      const accent = brandAccentClass(brand);
+      return `<section class="brand-section ${accent}" id="brand-${escapeHtml(slug)}" data-brand="${escapeHtml(slug)}">
+        <h2>${escapeHtml(brand)} <span class="brand-count">${list.length} model</span></h2>
+        <div class="price-cards">${mobileCards}</div>
+        <div class="price-table-wrap price-table-desktop">
           <table class="price-table">
             <thead><tr><th>Model</th><th>6 tiếng</th><th>1 ngày</th><th>2 ngày</th><th>3 ngày</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
@@ -427,9 +551,22 @@ function renderPriceIndexPage(models) {
     })
     .join("");
 
+  const brandJump = brands
+    .map(({ brand }) => {
+      const slug = brandSlug(brand);
+      return `<button type="button" data-brand="${escapeHtml(slug)}">${escapeHtml(brand)}</button>`;
+    })
+    .join("");
+
+  const sortedByPrice = [...models].sort((a, b) => a.priceOneDay - b.priceOneDay);
+  const minPrice = sortedByPrice[0]?.priceOneDay;
+  const maxPrice = sortedByPrice[sortedByPrice.length - 1]?.priceOneDay;
+  const minSale = discountPrice(minPrice);
+  const maxSale = discountPrice(maxPrice);
+
   const aiBox = renderAiAnswerBox({
-    summary: `FAO Camera cho thuê ${models.length} dòng máy ảnh tại TP.HCM — giá từ ${formatVnd(models[0]?.priceOneDay)}/ngày đến ${formatVnd(models[models.length - 1]?.priceOneDay)}/ngày. Bao gồm Fujifilm (X-T, X100, X-S), Canon (R50, G7X, RP), Sony (ZV-E10, A6400), DJI Pocket 3. Đặt online — chi nhánh Phú Nhuận & Q9 Thủ Đức.`,
-    highlight: formatVnd(models[0]?.priceOneDay) + " – " + formatVnd(models[models.length - 1]?.priceOneDay),
+    summary: `FAO Camera cho thuê ${models.length} dòng máy ảnh tại TP.HCM — giá từ ${formatVnd(minSale)}/ngày (đã giảm 20% T2–T6 đặt online) đến ${formatVnd(maxSale)}/ngày. Bao gồm Fujifilm, Canon, Sony, DJI. Chi nhánh Phú Nhuận & Q9 Thủ Đức.`,
+    highlight: formatVnd(minSale) + " – " + formatVnd(maxSale),
     sourcePath: `${path}/`,
   });
 
@@ -448,31 +585,59 @@ function renderPriceIndexPage(models) {
         { label: "Trang chủ", href: "/" },
         { label: "Bảng giá thuê máy ảnh", href: `${path}/` },
       ])}
-      <article class="seo-hero">
-        <h1>Bảng giá thuê máy ảnh FAO Camera TP.HCM</h1>
-        ${aiBox}
-        <p class="intro">Bảng giá tham khảo theo từng model — lấy trực tiếp từ catalog FAO. Bấm tên máy để xem chi tiết, FAQ và đặt lịch online. Giá đã bao gồm combo cơ bản (pin, sạc, thẻ, túi — tùy máy).</p>
-        ${phuNhuanCard}
-        ${brandSections}
-        ${renderShopStrip()}
-        <section class="cta-panel">
-          <h2>Chọn máy và đặt lịch</h2>
-          <p>Lịch trống realtime trên catalog.</p>
-          <div class="cta-btns">
-            <a class="primary" href="/catalog">Mở Catalog</a>
-            <a class="secondary" href="/thue-may-anh-phu-nhuan/">Chi nhánh Phú Nhuận</a>
+      <article class="seo-hero price-index">
+        <h1>Bảng giá thuê máy ảnh FAO</h1>
+        <div class="price-promo-banner">
+          <span class="price-promo-badge">-20%</span>
+          <span>Giá đặt online T2–T6 · đã áp dụng ưu đãi trên bảng</span>
+        </div>
+        <p class="price-meta-line">${models.length} model · <strong>${escapeHtml(formatVnd(minSale))} – ${escapeHtml(formatVnd(maxSale))}/ngày</strong> <span style="opacity:.75">(giá gốc ${escapeHtml(formatVnd(minPrice))} – ${escapeHtml(formatVnd(maxPrice))})</span></p>
+        <div class="price-toolbar" id="price-toolbar">
+          <input type="search" id="price-search" placeholder="Tìm model (VD: G7X, X100V, R50)…" autocomplete="off" enterkeyhint="search" />
+          <div class="brand-jump" role="tablist" aria-label="Lọc theo hãng">
+            <button type="button" class="active" data-brand="all">Tất cả</button>
+            ${brandJump}
           </div>
-        </section>
+        </div>
+        ${brandSections}
+        <details class="price-seo-extra">
+          <summary>Thông tin thêm · chi nhánh · chính sách</summary>
+          <div class="price-seo-body">
+            ${aiBox}
+            <p class="intro">Bảng giá tham khảo theo từng model — lấy trực tiếp từ catalog FAO, <strong>đã trừ 20% ưu đãi T2–T6 đặt online</strong>. Bấm tên máy để xem chi tiết và đặt lịch. Giá đã bao gồm combo cơ bản (pin, sạc, thẻ, túi — tùy máy). Cuối tuần & lễ áp dụng giá gốc.</p>
+            ${phuNhuanCard}
+            ${renderShopStrip()}
+            <section class="cta-panel">
+              <h2>Chọn máy và đặt lịch</h2>
+              <p>Lịch trống realtime trên catalog.</p>
+              <div class="cta-btns">
+                <a class="primary" href="/catalog">Mở Catalog</a>
+                <a class="secondary" href="/thue-may-anh-phu-nhuan/">Chi nhánh Phú Nhuận</a>
+              </div>
+            </section>
+          </div>
+        </details>
       </article>
     </div>
   </main>
   ${renderSiteFooter()}
+  ${renderHeaderNavScript()}
+  ${renderPricePageScript()}
   ${renderAttributionBootstrapScript("seo", "bang-gia-thue-may-anh")}
 </body>
 </html>`;
 }
 
 const models = await loadOrFetchDeviceModels(API_URL);
+const priceOnly = process.argv.includes("--price-only");
+
+if (priceOnly) {
+  const priceDir = join(PUBLIC_DIR, "bang-gia-thue-may-anh");
+  mkdirSync(priceDir, { recursive: true });
+  writeFileSync(join(priceDir, "index.html"), renderPriceIndexPage(models), "utf8");
+  console.log(`  ✓ /bang-gia-thue-may-anh/index.html`);
+  process.exit(0);
+}
 
 let count = 0;
 for (const m of models) {

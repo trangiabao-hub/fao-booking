@@ -1,6 +1,6 @@
 /**
  * Bản sao logic fao manage: src/pages/manage/utils/pricing.js
- * Giữ đồng bộ 100% — sửa song song cả hai nơi khi đổi công thức.
+ * Giữ đồng bộ 100% — chạy `node scripts/pricing-sync-check.mjs` (vite-node) sau khi sửa.
  */
 import dayjs from "dayjs";
 import holidaysData from "../data/holidays.json";
@@ -31,27 +31,33 @@ export function isNonDiscountDay(date) {
   return isWeekend || isHoliday(d);
 }
 
+/** Đồng bộ faocamera.vn + manage + fao-booking — nhận từ giờ này trở đi → tính phí từ 0h ngày hôm sau. */
+export const EVENING_PICKUP_HOUR = 19;
+const MORNING_RETURN_HOUR = 10;
+
 const TET_DAYS = ["2026-02-16", "2026-02-17", "2026-02-18", "2026-02-19"];
+
+export function getEffectiveRentalBounds(startDay, endDay) {
+  let effectiveStart = startDay.clone();
+  if (startDay.hour() >= EVENING_PICKUP_HOUR) {
+    effectiveStart = startDay.clone().add(1, "day").startOf("day");
+  }
+
+  let effectiveEnd = endDay.clone();
+  if (endDay.hour() < MORNING_RETURN_HOUR) {
+    effectiveEnd = endDay.clone().startOf("day");
+  }
+
+  return { effectiveStart, effectiveEnd };
+}
 
 export function getAdjustedRange(start, end) {
   const s = dayjs(start);
   const e = dayjs(end);
   if (!s.isValid() || !e.isValid()) return null;
 
-  let adjustedStart = s.clone();
-  if (s.hour() >= 19) {
-    adjustedStart = adjustedStart.add(1, "day").startOf("day");
-  } else {
-    adjustedStart = adjustedStart.startOf("day");
-  }
-
-  let adjustedEnd = e.clone();
-  if (e.hour() < 10) {
-    adjustedEnd = adjustedEnd.subtract(1, "day").startOf("day");
-  } else {
-    adjustedEnd = adjustedEnd.startOf("day");
-  }
-  return [adjustedStart, adjustedEnd];
+  const { effectiveStart, effectiveEnd } = getEffectiveRentalBounds(s, e);
+  return [effectiveStart.startOf("day"), effectiveEnd.startOf("day")];
 }
 
 function hasTetDays(start, end) {
@@ -82,18 +88,9 @@ export function getDiscountBreakdown(rentalPeriod) {
     return { discountableDates: [], holidayDates: [], weekendDates: [] };
   }
 
-  let adjustedStart = startDay.clone();
-  if (startDay.hour() >= 19) {
-    adjustedStart = adjustedStart.add(1, "day").startOf("day");
-  } else {
-    adjustedStart = adjustedStart.startOf("day");
-  }
-
-  let adjustedEnd = endDay.clone();
-  if (endDay.hour() < 10) {
-    adjustedEnd = adjustedEnd.subtract(1, "day").startOf("day");
-  } else {
-    adjustedEnd = adjustedEnd.startOf("day");
+  const [adjustedStart, adjustedEnd] = getAdjustedRange(startDay, endDay);
+  if (!adjustedStart || !adjustedEnd || adjustedEnd.isBefore(adjustedStart)) {
+    return { discountableDates: [], holidayDates: [], weekendDates: [] };
   }
 
   const discountableDates = [];
@@ -148,15 +145,10 @@ export function calculateRentalInfo(rentalPeriod, device) {
     return defaultReturn;
   }
 
-  let effectiveStart = startDayjs.clone();
-  if (startDayjs.hour() >= 19) {
-    effectiveStart = startDayjs.clone().add(1, "day").startOf("day");
-  }
-
-  let effectiveEnd = endDayjs.clone();
-  if (endDayjs.hour() < 10) {
-    effectiveEnd = endDayjs.clone().startOf("day");
-  }
+  const { effectiveStart, effectiveEnd } = getEffectiveRentalBounds(
+    startDayjs,
+    endDayjs,
+  );
 
   if (!effectiveEnd.isAfter(effectiveStart)) {
     const totalDurationHours = endDayjs.diff(startDayjs, "hour", true);

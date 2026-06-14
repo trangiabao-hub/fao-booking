@@ -76,6 +76,17 @@ export function formatVnd(n) {
   return `${Math.round(n).toLocaleString("vi-VN")}đ`;
 }
 
+/** Làm tròn xuống nghìn — đồng bộ booking app */
+export function roundDownToThousand(num) {
+  if (typeof num !== "number" || isNaN(num) || num <= 0) return 0;
+  return Math.floor(num / 1000) * 1000;
+}
+
+/** Giảm 20% T2–T6 đặt online (hiển thị bảng giá) */
+export function applyOnlineWeekdayDiscount(price) {
+  return roundDownToThousand(price * 0.8);
+}
+
 /** Chính sách cọc FAO — đồng bộ booking app */
 export function buildDepositPolicyBullets(m) {
   const depositLine =

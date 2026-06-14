@@ -296,6 +296,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://faocamera.vn/thue-may-anh-dji-pk4</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://faocamera.vn/thue-may-anh-dji-pocket-3</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>

@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-05-27T03:17:43.034Z",
+  "fetchedAt": "2026-06-07T18:04:45.858Z",
   "source": "api",
   "apiUrl": "https://api.faodigital.vn/api",
   "models": [
@@ -17,7 +17,7 @@
       "priceThreeDay": 590000,
       "priceNextDay": 160000,
       "deposit": 2000000,
-      "unitCount": 45,
+      "unitCount": 46,
       "branches": [
         "PHU_NHUAN",
         "Q9"
@@ -259,14 +259,15 @@
       "priceThreeDay": 900000,
       "priceNextDay": 300000,
       "deposit": 3000000,
-      "unitCount": 1,
+      "unitCount": 2,
       "branches": [
-        "Q9"
+        "Q9",
+        "PHU_NHUAN"
       ],
-      "defaultBranchId": "Q9",
+      "defaultBranchId": "PHU_NHUAN",
       "image": "https://api.faodigital.vn/uploads/devices/185/057d8687-4778-4bcb-baa8-f20d356927ac.jpg",
       "catalogQuery": "/catalog?q=RP24105",
-      "bookPath": "/catalog?modelKey=RP24105&q=RP24105&focusModel=canonrp%2Brf24-105&book=1&branchId=Q9",
+      "bookPath": "/catalog?modelKey=RP24105&q=RP24105&focusModel=canonrp%2Brf24-105&book=1",
       "feedbackPath": "/feedback?modelKey=RP24105&model=Canon+RP+%2B+RF+24-105&from=%2Fthue-may-anh-canon-rp-24-105",
       "kitLabel": "CANON EOS RP + RF 24-105",
       "useCase": "Thuê Canon RP + RF 24-105 tại FAO Camera TP.HCM",
@@ -392,7 +393,7 @@
       "priceThreeDay": 400000,
       "priceNextDay": 90000,
       "deposit": 1000000,
-      "unitCount": 6,
+      "unitCount": 8,
       "branches": [
         "PHU_NHUAN",
         "Q9"
@@ -1031,7 +1032,7 @@
       "priceTwoDay": 660000,
       "priceThreeDay": 930000,
       "priceNextDay": 300000,
-      "deposit": 3000000,
+      "deposit": 5000000,
       "unitCount": 1,
       "branches": [
         "PHU_NHUAN"
@@ -1181,6 +1182,35 @@
       ],
       "comboNote": "Giá thuê theo combo trên catalog (thường gồm pin, sạc, thẻ nhớ, túi — tùy máy).",
       "feedbackRaw": "Sony ZV-1\nPhù hợp: Vlogger mới bắt đầu, thích chụp ảnh tự sướng, cần máy nhỏ gọn\nƯu điểm:\n - Rất dễ dùng, không cần biết nhiều về máy ảnh\n - Màn hình lật xoay 180 độ để tự quay/chụp\n - Chụp chân dung xóa phông ảo diệu\n - Màu sắc tươi tắn, da dẻ mịn màng\n - Nhỏ gọn, bỏ túi mang đi khắp nơi\n - Chống rung tốt, quay vlog thoải mái"
+    },
+    {
+      "modelKey": "PK4",
+      "displayName": "DJI Osmo Pocket 4",
+      "categoryName": "DJI",
+      "brandLabel": "DJI",
+      "categoryOrder": 4,
+      "itemOrder": 0,
+      "slug": "thue-may-anh-dji-pk4",
+      "priceSixHours": 200000,
+      "priceOneDay": 250000,
+      "priceTwoDay": 440000,
+      "priceThreeDay": 630000,
+      "priceNextDay": 200000,
+      "deposit": null,
+      "unitCount": 1,
+      "branches": [
+        "PHU_NHUAN"
+      ],
+      "defaultBranchId": "PHU_NHUAN",
+      "image": "https://api.faodigital.vn/uploads/devices/167/9c8548f0-e488-486b-9caa-f3231d6591e6.jpg",
+      "catalogQuery": "/catalog?q=PK4",
+      "bookPath": "/catalog?modelKey=PK4&q=PK4&focusModel=djiosmopocket4&book=1&branchId=PHU_NHUAN",
+      "feedbackPath": "/feedback?modelKey=PK4&model=DJI+Osmo+Pocket+4&from=%2Fthue-may-anh-dji-pk4",
+      "kitLabel": "DJI OSMO POCKET 4",
+      "useCase": "Thuê DJI Osmo Pocket 4 tại FAO Camera TP.HCM",
+      "pros": [],
+      "comboNote": "Giá thuê theo combo trên catalog (thường gồm pin, sạc, thẻ nhớ, túi — tùy máy).",
+      "feedbackRaw": null
     },
     {
       "modelKey": "PK3",

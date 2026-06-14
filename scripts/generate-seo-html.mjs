@@ -20,6 +20,7 @@ import {
   SITE_CONFIG,
   catalogHref,
   renderAttributionBootstrapScript,
+  renderHeaderNavScript,
 } from "./static-site-layout.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -185,6 +186,7 @@ function renderPage(page) {
     </div>
   </main>
   ${renderSiteFooter()}
+  ${renderHeaderNavScript()}
   ${renderAttributionBootstrapScript("seo", page.slug)}
 </body>
 </html>`;

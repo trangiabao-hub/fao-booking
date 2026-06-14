@@ -33,6 +33,7 @@ import {
   absoluteImageUrl,
   catalogHref,
   renderAttributionBootstrapScript,
+  renderHeaderNavScript,
 } from "./static-site-layout.mjs";
 import {
   BLOG_CSS,
@@ -340,6 +341,7 @@ function renderArticle(post) {
     </div>
   </main>
   ${renderSiteFooter()}
+  ${renderHeaderNavScript()}
   ${tocMobile.fab}
   ${tocMobile.sheet}
   <div class="mobile-cta-bar" aria-label="Hành động nhanh">
@@ -504,6 +506,7 @@ function renderBlogIndex() {
     </div>
   </main>
   ${renderSiteFooter()}
+  ${renderHeaderNavScript()}
   ${renderBlogIndexScripts(["all", ...categories])}
   ${renderAttributionBootstrapScript("blog", "")}
 </body>
