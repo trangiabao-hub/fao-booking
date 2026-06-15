@@ -24,6 +24,8 @@ function ChicCardInner({
   crossBranchHint,
   onSwitchToBranch,
   priceFootnote = "Giá đã áp dụng ưu đãi trong tuần",
+  selectAddLabel = "Thêm vào đơn",
+  selectRemoveLabel = "Bỏ chọn",
 }) {
   const originalLabel = formatPriceK(pricing?.original || 0);
   const discountedLabel = formatPriceK(pricing?.discounted || 0);
@@ -209,7 +211,7 @@ function ChicCardInner({
                     ? "border-[#E85C9C] bg-[#E85C9C] text-white"
                     : "border-white/70 bg-white/90 text-[#E85C9C] hover:border-[#E85C9C]"
                 }`}
-                aria-label={isSelected ? "Bỏ chọn" : "Thêm vào đơn"}
+                aria-label={isSelected ? selectRemoveLabel : selectAddLabel}
               >
                 {isSelected ? (
                   <Check size={17} strokeWidth={3} />
@@ -483,6 +485,8 @@ function ChicCardInner({
 function chicPropsEqual(prev, next) {
   if (prev.device?.modelKey !== next.device?.modelKey) return false;
   if (prev.isSelected !== next.isSelected) return false;
+  if (prev.selectAddLabel !== next.selectAddLabel) return false;
+  if (prev.selectRemoveLabel !== next.selectRemoveLabel) return false;
   if (prev.isFocused !== next.isFocused) return false;
   if (prev.index !== next.index) return false;
   if (prev.feedbackHref !== next.feedbackHref) return false;

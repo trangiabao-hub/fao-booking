@@ -6,6 +6,7 @@ import api from "../../config/axios";
 import SlideNav from "../../components/SlideNav";
 import FloatingContactButton from "../../components/FloatingContactButton";
 import QuickBookModal from "../../components/QuickBookModal";
+import CatalogCuratedScheduleBanner from "../../components/catalog/CatalogCuratedScheduleBanner";
 import {
   computeAvailabilityRange,
   getAvailabilityRangeError,
@@ -14,6 +15,9 @@ import {
   buildQuickBookInitialPrefs,
   parseCatalogBookingPrefs,
 } from "../../utils/catalogBookingContext";
+import { BRANCHES } from "../../data/bookingConstants";
+import { formatTimeVi } from "../../utils/formatTimeVi";
+import { MESSENGER_LINK } from "../../data/contactConfig";
 import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
 import {
   devicesForBookingBranch,
@@ -773,6 +777,30 @@ export default function FeedbackPage() {
     [fromCatalogPath],
   );
 
+  const catalogSlotSummaryVi = useMemo(() => {
+    if (!catalogSlotPrefs) return "";
+    const { fromDateTime, toDateTime } = computeAvailabilityRange({
+      date: catalogSlotPrefs.date,
+      endDate: catalogSlotPrefs.endDate,
+      timeFrom: catalogSlotPrefs.timeFrom,
+      timeTo: catalogSlotPrefs.timeTo,
+      durationType: catalogSlotPrefs.durationType,
+      pickupType: catalogSlotPrefs.pickupType,
+      pickupSlot: catalogSlotPrefs.pickupSlot,
+    });
+    if (!fromDateTime || !toDateTime) return "";
+    const dm = (d) => `${d.getDate()}/${d.getMonth() + 1}`;
+    return `nhận ${formatTimeVi(fromDateTime)} ${dm(fromDateTime)}, trả ${formatTimeVi(toDateTime)} ${dm(toDateTime)}`;
+  }, [catalogSlotPrefs]);
+
+  const catalogSlotBranchLabel = useMemo(() => {
+    if (!catalogSlotPrefs?.branchId) return "";
+    const branch = BRANCHES.find((b) => b.id === catalogSlotPrefs.branchId);
+    return String(branch?.label || "")
+      .replace(/^FAO\s*/i, "")
+      .trim();
+  }, [catalogSlotPrefs]);
+
   const quickBookInitialPrefs = useMemo(
     () => buildQuickBookInitialPrefs(fromCatalogPath),
     [fromCatalogPath],
@@ -990,6 +1018,13 @@ export default function FeedbackPage() {
           </Link>
         </div>
 
+        {catalogSlotPrefs && catalogSlotSummaryVi && (
+          <CatalogCuratedScheduleBanner
+            pickupReturnSummary={catalogSlotSummaryVi}
+            branchLabel={catalogSlotBranchLabel}
+          />
+        )}
+
         {selectedModel && selectedModel !== DEFAULT_MODEL && (
           <div className="mb-5 rounded-xl border border-[#e8c4d4] bg-[#fff5f9] px-4 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
             <div className="min-w-0">
@@ -1004,33 +1039,53 @@ export default function FeedbackPage() {
               )}
             </div>
             {selectedModelBookDevice && (
-              <button
-                type="button"
-                onClick={() =>
-                  handleOpenQuickBook({
-                    bookDevice: selectedModelBookDevice,
-                    modelKey: selectedModelRow?.modelKey,
-                  })
-                }
-                disabled={
-                  !isModelSlotBookable(selectedModelRow?.modelKey) ||
-                  slotAvailabilityLoading
-                }
-                title={
-                  slotAvailabilityLoading
-                    ? "Đang kiểm tra lịch trống..."
+              <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleOpenQuickBook({
+                      bookDevice: selectedModelBookDevice,
+                      modelKey: selectedModelRow?.modelKey,
+                    })
+                  }
+                  disabled={
+                    !isModelSlotBookable(selectedModelRow?.modelKey) ||
+                    slotAvailabilityLoading
+                  }
+                  title={
+                    slotAvailabilityLoading
+                      ? catalogSlotSummaryVi
+                        ? `Kiểm tra trống theo lịch: ${catalogSlotSummaryVi}`
+                        : "Đang kiểm tra lịch trống..."
+                      : !isModelSlotBookable(selectedModelRow?.modelKey)
+                        ? catalogSlotSummaryVi
+                          ? `Máy đã kín trong khung ${catalogSlotSummaryVi}`
+                          : "Máy đã kín trong khung giờ bạn chọn ở danh mục"
+                        : undefined
+                  }
+                  className="inline-flex rounded-lg bg-[#1F1F1F] px-4 py-2.5 text-sm font-bold text-[#FF9FCA] hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999] disabled:cursor-not-allowed"
+                >
+                  {slotAvailabilityLoading
+                    ? catalogSlotSummaryVi
+                      ? "Kiểm tra lịch shop chọn..."
+                      : "Đang kiểm tra..."
                     : !isModelSlotBookable(selectedModelRow?.modelKey)
-                      ? "Máy đã kín trong khung giờ bạn chọn ở danh mục"
-                      : undefined
-                }
-                className="inline-flex shrink-0 rounded-lg bg-[#1F1F1F] px-4 py-2.5 text-sm font-bold text-[#FF9FCA] hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999] disabled:cursor-not-allowed"
-              >
-                {slotAvailabilityLoading
-                  ? "Đang kiểm tra..."
-                  : !isModelSlotBookable(selectedModelRow?.modelKey)
-                    ? "Đã kín — đổi giờ"
-                    : `Đặt ${formatFeedbackModelTitle(selectedModel)}`}
-              </button>
+                      ? "Đã kín — đổi giờ"
+                      : `Đặt ${formatFeedbackModelTitle(selectedModel)}`}
+                </button>
+                {!slotAvailabilityLoading &&
+                  catalogSlotPrefs &&
+                  !isModelSlotBookable(selectedModelRow?.modelKey) && (
+                    <a
+                      href={MESSENGER_LINK}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-center text-xs font-bold text-[#0084FF] hover:underline"
+                    >
+                      Nhắn shop xác nhận lại
+                    </a>
+                  )}
+              </div>
             )}
           </div>
         )}

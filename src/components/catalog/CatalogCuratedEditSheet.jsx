@@ -1,12 +1,17 @@
 import React, { useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { X } from "lucide-react";
 import BookingPrefsForm, {
   computeAvailabilityRange,
   getAvailabilityRangeError,
-} from "../../components/BookingPrefsForm";
+} from "../BookingPrefsForm";
 
-export default function AvailabilityGate({
-  isOpen,
+/**
+ * Sheet gọn cho khách đã có lịch shop gửi — chỉ sửa giờ hoặc chi nhánh, không mở gate đầy đủ.
+ */
+export default function CatalogCuratedEditSheet({
+  mode,
+  onClose,
   onConfirm,
   branchId,
   date,
@@ -26,19 +31,7 @@ export default function AvailabilityGate({
   setDurationType,
   error,
 }) {
-  const { fromDateTime, toDateTime } = useMemo(
-    () =>
-      computeAvailabilityRange({
-        date,
-        endDate,
-        timeFrom,
-        timeTo,
-        durationType,
-        pickupType,
-        pickupSlot,
-      }),
-    [date, endDate, timeFrom, timeTo, durationType, pickupType, pickupSlot],
-  );
+  const isOpen = mode === "time" || mode === "branch";
 
   const prefs = useMemo(
     () => ({
@@ -63,11 +56,26 @@ export default function AvailabilityGate({
     ],
   );
 
+  const { fromDateTime, toDateTime } = useMemo(
+    () => computeAvailabilityRange(prefs),
+    [prefs],
+  );
+
   const rangeError = getAvailabilityRangeError(prefs, fromDateTime, toDateTime);
   const isComplete = !rangeError;
 
-  const handleBackdropClick = useCallback(() => {
-    if (isComplete) onConfirm();
+  const title =
+    mode === "branch" ? "Đổi chi nhánh" : "Đổi giờ nhận / trả";
+  const subtitle =
+    mode === "branch"
+      ? "Chọn cửa hàng bạn muốn nhận máy."
+      : durationType === "SIX_HOURS"
+        ? "Gói 6 tiếng — chỉ đổi ngày và khung giờ nhận."
+        : "Chọn ngày và giờ nhận / trả phù hợp.";
+
+  const handleConfirm = useCallback(() => {
+    if (!isComplete) return;
+    onConfirm();
   }, [isComplete, onConfirm]);
 
   const MotionDiv = motion.div;
@@ -76,13 +84,13 @@ export default function AvailabilityGate({
     <AnimatePresence>
       {isOpen && (
         <MotionDiv
-          key="availability-gate"
+          key={`curated-edit-${mode}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          onClick={handleBackdropClick}
-          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center"
+          className="fixed inset-0 z-[55] flex items-end justify-center bg-black/45"
+          onClick={onClose}
         >
           <MotionDiv
             initial={{ y: "100%" }}
@@ -90,18 +98,28 @@ export default function AvailabilityGate({
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 400 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#FFFBF5] w-full max-w-md rounded-3xl mb-24 md:mb-28 max-h-[calc(100dvh-8.5rem)] md:max-h-[85vh] flex flex-col overflow-hidden min-w-0"
+            className="mb-24 flex max-h-[calc(100dvh-8.5rem)] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-emerald-100/80 bg-[#FFFBF5] shadow-xl md:mb-28 md:max-h-[75vh]"
           >
-            <div className="px-5 pt-5 pb-3 border-b border-[#FFE4F0] bg-[#FFFBF5]">
-              <div className="mb-2">
-                <h3 className="text-xl font-black text-[#222] uppercase tracking-wider">
-                  Chọn giờ nhận / trả
+            <div className="flex items-start justify-between gap-3 border-b border-emerald-100/60 bg-gradient-to-r from-emerald-50/80 to-[#FFFBF5] px-5 pb-3 pt-5">
+              <div className="min-w-0">
+                <h3 className="text-lg font-black uppercase tracking-wide text-[#222]">
+                  {title}
                 </h3>
+                <p className="mt-1 text-xs font-medium text-[#666]">{subtitle}</p>
               </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="shrink-0 rounded-full p-2 text-[#888] transition-colors hover:bg-black/5 hover:text-[#333]"
+                aria-label="Đóng"
+              >
+                <X size={20} />
+              </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-4 min-w-0">
+            <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-4">
               <BookingPrefsForm
+                sections={mode === "branch" ? "branch" : "time"}
                 branchId={branchId}
                 date={date}
                 endDate={endDate}
@@ -122,22 +140,19 @@ export default function AvailabilityGate({
               />
             </div>
 
-            <div className="px-5 pt-3 pb-4 border-t border-[#FFE4F0] bg-[#FFFBF5]">
+            <div className="border-t border-emerald-100/60 bg-[#FFFBF5] px-5 pb-4 pt-3">
               <button
                 type="button"
-                onClick={onConfirm}
+                onClick={handleConfirm}
                 disabled={!isComplete}
-                className={`w-full py-3 rounded-xl font-black uppercase tracking-wider transition-all ${
+                className={`w-full rounded-xl py-3 font-black uppercase tracking-wider transition-all ${
                   isComplete
                     ? "bg-[#222] text-[#FF9FCA] hover:bg-[#333]"
-                    : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-100"
+                    : "cursor-not-allowed border border-gray-100 bg-gray-200 text-gray-400"
                 }`}
               >
-                Giữ ưu đãi & xem máy còn trống
+                Lưu thay đổi
               </button>
-              <div className="text-center text-sm text-[#888] mt-2">
-                Bạn có thể đổi lại thời gian bất cứ lúc nào.
-              </div>
             </div>
           </MotionDiv>
         </MotionDiv>

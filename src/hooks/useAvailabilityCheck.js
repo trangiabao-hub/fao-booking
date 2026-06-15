@@ -44,7 +44,10 @@ export function useAvailabilityCheck({
         toDateTime,
       );
       if (rangeError) {
-        if (!silent) setAvailabilityError(rangeError);
+        if (!silent) {
+          setAvailabilityError(rangeError);
+          setAvailabilityLoading(false);
+        }
         return;
       }
 
@@ -166,8 +169,12 @@ export function useAvailabilityCheck({
   );
 
   useEffect(() => {
+    if (!availabilityConfirmed) {
+      setAvailabilityLoading(false);
+      return;
+    }
     fetchAvailability();
-  }, [fetchAvailability]);
+  }, [fetchAvailability, availabilityConfirmed]);
 
   return {
     availabilityError,

@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-06-07T18:04:45.858Z",
+  "fetchedAt": "2026-06-15T20:05:18.912Z",
   "source": "api",
   "apiUrl": "https://api.faodigital.vn/api",
   "models": [
@@ -1196,7 +1196,7 @@
       "priceTwoDay": 440000,
       "priceThreeDay": 630000,
       "priceNextDay": 200000,
-      "deposit": null,
+      "deposit": 2000000,
       "unitCount": 1,
       "branches": [
         "PHU_NHUAN"

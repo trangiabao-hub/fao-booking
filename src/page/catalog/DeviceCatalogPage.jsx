@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   Check,
   ShoppingBag,
+  MessageSquare,
   Trash2,
   Minus,
   Plus,
@@ -30,6 +31,9 @@ import BookingPrefsForm, {
   getDefaultBranchId,
   computeAvailabilityRange,
   getAvailabilityRangeError,
+  isAvailabilitySlotStale,
+  clampStaleAvailabilityDates,
+  STALE_AVAILABILITY_SLOT_MESSAGE,
 } from "../../components/BookingPrefsForm";
 import {
   computeDiscountBreakdown,
@@ -60,10 +64,15 @@ import ChicCard from "../../components/catalog/ChicCard";
 import StylishTabs from "../../components/catalog/StylishTabs";
 import FilterModal from "../../components/catalog/FilterModal";
 import AvailabilityGate from "../../components/catalog/AvailabilityGate";
+import CatalogCuratedScheduleBanner from "../../components/catalog/CatalogCuratedScheduleBanner";
+import CatalogCuratedEditSheet from "../../components/catalog/CatalogCuratedEditSheet";
+import CatalogModelFilterToggle from "../../components/catalog/CatalogModelFilterToggle";
+import CatalogStaffShareActions from "../../components/catalog/CatalogStaffShareActions";
 import ConflictModal from "../../components/catalog/ConflictModal";
 import { useCatalogDevices } from "../../hooks/useCatalogDevices";
 import { useCartLines } from "../../hooks/useCartLines";
 import { useAvailabilityCheck } from "../../hooks/useAvailabilityCheck";
+import { useStaffAccess } from "../../hooks/useStaffAccess";
 import { useCatalogFilters } from "../../hooks/useCatalogFilters";
 import {
   FALLBACK_IMG,
@@ -78,6 +87,10 @@ import {
   filterAndSortCatalogRows,
   compactSearchText,
 } from "../../utils/catalogFilters";
+import {
+  buildCuratedModelsSummary,
+  parseModelsParam,
+} from "../../utils/catalogShareLink";
 import {
   parseLocalDateParam,
   isValidTimeParam,
@@ -180,6 +193,22 @@ export default function DeviceCatalogPage() {
   const autoBookParam = searchParams.get("book") === "1";
   const modelKeyFromUrl = (searchParams.get("modelKey") || "").trim();
 
+  /**
+   * Link shop gửi có thể bị mở trễ (ngày nhận đã qua). Không auto-confirm slot quá khứ —
+   * mở lại gate + clamp ngày về hôm nay để khách chọn lại, tránh hiển thị lịch/giá sai.
+   */
+  const initialSlotStale =
+    initialAvailabilityConfirmed &&
+    isAvailabilitySlotStale({
+      date: initialDate,
+      endDate: initialEndDate,
+      timeFrom: initialTimeFrom,
+      timeTo: initialTimeTo,
+      durationType: initialDurationType || "ONE_DAY",
+      pickupType: initialPickupType,
+      pickupSlot: initialPickupSlot,
+    });
+
   const {
     devices,
     apiCategories,
@@ -203,23 +232,43 @@ export default function DeviceCatalogPage() {
     initialPriceRange,
   });
 
+  const { isStaff: isStaffUser } = useStaffAccess();
+
   const [availabilityConfirmed, setAvailabilityConfirmed] = useState(
-    initialAvailabilityConfirmed,
+    initialAvailabilityConfirmed && !initialSlotStale,
   );
+  /** Khách mở link shop gửi (availability=1) — hiện banner lịch đã chọn sẵn. */
+  /** Link shop gửi (availability=1) — giữ cờ này khi khách bấm "Đổi giờ" / "Đổi địa điểm". */
+  const [isCuratedStaffLink] = useState(
+    initialAvailabilityConfirmed && !initialSlotStale,
+  );
+  /** Sheet gọn sửa lịch/chi nhánh cho khách curated — không mở gate đầy đủ. */
+  const [curatedEditMode, setCuratedEditMode] = useState(null);
   const [availabilityPrefs, setAvailabilityPrefs] = useState(() => {
     const p =
       typeof window !== "undefined"
         ? JSON.parse(localStorage.getItem("fao_booking_prefs") || "null")
         : null;
+    const durationType = initialDurationType || p?.durationType || "ONE_DAY";
+
+    // Slot quá khứ: đẩy ngày nhận về hôm nay, giữ nguyên giờ/chi nhánh để khách chỉ cần xác nhận lại.
+    let date = initialDate;
+    let endDate = initialEndDate;
+    if (initialSlotStale) {
+      const today = normalizeDate(new Date());
+      date = today;
+      endDate = durationType === "ONE_DAY" ? addDays(today, 1) : today;
+    }
+
     return {
-      date: initialDate,
-      endDate: initialEndDate,
+      date,
+      endDate,
       timeFrom: initialTimeFrom,
       timeTo: initialTimeTo,
       pickupType: initialPickupType,
       pickupSlot: initialPickupSlot,
       branchId: initialBranchId || p?.branchId || getDefaultBranchId(),
-      durationType: initialDurationType || p?.durationType || "ONE_DAY",
+      durationType,
     };
   });
 
@@ -237,6 +286,36 @@ export default function DeviceCatalogPage() {
     availabilityConfirmed,
     availabilityPrefs,
   });
+
+  // Slot trong link shop gửi đã qua → giải thích ngay trong gate khi mở.
+  useEffect(() => {
+    if (initialSlotStale) {
+      setAvailabilityError(STALE_AVAILABILITY_SLOT_MESSAGE);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Đã xác nhận nhưng khung giờ quá khứ → mở lại gate, tránh fetch availability lặp.
+  useEffect(() => {
+    if (!availabilityConfirmed) return;
+    if (!isAvailabilitySlotStale(availabilityPrefs)) return;
+    setAvailabilityConfirmed(false);
+    setAvailabilityError(STALE_AVAILABILITY_SLOT_MESSAGE);
+  }, [availabilityConfirmed, availabilityPrefs]);
+
+  const showCuratedCustomerBanner = useMemo(
+    () =>
+      isCuratedStaffLink &&
+      availabilityConfirmed &&
+      !isStaffUser &&
+      !isAvailabilitySlotStale(availabilityPrefs),
+    [
+      isCuratedStaffLink,
+      availabilityConfirmed,
+      isStaffUser,
+      availabilityPrefs,
+    ],
+  );
 
   /** id → device gốc từ API (toàn hệ thống) — khớp category theo đại diện + cùng model/tên. */
   const deviceByIdGlobal = useMemo(() => {
@@ -290,6 +369,8 @@ export default function DeviceCatalogPage() {
   /** Progressive disclosure: máy chỉ có / đặt tại chi nhánh khác — không trộn vào grid chính. */
   const [showAlternateBranchOptions, setShowAlternateBranchOptions] =
     useState(false);
+  /** Khi có danh sách máy (link shop / staff chọn +): false = chỉ máy đã chọn, true = full catalog. */
+  const [catalogViewAllDevices, setCatalogViewAllDevices] = useState(false);
 
   const {
     cartLines,
@@ -745,6 +826,52 @@ export default function DeviceCatalogPage() {
     deviceBookingsById,
     deviceRawBookingsById,
   ]);
+
+  const curatedModelsFromUrl = useMemo(
+    () => parseModelsParam(searchParams.get("models")),
+    [searchParams],
+  );
+
+  const activeModelFilterKeys = useMemo(() => {
+    if (curatedModelsFromUrl.length) return curatedModelsFromUrl;
+    if (isStaffUser && cartLines.length > 0) {
+      return [
+        ...new Set(cartLines.map((l) => l.modelKey).filter(Boolean)),
+      ];
+    }
+    return [];
+  }, [curatedModelsFromUrl, isStaffUser, cartLines]);
+
+  const hasModelListFilter = activeModelFilterKeys.length > 0;
+
+  const effectiveModelFilterKeys = catalogViewAllDevices
+    ? []
+    : activeModelFilterKeys;
+
+  useEffect(() => {
+    setCatalogViewAllDevices(false);
+  }, [activeModelFilterKeys.join("\0")]);
+
+  const displayDevicesLocalBranch = useMemo(() => {
+    if (!effectiveModelFilterKeys.length) return processedDevicesLocalBranch;
+    const allow = new Set(
+      effectiveModelFilterKeys.map((k) => k.toLowerCase()),
+    );
+    return processedDevicesLocalBranch.filter((d) =>
+      allow.has((d.modelKey || "").trim().toLowerCase()),
+    );
+  }, [processedDevicesLocalBranch, effectiveModelFilterKeys]);
+
+  const curatedModelsSummary = useMemo(() => {
+    if (!curatedModelsFromUrl.length) return "";
+    const labels = curatedModelsFromUrl.map((mk) => {
+      const row = processedDevicesLocalBranch.find(
+        (d) => (d.modelKey || "").trim().toLowerCase() === mk.toLowerCase(),
+      );
+      return row?.displayName || mk;
+    });
+    return buildCuratedModelsSummary(labels);
+  }, [curatedModelsFromUrl, processedDevicesLocalBranch]);
 
   /** Model chỉ có máy vật lý ở chi nhánh khác (không có tại chi nhánh đang xem catalog). */
   const crossBranchOnlyRows = useMemo(() => {
@@ -1416,14 +1543,22 @@ export default function DeviceCatalogPage() {
 
   const filteredDevices = useMemo(
     () =>
-      filterAndSortCatalogRows(processedDevicesLocalBranch, catalogFilterOpts),
-    [processedDevicesLocalBranch, catalogFilterOpts],
+      filterAndSortCatalogRows(displayDevicesLocalBranch, catalogFilterOpts),
+    [displayDevicesLocalBranch, catalogFilterOpts],
   );
 
-  const filteredAlternateBranchDevices = useMemo(
-    () => filterAndSortCatalogRows(crossBranchOnlyRows, catalogFilterOpts),
-    [crossBranchOnlyRows, catalogFilterOpts],
-  );
+  const filteredAlternateBranchDevices = useMemo(() => {
+    let rows = crossBranchOnlyRows;
+    if (effectiveModelFilterKeys.length) {
+      const allow = new Set(
+        effectiveModelFilterKeys.map((k) => k.toLowerCase()),
+      );
+      rows = rows.filter((d) =>
+        allow.has((d.modelKey || "").trim().toLowerCase()),
+      );
+    }
+    return filterAndSortCatalogRows(rows, catalogFilterOpts);
+  }, [crossBranchOnlyRows, catalogFilterOpts, effectiveModelFilterKeys]);
 
   /** Section chi nhánh khác chỉ hiển thị máy còn trống trong khung giờ đã kiểm tra. */
   const filteredAlternateBranchDevicesAvailable = useMemo(
@@ -1619,6 +1754,9 @@ export default function DeviceCatalogPage() {
       : null;
     const hasAvailabilityFlag = searchParams.has("availability");
 
+    let staleFromUrl = false;
+    let nextConfirmedFromUrl = null;
+
     setAvailabilityPrefs((prev) => {
       const nextPrefs = { ...prev };
       let changed = false;
@@ -1664,16 +1802,37 @@ export default function DeviceCatalogPage() {
         changed = true;
       }
 
+      const merged = changed ? nextPrefs : prev;
+
+      if (hasAvailabilityFlag) {
+        staleFromUrl = isAvailabilitySlotStale(merged);
+        const urlConfirmed = searchParams.get("availability") === "1";
+        nextConfirmedFromUrl = urlConfirmed && !staleFromUrl;
+      }
+
+      if (staleFromUrl) {
+        return clampStaleAvailabilityDates(merged);
+      }
       return changed ? nextPrefs : prev;
     });
 
-    if (hasAvailabilityFlag) {
-      setAvailabilityConfirmed(searchParams.get("availability") === "1");
+    if (hasAvailabilityFlag && nextConfirmedFromUrl !== null) {
+      setAvailabilityConfirmed((prev) =>
+        prev === nextConfirmedFromUrl ? prev : nextConfirmedFromUrl,
+      );
+      if (staleFromUrl && searchParams.get("availability") === "1") {
+        setAvailabilityError(STALE_AVAILABILITY_SLOT_MESSAGE);
+      }
     }
   }, [searchParams]);
 
   // Sync state -> URL params whenever filters change
   useEffect(() => {
+    const slotStale = isAvailabilitySlotStale(availabilityPrefs);
+    const prefsForUrl = slotStale
+      ? clampStaleAvailabilityDates(availabilityPrefs)
+      : availabilityPrefs;
+    const confirmedForUrl = availabilityConfirmed && !slotStale;
     const nextParams = new URLSearchParams(searchParams);
 
     if (selectedCategory && selectedCategory !== "all") {
@@ -1695,64 +1854,71 @@ export default function DeviceCatalogPage() {
       nextParams.delete("q");
     }
 
-    if (availabilityPrefs.branchId) {
-      nextParams.set("branchId", availabilityPrefs.branchId);
+    if (prefsForUrl.branchId) {
+      nextParams.set("branchId", prefsForUrl.branchId);
     } else {
       nextParams.delete("branchId");
     }
 
-    if (availabilityPrefs.durationType) {
-      nextParams.set("durationType", availabilityPrefs.durationType);
+    if (prefsForUrl.durationType) {
+      nextParams.set("durationType", prefsForUrl.durationType);
     } else {
       nextParams.delete("durationType");
     }
 
     if (
-      availabilityPrefs.date &&
-      isValid(availabilityPrefs.date)
+      prefsForUrl.date &&
+      isValid(prefsForUrl.date)
     ) {
-      nextParams.set("date", format(availabilityPrefs.date, "yyyy-MM-dd"));
+      nextParams.set("date", format(prefsForUrl.date, "yyyy-MM-dd"));
     } else {
       nextParams.delete("date");
     }
 
     if (
-      availabilityPrefs.endDate &&
-      isValid(availabilityPrefs.endDate)
+      prefsForUrl.endDate &&
+      isValid(prefsForUrl.endDate)
     ) {
       nextParams.set(
         "endDate",
-        format(availabilityPrefs.endDate, "yyyy-MM-dd"),
+        format(prefsForUrl.endDate, "yyyy-MM-dd"),
       );
     } else {
       nextParams.delete("endDate");
     }
 
-    if (availabilityPrefs.timeFrom) {
-      nextParams.set("timeFrom", availabilityPrefs.timeFrom);
+    if (prefsForUrl.timeFrom) {
+      nextParams.set("timeFrom", prefsForUrl.timeFrom);
     } else {
       nextParams.delete("timeFrom");
     }
 
-    if (availabilityPrefs.timeTo) {
-      nextParams.set("timeTo", availabilityPrefs.timeTo);
+    if (prefsForUrl.timeTo) {
+      nextParams.set("timeTo", prefsForUrl.timeTo);
     } else {
       nextParams.delete("timeTo");
     }
 
-    if (availabilityPrefs.pickupType) {
-      nextParams.set("pickupType", availabilityPrefs.pickupType);
+    if (prefsForUrl.pickupType) {
+      nextParams.set("pickupType", prefsForUrl.pickupType);
     } else {
       nextParams.delete("pickupType");
     }
 
-    if (availabilityPrefs.pickupSlot) {
-      nextParams.set("pickupSlot", availabilityPrefs.pickupSlot);
+    if (prefsForUrl.pickupSlot) {
+      nextParams.set("pickupSlot", prefsForUrl.pickupSlot);
     } else {
       nextParams.delete("pickupSlot");
     }
 
-    nextParams.set("availability", availabilityConfirmed ? "1" : "0");
+    nextParams.set("availability", confirmedForUrl ? "1" : "0");
+
+    const modelsParam = searchParams.get("models");
+    if (modelsParam) {
+      nextParams.set("models", modelsParam);
+    } else {
+      nextParams.delete("models");
+    }
 
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true });
@@ -1783,6 +1949,88 @@ export default function DeviceCatalogPage() {
     setAvailabilityError("");
     setAvailabilityConfirmed(true);
   };
+
+  const handleChangeAvailability = useCallback(() => {
+    setAvailabilityConfirmed(false);
+  }, []);
+
+  const handleOpenCuratedTimeEdit = useCallback(() => {
+    setAvailabilityError("");
+    setCuratedEditMode("time");
+  }, [setAvailabilityError]);
+
+  const handleOpenCuratedBranchEdit = useCallback(() => {
+    setAvailabilityError("");
+    setCuratedEditMode("branch");
+  }, [setAvailabilityError]);
+
+  const handleCloseCuratedEdit = useCallback(() => {
+    setCuratedEditMode(null);
+    setAvailabilityError("");
+  }, [setAvailabilityError]);
+
+  const handleConfirmCuratedEdit = useCallback(() => {
+    const { fromDateTime, toDateTime } =
+      computeAvailabilityRange(availabilityPrefs);
+    const rangeError = getAvailabilityRangeError(
+      availabilityPrefs,
+      fromDateTime,
+      toDateTime,
+    );
+    if (rangeError) {
+      setAvailabilityError(rangeError);
+      return;
+    }
+    setAvailabilityError("");
+    setCuratedEditMode(null);
+  }, [availabilityPrefs, setAvailabilityError]);
+
+  const curatedBranchLabel = useMemo(() => {
+    const branch = BRANCHES.find((b) => b.id === availabilityPrefs.branchId);
+    return branch?.label ?? "";
+  }, [availabilityPrefs.branchId]);
+
+  const staffShareModelKeysList = useMemo(
+    () => cartLines.map((l) => l.modelKey).filter(Boolean),
+    [cartLines],
+  );
+
+  const staffShareModelLabels = useMemo(
+    () =>
+      staffShareModelKeysList.map((mk) => {
+        const row = processedDevicesLocalBranch.find(
+          (d) => (d.modelKey || "").trim() === mk,
+        );
+        return row?.displayName || mk;
+      }),
+    [staffShareModelKeysList, processedDevicesLocalBranch],
+  );
+
+  const cardSelectAddLabel =
+    isStaffUser && availabilityConfirmed
+      ? "Thêm vào danh sách gửi khách"
+      : "Thêm vào đơn";
+
+  const cardSelectRemoveLabel =
+    isStaffUser && availabilityConfirmed
+      ? "Bỏ khỏi danh sách gửi khách"
+      : "Bỏ chọn";
+
+  const modelFilterSelectedLabel = useMemo(() => {
+    const n = activeModelFilterKeys.length;
+    if (curatedModelsFromUrl.length && !isStaffUser) {
+      return `Máy shop gửi (${n})`;
+    }
+    if (isStaffUser && cartLines.length > 0) {
+      return `Danh sách gửi (${n})`;
+    }
+    return `Máy đã chọn (${n})`;
+  }, [
+    activeModelFilterKeys.length,
+    curatedModelsFromUrl.length,
+    isStaffUser,
+    cartLines.length,
+  ]);
 
   const availabilityDisplay = useMemo(() => {
     const from = availabilityRange.fromDateTime;
@@ -1843,7 +2091,7 @@ export default function DeviceCatalogPage() {
     if (lastAutoBookRef.current === modelKeyFromUrl) return;
 
     const mk = modelKeyFromUrl.toLowerCase();
-    const matched = processedDevicesLocalBranch.find(
+    const matched = displayDevicesLocalBranch.find(
       (d) => (d.modelKey || "").trim().toLowerCase() === mk,
     );
     if (!matched) return;
@@ -1854,7 +2102,7 @@ export default function DeviceCatalogPage() {
     autoBookParam,
     modelKeyFromUrl,
     isLoading,
-    processedDevicesLocalBranch,
+    displayDevicesLocalBranch,
     handleQuickBook,
   ]);
 
@@ -1922,8 +2170,24 @@ export default function DeviceCatalogPage() {
           </button>
         </div>
 
-        {/* Availability Summary */}
-        {availabilityConfirmed && (
+        {showCuratedCustomerBanner && (
+            <CatalogCuratedScheduleBanner
+              pickupReturnSummary={catalogPickupReturnSummaryVi}
+              branchLabel={curatedBranchLabel}
+              modelsSummary={curatedModelsSummary}
+              onChangeTime={handleOpenCuratedTimeEdit}
+              onChangeBranch={handleOpenCuratedBranchEdit}
+              catalogViewAllDevices={catalogViewAllDevices}
+              onViewSelectedModels={() => setCatalogViewAllDevices(false)}
+              onViewAllModels={() => setCatalogViewAllDevices(true)}
+              modelFilterSelectedLabel={
+                hasModelListFilter ? modelFilterSelectedLabel : undefined
+              }
+            />
+          )}
+
+        {/* Availability Summary — staff hoặc khách tự chọn lịch (không phải link shop gửi) */}
+        {availabilityConfirmed && !showCuratedCustomerBanner && (
           <div className="mb-4 overflow-hidden rounded-xl bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] border border-pink-100/60">
             <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#FFF5F9] to-white border-b border-pink-100/50">
               <span className="text-sm font-black text-[#333] uppercase tracking-wide">
@@ -1932,7 +2196,8 @@ export default function DeviceCatalogPage() {
                   : "Thuê theo ngày"}
               </span>
               <button
-                onClick={() => setAvailabilityConfirmed(false)}
+                type="button"
+                onClick={handleChangeAvailability}
                 className="text-xs font-bold text-[#E85C9C] hover:text-[#c9185b] px-3 py-1.5 rounded-lg hover:bg-[#E85C9C]/10 transition-all touch-manipulation"
               >
                 Đổi giờ
@@ -1988,6 +2253,19 @@ export default function DeviceCatalogPage() {
                 );
               })()}
             </div>
+            {isStaffUser && cartLines.length === 0 && (
+              <div className="border-t border-pink-100/50 bg-[#FFFCFD]">
+                <p className="px-4 pt-3 text-[10px] font-bold uppercase tracking-wider text-[#888]">
+                  Gửi cho khách
+                </p>
+                <CatalogStaffShareActions
+                  availabilityPrefs={availabilityPrefs}
+                  pickupReturnSummary={catalogPickupReturnSummaryVi}
+                  branchLabel={curatedBranchLabel}
+                  hint="Bấm + trên thẻ máy để chọn danh sách gửi — hoặc copy link catalog đầy đủ."
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -1998,6 +2276,19 @@ export default function DeviceCatalogPage() {
             setActiveTab={setSelectedCategory}
             categories={mergedCategories}
           />
+        ) : null}
+
+        {hasModelListFilter &&
+        availabilityConfirmed &&
+        !showCuratedCustomerBanner ? (
+          <div className="mb-4">
+            <CatalogModelFilterToggle
+              selectedLabel={modelFilterSelectedLabel}
+              viewAll={catalogViewAllDevices}
+              onViewSelected={() => setCatalogViewAllDevices(false)}
+              onViewAll={() => setCatalogViewAllDevices(true)}
+            />
+          </div>
         ) : null}
 
         {/* Results Info */}
@@ -2252,6 +2543,8 @@ export default function DeviceCatalogPage() {
                               (cartQtyByModelKey.get(device.modelKey) || 0) > 0
                             }
                             onToggleSelect={handleToggleSelect}
+                            selectAddLabel={cardSelectAddLabel}
+                            selectRemoveLabel={cardSelectRemoveLabel}
                             feedbackHref={buildFeedbackHref(
                               device.displayName,
                               device.modelKey,
@@ -2307,6 +2600,8 @@ export default function DeviceCatalogPage() {
                         (cartQtyByModelKey.get(device.modelKey) || 0) > 0
                       }
                       onToggleSelect={handleToggleSelect}
+                      selectAddLabel={cardSelectAddLabel}
+                      selectRemoveLabel={cardSelectRemoveLabel}
                       feedbackHref={buildFeedbackHref(
                         device.displayName,
                         device.modelKey,
@@ -2400,6 +2695,8 @@ export default function DeviceCatalogPage() {
                                 0
                               }
                               onToggleSelect={handleToggleSelect}
+                              selectAddLabel={cardSelectAddLabel}
+                            selectRemoveLabel={cardSelectRemoveLabel}
                               feedbackHref={buildFeedbackHref(
                                 device.displayName,
                                 device.modelKey,
@@ -2511,6 +2808,77 @@ export default function DeviceCatalogPage() {
         error={availabilityError}
       />
 
+      <CatalogCuratedEditSheet
+        mode={curatedEditMode}
+        onClose={handleCloseCuratedEdit}
+        onConfirm={handleConfirmCuratedEdit}
+        branchId={availabilityPrefs.branchId}
+        date={availabilityPrefs.date}
+        endDate={availabilityPrefs.endDate}
+        timeFrom={availabilityPrefs.timeFrom}
+        timeTo={availabilityPrefs.timeTo}
+        durationType={availabilityPrefs.durationType}
+        pickupType={availabilityPrefs.pickupType}
+        pickupSlot={availabilityPrefs.pickupSlot}
+        setBranchId={(branchId) =>
+          setAvailabilityPrefs((prev) => ({ ...prev, branchId }))
+        }
+        setDate={(incoming) =>
+          setAvailabilityPrefs((prev) => {
+            const date =
+              incoming != null && isValid(incoming) ? incoming : null;
+            const nextEndDate =
+              prev.durationType === "ONE_DAY"
+                ? prev.endDate &&
+                    date &&
+                    isValid(prev.endDate) &&
+                    isValid(date)
+                  ? prev.endDate.getTime() >= addDays(date, 1).getTime()
+                    ? prev.endDate
+                    : addDays(date, 1)
+                  : date && isValid(date)
+                    ? addDays(date, 1)
+                    : addDays(new Date(), 1)
+                : date;
+            return { ...prev, date, endDate: nextEndDate };
+          })
+        }
+        setEndDate={(incoming) =>
+          setAvailabilityPrefs((prev) => ({
+            ...prev,
+            endDate:
+              incoming == null || isValid(incoming) ? incoming : prev.endDate,
+          }))
+        }
+        setTimeFrom={(timeFrom) =>
+          setAvailabilityPrefs((prev) => ({ ...prev, timeFrom }))
+        }
+        setTimeTo={(timeTo) =>
+          setAvailabilityPrefs((prev) => ({ ...prev, timeTo }))
+        }
+        setPickupType={(pickupType) =>
+          setAvailabilityPrefs((prev) => ({ ...prev, pickupType }))
+        }
+        setPickupSlot={(pickupSlot) =>
+          setAvailabilityPrefs((prev) => ({ ...prev, pickupSlot }))
+        }
+        setDurationType={(durationType) =>
+          setAvailabilityPrefs((prev) => ({
+            ...prev,
+            durationType,
+            pickupType: null,
+            pickupSlot: null,
+            timeFrom: null,
+            timeTo: null,
+            endDate:
+              durationType === "ONE_DAY" && prev.date
+                ? addDays(prev.date, 1)
+                : prev.date,
+          }))
+        }
+        error={availabilityError}
+      />
+
       <AnimatePresence>
         {cartLines.length > 0 && (
           <motion.div
@@ -2530,14 +2898,20 @@ export default function DeviceCatalogPage() {
                 className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3 text-left rounded-lg hover:bg-white/5 transition-colors py-2 px-2 sm:px-3"
               >
                 <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#E85C9C]/30 border border-[#FF9FCA]/40 flex items-center justify-center shrink-0">
-                  <ShoppingBag className="w-5 h-5 text-[#FF9FCA]" />
+                  {isStaffUser ? (
+                    <MessageSquare className="w-5 h-5 text-[#FF9FCA]" />
+                  ) : (
+                    <ShoppingBag className="w-5 h-5 text-[#FF9FCA]" />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div className="font-black text-[#FF9FCA] text-xs uppercase tracking-wider">
-                    Giỏ hàng
+                    {isStaffUser ? "Gửi cho khách" : "Giỏ hàng"}
                   </div>
                   <div className="text-sm font-bold truncate">
-                    {cartTotalQty} máy · {cartLines.length} mẫu
+                    {isStaffUser
+                      ? `${cartLines.length} mẫu đã chọn`
+                      : `${cartTotalQty} máy · ${cartLines.length} mẫu`}
                   </div>
                 </div>
               </button>
@@ -2550,7 +2924,7 @@ export default function DeviceCatalogPage() {
                 }}
                 className="shrink-0 rounded-lg border border-[#FF9FCA]/50 text-[#FF9FCA] text-[10px] sm:text-[11px] font-bold uppercase tracking-wide hover:bg-[#FF9FCA]/15 transition-colors py-1.5 px-2.5 sm:py-2 sm:px-3 whitespace-nowrap leading-tight"
               >
-                Xóa giỏ
+                {isStaffUser ? "Bỏ chọn" : "Xóa giỏ"}
               </button>
               </div>
             </div>
@@ -2563,7 +2937,7 @@ export default function DeviceCatalogPage() {
           <>
             <motion.button
               type="button"
-              aria-label="Đóng giỏ hàng"
+              aria-label={isStaffUser ? "Đóng danh sách gửi khách" : "Đóng giỏ hàng"}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -2584,7 +2958,7 @@ export default function DeviceCatalogPage() {
                   id="cart-drawer-title"
                   className="text-lg font-black text-[#222] uppercase tracking-tight"
                 >
-                  Giỏ hàng
+                  {isStaffUser ? "Gửi cho khách" : "Giỏ hàng"}
                 </h2>
                 <button
                   type="button"
@@ -2597,7 +2971,50 @@ export default function DeviceCatalogPage() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {cartLines.map((line) => {
+                {isStaffUser ? (
+                  <>
+                    <p className="text-xs text-[#666] leading-relaxed">
+                      Danh sách máy sẽ lọc catalog khi khách mở link. Bấm copy
+                      bên dưới để gửi Messenger/Zalo.
+                    </p>
+                    {cartLines.map((line) => {
+                      const row = processedByModelKey.get(line.modelKey);
+                      return (
+                        <div
+                          key={line.modelKey}
+                          className="rounded-xl border-2 border-[#FAD6E8] bg-white p-3 shadow-sm"
+                        >
+                          <div className="flex gap-3 items-center">
+                            <img
+                              src={row?.img || FALLBACK_IMG}
+                              alt=""
+                              className="w-14 h-14 rounded-lg object-cover shrink-0 bg-[#FFE4F0]"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-black text-[#222] text-sm uppercase leading-tight line-clamp-2">
+                                {row?.displayName || line.modelKey}
+                              </div>
+                              {!row && (
+                                <p className="text-xs text-amber-700 mt-1">
+                                  Không thấy trong danh sách hiện tại.
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCartRemoveLine(line.modelKey)}
+                              className="shrink-0 p-2 rounded-lg text-[#999] hover:bg-red-50 hover:text-red-600 transition-colors"
+                              aria-label="Bỏ khỏi danh sách"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                ) : (
+                  cartLines.map((line) => {
                   const row = processedByModelKey.get(line.modelKey);
                   const maxQ = row
                     ? getMaxQtyForCartLine(row, availabilityConfirmed)
@@ -2701,10 +3118,11 @@ export default function DeviceCatalogPage() {
                       )}
                     </div>
                   );
-                })}
+                })
+                )}
               </div>
 
-              {cartCheckoutError ? (
+              {cartCheckoutError && !isStaffUser ? (
                 <div className="px-4 pb-2">
                   <p className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                     {cartCheckoutError}
@@ -2713,29 +3131,41 @@ export default function DeviceCatalogPage() {
               ) : null}
 
               <div className="p-4 border-t border-[#222]/10 bg-white space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-bold text-[#555] uppercase text-xs tracking-wider">
-                    Tạm tính
-                  </span>
-                  <span className="font-black text-lg text-[#E85C9C]">
-                    {formatPriceK(
-                      cartLines.reduce((sum, line) => {
-                        const r = processedByModelKey.get(line.modelKey);
-                        if (!r) return sum;
-                        const p = getDevicePricing(r);
-                        return sum + (p?.discounted || 0) * line.quantity;
-                      }, 0),
-                    )}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCheckoutFromCart}
-                  disabled={cartTotalQty === 0}
-                  className="w-full py-3.5 rounded-xl bg-[#222] text-[#FF9FCA] font-black text-sm uppercase tracking-wider hover:bg-[#333] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Tiến hành đặt & thanh toán
-                </button>
+                {isStaffUser ? (
+                  <CatalogStaffShareActions
+                    availabilityPrefs={availabilityPrefs}
+                    pickupReturnSummary={catalogPickupReturnSummaryVi}
+                    branchLabel={curatedBranchLabel}
+                    modelKeys={staffShareModelKeysList}
+                    modelLabels={staffShareModelLabels}
+                  />
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-bold text-[#555] uppercase text-xs tracking-wider">
+                        Tạm tính
+                      </span>
+                      <span className="font-black text-lg text-[#E85C9C]">
+                        {formatPriceK(
+                          cartLines.reduce((sum, line) => {
+                            const r = processedByModelKey.get(line.modelKey);
+                            if (!r) return sum;
+                            const p = getDevicePricing(r);
+                            return sum + (p?.discounted || 0) * line.quantity;
+                          }, 0),
+                        )}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCheckoutFromCart}
+                      disabled={cartTotalQty === 0}
+                      className="w-full py-3.5 rounded-xl bg-[#222] text-[#FF9FCA] font-black text-sm uppercase tracking-wider hover:bg-[#333] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Tiến hành đặt & thanh toán
+                    </button>
+                  </>
+                )}
               </div>
             </motion.div>
           </>

@@ -1,18 +1,8 @@
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
+import { resolveWsEndpoint } from "../config/apiBase";
 
-const API_URL = import.meta.env.VITE_API_URL;
-const ENV_WS_URL = import.meta.env.VITE_WS_URL;
-
-const normalizeWsEndpoint = (url) => {
-  if (!url) return null;
-  const trimmed = url.replace(/\/$/, "");
-  return trimmed.endsWith("/ws") ? trimmed : `${trimmed}/ws`;
-};
-
-const WS_BASE_URL =
-  API_URL?.replace(/\/api\/?$/, "") || "http://localhost:8080";
-const WS_ENDPOINT = normalizeWsEndpoint(ENV_WS_URL) || `${WS_BASE_URL}/ws`;
+const WS_ENDPOINT = resolveWsEndpoint();
 
 let stompClient = null;
 let subscriptions = {};

@@ -1,11 +1,8 @@
 import axios from "axios";
-
-// Lấy URL từ biến môi trường
-// Nếu chưa có, fallback về localhost
-const baseUrl = import.meta.env.VITE_API_URL;
+import { resolveApiBaseUrl } from "./apiBase";
 
 const api = axios.create({
-  baseURL: baseUrl,
+  baseURL: resolveApiBaseUrl(),
 });
 
 // Thêm token trước khi gửi request

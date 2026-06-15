@@ -182,8 +182,39 @@ export function computeAvailabilityRange(prefs) {
   return { fromDateTime, toDateTime };
 }
 
+export const STALE_AVAILABILITY_SLOT_MESSAGE =
+  "Lịch shop gửi đã qua thời điểm nhận — vui lòng chọn lại giờ nhận / trả ạ.";
+
+/** Khung nhận máy đã qua (ngày hoặc giờ trong quá khứ). */
+export function isAvailabilitySlotStale(prefs, nowMs = Date.now()) {
+  try {
+    const { fromDateTime } = computeAvailabilityRange(prefs);
+    return !!fromDateTime && fromDateTime.getTime() < nowMs;
+  } catch {
+    return false;
+  }
+}
+
+/** Đẩy ngày nhận/trả về hôm nay khi link shop gửi đã lỗi thời — giữ giờ/chi nhánh. */
+export function clampStaleAvailabilityDates(prefs) {
+  const today = normalizeDate(new Date());
+  const durationType = prefs?.durationType || "ONE_DAY";
+  const endDate = durationType === "ONE_DAY" ? addDays(today, 1) : today;
+  const dateSame = prefs?.date?.getTime() === today.getTime();
+  const endSame = prefs?.endDate?.getTime() === endDate.getTime();
+  if (dateSame && endSame) return prefs;
+  return {
+    ...prefs,
+    date: today,
+    endDate,
+  };
+}
+
 export function getAvailabilityRangeError(prefs, fromDateTime, toDateTime) {
   if (!fromDateTime || !toDateTime) return "Vui lòng chọn giờ nhận / trả.";
+  if (fromDateTime.getTime() < Date.now()) {
+    return STALE_AVAILABILITY_SLOT_MESSAGE;
+  }
   if (toDateTime <= fromDateTime)
     return "Thời gian trả phải sau thời gian nhận.";
   if (prefs?.durationType === "SIX_HOURS") {
@@ -229,7 +260,17 @@ export default function BookingPrefsForm({
   error,
   minPickupDate = null,
   depositLegVnd = undefined,
+  /** "all" | "time" | "branch" — form gọn trong sheet sửa lịch khách */
+  sections = "all",
 }) {
+  const showPromo = sections === "all";
+  const showDuration = sections === "all";
+  const showTimeFields = sections === "all" || sections === "time";
+  const showTimeSummaryRow =
+    sections === "all" ||
+    (sections === "time" && durationType === "SIX_HOURS");
+  const showBranch = sections === "all" || sections === "branch";
+  const showBillableTeaser = sections === "all";
   const effectiveMinPickup = useMemo(() => {
     const today = normalizeDate(new Date());
     const q9Opens = normalizeDate(
@@ -368,41 +409,41 @@ export default function BookingPrefsForm({
 
   return (
     <div className="min-w-0 overflow-x-hidden">
-      {/* Promo banner */}
-      <div className="rounded-xl border border-pink-200/70 bg-[#fff7fb] px-4 py-3 mb-4">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-[#E85C9C] text-sm font-semibold tracking-wide">
-            <Sparkles size={14} />
-            Khuyến mãi tuần này
+      {showPromo ? (
+        <div className="rounded-xl border border-pink-200/70 bg-[#fff7fb] px-4 py-3 mb-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[#E85C9C] text-sm font-semibold tracking-wide">
+              <Sparkles size={14} />
+              Khuyến mãi tuần này
+            </div>
+            <span className="rounded-full bg-[#E85C9C] px-2 py-0.5 text-xs font-semibold text-white">
+              Hot
+            </span>
           </div>
-          <span className="rounded-full bg-[#E85C9C] px-2 py-0.5 text-xs font-semibold text-white">
-            Hot
-          </span>
+          <div className="text-sm text-[#555] mt-1.5 font-medium leading-relaxed">
+            Giảm trực tiếp <span className="text-[#E85C9C] font-black">20%</span>{" "}
+            từ thứ 2 đến thứ 6. Tự áp dụng khi đủ điều kiện, không cần nhập mã.
+          </div>
+          <div className="text-sm text-[#555] mt-1.5 font-medium leading-relaxed">
+            <strong className="text-[#E85C9C]">Đặc biệt:</strong> chương trình{" "}
+            <span className="font-black text-[#E85C9C] bg-[#FFE4F0] px-1 py-0.5 rounded">
+              CỌC 0Đ
+            </span>{" "}
+            áp dụng cho HSSV đang còn lịch học tại TP.HCM (xuất trình khi nhận
+            máy).
+            {depositLegBannerLabel ? (
+              <>
+                {" "}
+                <strong>Hoặc</strong> cọc thế chân{" "}
+                <span className="font-black text-[#222]">
+                  {depositLegBannerLabel}
+                </span>{" "}
+                (+ khi thanh toán online) đối với khách không đủ điều kiện trên.
+              </>
+            ) : null}
+          </div>
         </div>
-        <div className="text-sm text-[#555] mt-1.5 font-medium leading-relaxed">
-          Giảm trực tiếp <span className="text-[#E85C9C] font-black">20%</span>{" "}
-          từ thứ 2 đến thứ 6. Tự áp dụng khi đủ điều kiện, không cần nhập mã.
-        </div>
-        <div className="text-sm text-[#555] mt-1.5 font-medium leading-relaxed">
-          <strong className="text-[#E85C9C]">Đặc biệt:</strong>{" "}
-          chương trình{" "}
-          <span className="font-black text-[#E85C9C] bg-[#FFE4F0] px-1 py-0.5 rounded">
-            CỌC 0Đ
-          </span>{" "}
-          áp dụng cho HSSV đang còn lịch học tại TP.HCM (xuất trình khi nhận
-          máy).
-          {depositLegBannerLabel ? (
-            <>
-              {" "}
-              <strong>Hoặc</strong> cọc thế chân{" "}
-              <span className="font-black text-[#222]">
-                {depositLegBannerLabel}
-              </span>{" "}
-              (+ khi thanh toán online) đối với khách không đủ điều kiện trên.
-            </>
-          ) : null}
-        </div>
-      </div>
+      ) : null}
 
       <div className="space-y-4">
         {showFutureReleaseNotice && minPickupDate ? (
@@ -419,7 +460,7 @@ export default function BookingPrefsForm({
             .
           </div>
         ) : null}
-        {/* Gói thuê */}
+        {showDuration ? (
         <div>
           <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-2 block">
             Gói thuê
@@ -460,8 +501,10 @@ export default function BookingPrefsForm({
             ))}
           </div>
         </div>
+        ) : null}
 
-        {/* Ngày nhận / trả */}
+        {showTimeFields ? (
+        <>
         <div className="grid grid-cols-2 gap-3 min-w-0">
           <div>
             <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-1 block">
@@ -536,7 +579,7 @@ export default function BookingPrefsForm({
           </div>
         </div>
 
-        {/* Nhận / Trả time display */}
+        {showTimeSummaryRow ? (
         <div className="grid grid-cols-2 gap-3 min-w-0">
           <div>
             <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-1 block">
@@ -604,8 +647,8 @@ export default function BookingPrefsForm({
             )}
           </div>
         </div>
+        ) : null}
 
-        {/* Chọn thời gian nhận máy (ONE_DAY only) */}
         <AnimatePresence initial={false} mode="wait">
           {durationType === "ONE_DAY" && (
             <MotionDiv
@@ -648,9 +691,10 @@ export default function BookingPrefsForm({
             </MotionDiv>
           )}
         </AnimatePresence>
+        </>
+        ) : null}
 
-        {/* Billable days summary (ONE_DAY) */}
-        {durationType === "ONE_DAY" && billableDays > 0 && (
+        {showBillableTeaser && durationType === "ONE_DAY" && billableDays > 0 && (
           <div className="rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3 text-sm text-slate-700">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[#334155] font-medium">
@@ -692,7 +736,7 @@ export default function BookingPrefsForm({
           </div>
         )}
 
-        {/* Chi nhánh */}
+        {showBranch ? (
         <div>
           <label className="text-sm font-bold uppercase tracking-wider text-[#777] mb-2 block">
             Chi nhánh
@@ -810,6 +854,7 @@ export default function BookingPrefsForm({
             })}
           </div>
         </div>
+        ) : null}
 
         {/* Error */}
         {error && (
