@@ -237,9 +237,12 @@ export default function DeviceCatalogPage() {
   const [availabilityConfirmed, setAvailabilityConfirmed] = useState(
     initialAvailabilityConfirmed && !initialSlotStale,
   );
-  /** Khách mở link shop gửi (availability=1) — hiện banner lịch đã chọn sẵn. */
-  /** Link shop gửi (availability=1) — giữ cờ này khi khách bấm "Đổi giờ" / "Đổi địa điểm". */
-  const [isCuratedStaffLink] = useState(
+  /**
+   * Link shop gửi (availability=1) — giữ cờ này khi khách bấm "Đổi giờ" / "Đổi địa điểm".
+   * Chỉ set true (không reset) — kể cả khi state→URL ghi availability=0 sau khi mở gate.
+   * Cập nhật thêm khi searchParams đổi (Messenger/Zalo mở link trong tab SPA đã mở sẵn).
+   */
+  const [isCuratedStaffLink, setIsCuratedStaffLink] = useState(
     initialAvailabilityConfirmed && !initialSlotStale,
   );
   /** Sheet gọn sửa lịch/chi nhánh cho khách curated — không mở gate đầy đủ. */
@@ -1820,6 +1823,9 @@ export default function DeviceCatalogPage() {
       setAvailabilityConfirmed((prev) =>
         prev === nextConfirmedFromUrl ? prev : nextConfirmedFromUrl,
       );
+      if (nextConfirmedFromUrl) {
+        setIsCuratedStaffLink(true);
+      }
       if (staleFromUrl && searchParams.get("availability") === "1") {
         setAvailabilityError(STALE_AVAILABILITY_SLOT_MESSAGE);
       }

@@ -57,7 +57,15 @@ export function getAdjustedRange(start, end) {
   if (!s.isValid() || !e.isValid()) return null;
 
   const { effectiveStart, effectiveEnd } = getEffectiveRentalBounds(s, e);
-  return [effectiveStart.startOf("day"), effectiveEnd.startOf("day")];
+  let adjustedStart = effectiveStart.startOf("day");
+  let adjustedEnd = effectiveEnd.startOf("day");
+
+  // Trả trước 10h: effectiveEnd = 0h ngày trả — ngày đó không tính phí, loại khỏi lịch giảm giá
+  if (e.hour() < MORNING_RETURN_HOUR) {
+    adjustedEnd = adjustedEnd.subtract(1, "day");
+  }
+
+  return [adjustedStart, adjustedEnd];
 }
 
 function hasTetDays(start, end) {

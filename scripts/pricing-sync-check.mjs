@@ -47,11 +47,11 @@ const CASES = [
     expect: { original: 640000, final: 537000, days: 4 },
   },
   {
-    name: "Trả sáng 09h (trước 10h, 3 ngày tính phí)",
+    name: "Trả sáng 09h (trước 10h, 3 ngày T2–T5 — giảm full 20%)",
     start: "2026-06-16T19:00:00+07:00",
     end: "2026-06-20T09:00:00+07:00",
     voucher: "20_PERCENT_WEEKDAY",
-    expect: { original: 490000, final: 416000, days: 3 },
+    expect: { original: 490000, final: 392000, days: 3 },
   },
   {
     name: "Thuê ngắn qua đêm 10h–20h (<23h, giảm flat 20%)",
@@ -68,9 +68,23 @@ const CASES = [
     expect: { original: 150000, final: 150000, days: 0.5 },
   },
   {
-    name: "1 ngày sáng nhận",
+    name: "1 ngày sáng nhận (T3 → T4)",
     start: "2026-06-17T09:00:00+07:00",
     end: "2026-06-18T09:00:00+07:00",
+    voucher: "20_PERCENT_WEEKDAY",
+    expect: { original: 180000, final: 144000, days: 1 },
+  },
+  {
+    name: "1 ngày CN sáng nhận → T2 sáng trả (không giảm)",
+    start: "2026-06-21T09:00:00+07:00",
+    end: "2026-06-22T09:00:00+07:00",
+    voucher: "20_PERCENT_WEEKDAY",
+    expect: { original: 180000, final: 180000, days: 1 },
+  },
+  {
+    name: "1 ngày T6 sáng nhận → T7 sáng trả (giảm full 20%)",
+    start: "2026-06-19T09:00:00+07:00",
+    end: "2026-06-20T09:00:00+07:00",
     voucher: "20_PERCENT_WEEKDAY",
     expect: { original: 180000, final: 144000, days: 1 },
   },
