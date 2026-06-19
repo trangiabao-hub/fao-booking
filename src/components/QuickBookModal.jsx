@@ -2755,10 +2755,12 @@ export default function QuickBookModal({
                     !isAvailable ||
                     isCheckingAvailability
                   }
-                  className="min-w-0 py-3 rounded-xl bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white text-sm sm:text-base font-black uppercase tracking-wider hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 order-1 sm:order-2"
+                  className="min-w-0 py-3 rounded-xl bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white text-sm sm:text-base font-black uppercase tracking-wider hover:opacity-90 transition-opacity disabled:bg-none disabled:bg-[#cfcfcf] disabled:text-[#6b6b6b] disabled:cursor-not-allowed flex items-center justify-center gap-2 order-1 sm:order-2"
                 >
                   {isSubmitting ? (
                     "Đang xử lý..."
+                  ) : isCheckingAvailability ? (
+                    "Đang kiểm tra lịch…"
                   ) : (
                     <>
                       Thanh toán •{" "}

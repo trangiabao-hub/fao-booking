@@ -3,6 +3,7 @@ import { resolveApiBaseUrl } from "./apiBase";
 
 const api = axios.create({
   baseURL: resolveApiBaseUrl(),
+  timeout: 15000,
 });
 
 // Thêm token trước khi gửi request
