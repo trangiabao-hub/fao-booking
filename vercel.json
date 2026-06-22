@@ -16,6 +16,11 @@
       "permanent": true
     },
     {
+      "source": "/privacy-policy",
+      "destination": "/chinh-sach-quyen-rieng-tu",
+      "permanent": true
+    },
+    {
       "source": "/blog/:slug",
       "destination": "/:slug",
       "permanent": true

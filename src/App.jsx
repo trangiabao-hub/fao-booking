@@ -9,6 +9,7 @@ import Menu from "./page/menu";
 import PhotoBoothPage from "./page/photobooth";
 import FeedbackPage from "./page/feedback";
 import RentalContractSamplePage from "./page/rental-contract-sample";
+import PrivacyPolicyPage from "./page/privacy-policy";
 import SeoMeta from "./components/SeoMeta";
 import AnalyticsShell from "./components/AnalyticsShell";
 
@@ -166,6 +167,14 @@ const App = () => {
     {
       path: "/hop-dong-thue-chuan",
       element: <RentalContractSamplePage />,
+    },
+    {
+      path: "/chinh-sach-quyen-rieng-tu",
+      element: <PrivacyPolicyPage />,
+    },
+    {
+      path: "/privacy-policy",
+      element: <Navigate to="/chinh-sach-quyen-rieng-tu" replace />,
     },
       ],
     },

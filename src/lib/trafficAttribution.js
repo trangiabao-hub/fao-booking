@@ -26,6 +26,8 @@ const SPA_ROUTES = new Set([
   "order",
   "photobooth",
   "hop-dong-thue-chuan",
+  "chinh-sach-quyen-rieng-tu",
+  "privacy-policy",
   "blog",
 ]);
 
