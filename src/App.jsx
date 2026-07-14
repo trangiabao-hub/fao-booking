@@ -7,6 +7,8 @@ import AccountBookingsPage from "./page/account-bookings";
 import AccountPage from "./page/account";
 import Menu from "./page/menu";
 import PhotoBoothPage from "./page/photobooth";
+import TripAlbumPage from "./ptb/pages/TripAlbumPage";
+import AlbumOrderRedirect from "./ptb/pages/AlbumOrderRedirect";
 import FeedbackPage from "./page/feedback";
 import RentalContractSamplePage from "./page/rental-contract-sample";
 import PrivacyPolicyPage from "./page/privacy-policy";
@@ -144,11 +146,37 @@ const App = () => {
       path: "/photobooth",
       element: (
         <SeoMeta
-          title="Photo Booth"
-          description="Đặt lịch trải nghiệm Photo Booth tại FAO với quy trình nhanh gọn."
+          title="Photobooth — Tặng 2 ảnh in khi thuê máy"
+          description="Thuê máy ảnh FAO — ghép ảnh photobooth online, nhận 2 strip in miễn phí khi trả máy. Khung độc quyền, không phai màu."
           path="/photobooth"
         >
           <PhotoBoothPage />
+        </SeoMeta>
+      ),
+    },
+    {
+      path: "/trip/:shareToken",
+      element: (
+        <SeoMeta
+          title="Album ảnh chuyến đi"
+          description="Ghép ảnh photobooth và đặt in cho chuyến thuê máy ảnh tại FAO."
+          path="/trip"
+          noindex
+        >
+          <TripAlbumPage />
+        </SeoMeta>
+      ),
+    },
+    {
+      path: "/album/order/:orderIdNew",
+      element: (
+        <SeoMeta
+          title="Mở album chuyến đi"
+          description="Album ảnh cho đơn thuê máy ảnh FAO."
+          path="/album"
+          noindex
+        >
+          <AlbumOrderRedirect />
         </SeoMeta>
       ),
     },

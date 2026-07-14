@@ -7,7 +7,9 @@ import "dayjs/locale/vi";
 import {
   MagnifyingGlassIcon,
   ArrowPathIcon,
+  PhotoIcon,
 } from "@heroicons/react/24/outline";
+import { FREE_PRINT_QUOTA } from "../../ptb/lib/constants";
 import api from "../../config/axios";
 import SlideNav from "../../components/SlideNav";
 import {
@@ -453,6 +455,15 @@ export default function AccountBookingsPage() {
                 {MAIN_TABS.find((t) => t.id === mainTab)?.hint}
               </p>
 
+              {mainTab === "return" && bookingList.length > 0 ? (
+                <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                  <p className="font-bold">Tặng {FREE_PRINT_QUOTA} ảnh photobooth khi trả máy</p>
+                  <p className="mt-1 text-emerald-800">
+                    Ghép ảnh chuyến đi vào khung trước khi đến shop — nhận in miễn phí trong quota.
+                  </p>
+                </div>
+              ) : null}
+
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-4">
                 <label className="relative block min-w-0 flex-1">
                   <span className="sr-only">Tìm theo tên máy</span>
@@ -621,6 +632,16 @@ export default function AccountBookingsPage() {
                       </div>
 
                       <div className="flex flex-col gap-2 border-t border-[#F5E9EF] px-3.5 py-3 sm:flex-row sm:flex-wrap md:px-5 md:py-3.5">
+                        {booking.orderIdNew &&
+                        ["PAYMENT", "IN_RENT", "DONE", "CREATED"].includes(status) ? (
+                          <Link
+                            to={`/album/order/${booking.orderIdNew}`}
+                            className="inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-pink-700 sm:w-auto sm:px-6 sm:py-3"
+                          >
+                            <PhotoIcon className="h-5 w-5" />
+                            Album & in ảnh
+                          </Link>
+                        ) : null}
                         <Link
                           to={
                             booking.orderIdNew

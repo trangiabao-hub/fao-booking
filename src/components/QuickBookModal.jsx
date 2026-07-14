@@ -1744,6 +1744,10 @@ export default function QuickBookModal({
 
             {step === 2 && (
               <div className="space-y-3 sm:space-y-4">
+                <div className="rounded-2xl border border-pink-200 bg-pink-50/80 px-3 py-2.5 text-xs text-pink-900">
+                  <strong>Tặng 2 ảnh photobooth</strong> khi trả máy — ghép online sau khi chụp.
+                  In thêm chỉ 10.000đ/strip.
+                </div>
                 {isLoggedInUser ? (
                   <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-emerald-50/50 p-3 sm:p-4">
                     <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">

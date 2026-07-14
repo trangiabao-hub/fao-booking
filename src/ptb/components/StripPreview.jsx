@@ -1,0 +1,189 @@
+import React, { useRef } from "react";
+import { CameraIcon } from "@heroicons/react/24/outline";
+import { PHOTO_THEMES } from "../lib/constants";
+import {
+  buildSlotRects,
+  getLayoutDef,
+  getSlotCount,
+  pinchDistance,
+} from "../lib/utils";
+
+export default function StripPreview({
+  strip,
+  previewWidth = 220,
+  theme,
+  onSlotUpload,
+  onSlotRemove,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onPinchZoom,
+  dragState,
+  readOnly = false,
+}) {
+  const fileInputRefs = useRef({});
+  const pinchRef = useRef(null);
+  const layout = getLayoutDef(strip.layoutType);
+  const slotCount = getSlotCount(strip);
+  const frameOptions = strip.frameLayoutOptions ?? null;
+  const slotLayout = frameOptions?.slotLayout;
+  const slotRects = buildSlotRects(slotLayout, slotCount);
+  const hasCustomLayout = slotRects.length > 0;
+  const frameAspectRatio = frameOptions?.frameAspectRatio ?? 1;
+  const activeTheme = theme ?? PHOTO_THEMES.none;
+  const imagePositions = strip.imagePositions ?? [];
+
+  const innerStyle = hasCustomLayout
+    ? {
+        position: "relative",
+        width: previewWidth,
+        aspectRatio: `${1 / frameAspectRatio}`,
+        overflow: "hidden",
+        background: activeTheme.bg ?? "#fff",
+        borderRadius: 12,
+      }
+    : {
+        position: "relative",
+        width: previewWidth,
+        display: "grid",
+        gridTemplateColumns: `repeat(${layout.cols ?? 1}, 1fr)`,
+        gap: 6,
+        padding: 8,
+        background: activeTheme.bg ?? "#fff",
+        borderRadius: 12,
+      };
+
+  return (
+    <div className="mx-auto" style={{ width: previewWidth }}>
+      <div style={innerStyle}>
+        {Array.from({ length: slotCount }).map((_, slotIndex) => {
+          const imageSrc = strip.images[slotIndex];
+          const position = imagePositions[slotIndex] ?? { x: 50, y: 50, zoom: 1 };
+          const rect = hasCustomLayout
+            ? slotRects[Math.min(slotIndex, slotRects.length - 1)]
+            : null;
+          const isDragging =
+            !readOnly && dragState?.slotIndex === slotIndex && dragState?.active;
+
+          const slotStyle = hasCustomLayout
+            ? {
+                position: "absolute",
+                left: `${(rect?.leftRatio ?? 0) * 100}%`,
+                top: `${(rect?.topRatio ?? 0) * 100}%`,
+                width: `${(rect?.widthRatio ?? 1) * 100}%`,
+                height: `${(rect?.heightRatio ?? 0.25) * 100}%`,
+              }
+            : { position: "relative", aspectRatio: "4/3" };
+
+          return (
+            <div
+              key={slotIndex}
+              style={slotStyle}
+              className={`overflow-hidden bg-white/90 ${
+                imageSrc ? "ring-1 ring-[#FCE7F3]" : ""
+              }`}
+              onPointerDown={(e) => {
+                if (readOnly || !imageSrc) return;
+                e.currentTarget.setPointerCapture?.(e.pointerId);
+                onDragStart?.(slotIndex, e.clientX, e.clientY);
+              }}
+              onPointerMove={(e) => {
+                if (!isDragging) return;
+                onDragMove?.(slotIndex, e.clientX, e.clientY);
+              }}
+              onPointerUp={() => onDragEnd?.()}
+              onPointerCancel={() => onDragEnd?.()}
+              onTouchStart={(e) => {
+                if (readOnly) return;
+                if (e.touches.length === 2) {
+                  pinchRef.current = {
+                    slotIndex,
+                    distance: pinchDistance(e.touches),
+                    zoom: position.zoom ?? 1,
+                  };
+                }
+              }}
+              onTouchMove={(e) => {
+                if (readOnly) return;
+                if (e.touches.length === 2 && pinchRef.current?.slotIndex === slotIndex) {
+                  const dist = pinchDistance(e.touches);
+                  const ratio = dist / (pinchRef.current.distance || 1);
+                  onPinchZoom?.(slotIndex, pinchRef.current.zoom * ratio);
+                }
+              }}
+              onTouchEnd={() => {
+                pinchRef.current = null;
+              }}
+            >
+              {!readOnly ? (
+                <input
+                  ref={(el) => {
+                    fileInputRefs.current[slotIndex] = el;
+                  }}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onSlotUpload?.(slotIndex, file);
+                    e.target.value = "";
+                  }}
+                />
+              ) : null}
+
+              {imageSrc ? (
+                <div className="relative h-full w-full">
+                  <img
+                    src={imageSrc}
+                    alt=""
+                    className="h-full w-full object-cover pointer-events-none select-none"
+                    style={{
+                      objectPosition: `${position.x}% ${position.y}%`,
+                      transform: `scale(${position.zoom ?? 1})`,
+                      transformOrigin: `${position.x}% ${position.y}%`,
+                    }}
+                    draggable={false}
+                  />
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSlotRemove?.(slotIndex);
+                      }}
+                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-xs text-white backdrop-blur-sm"
+                      aria-label={`Xóa ảnh ${slotIndex + 1}`}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </div>
+              ) : readOnly ? (
+                <div className="flex h-full w-full items-center justify-center bg-[#FCE7F3]/30" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileInputRefs.current[slotIndex]?.click()}
+                  className="flex h-full w-full min-h-[44px] flex-col items-center justify-center gap-1 bg-[#FFF9FC] text-[#667085] transition-colors hover:bg-[#FCE7F3]/50 hover:text-[#E6007E]"
+                  aria-label={`Thêm ảnh ${slotIndex + 1}`}
+                >
+                  <CameraIcon className="h-5 w-5" strokeWidth={1.5} />
+                  <span className="text-[11px] font-semibold">Ảnh {slotIndex + 1}</span>
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {strip.frameOverlaySrc ? (
+          <img
+            src={strip.frameOverlaySrc}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full object-fill"
+            draggable={false}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}

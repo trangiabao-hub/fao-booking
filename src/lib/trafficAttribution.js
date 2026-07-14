@@ -25,6 +25,8 @@ const SPA_ROUTES = new Set([
   "payment-status",
   "order",
   "photobooth",
+  "trip",
+  "album",
   "hop-dong-thue-chuan",
   "chinh-sach-quyen-rieng-tu",
   "privacy-policy",

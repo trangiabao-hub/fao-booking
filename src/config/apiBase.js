@@ -14,6 +14,21 @@ export function resolveApiBaseUrl() {
   return envApiUrl || "/api/";
 }
 
+/** Origin phục vụ file tĩnh `/uploads/**` (không nằm dưới `/api`). */
+export function resolveUploadOrigin() {
+  const envApi = (import.meta.env.VITE_API_URL || "").trim();
+  if (envApi) {
+    return envApi.replace(/\/api\/?$/, "").replace(/\/$/, "");
+  }
+  if (import.meta.env.DEV) {
+    return "https://api.faodigital.vn";
+  }
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin;
+  }
+  return "https://api.faodigital.vn";
+}
+
 /** SockJS/STOMP endpoint (proxied as /ws in dev). */
 export function resolveWsEndpoint() {
   if (import.meta.env.DEV) {

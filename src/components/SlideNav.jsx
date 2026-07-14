@@ -12,7 +12,7 @@ function getMemberTier(point = 0) {
   return { name: "Đồng", color: "text-orange-500" };
 }
 
-export default function SlideNav() {
+export default function SlideNav({ mobileOnly = false }) {
   const [open, setOpen] = useState(false);
   const [account, setAccount] = useState(null);
   const location = useLocation();
@@ -54,8 +54,12 @@ export default function SlideNav() {
 
   return (
     <>
-      <div className="fixed bottom-0 inset-x-0 z-[70] px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
-        <div className="mx-auto flex h-16 md:h-20 w-full max-w-md md:max-w-5xl items-center justify-between rounded-2xl md:rounded-3xl border border-[#FFE4F0] bg-white/95 px-2 md:px-4 shadow-xl backdrop-blur">
+      <div
+        className={`fixed bottom-0 inset-x-0 z-[70] px-3 pb-[max(12px,env(safe-area-inset-bottom))] ${
+          mobileOnly ? "lg:hidden" : ""
+        }`}
+      >
+        <div className="mx-auto flex h-[68px] w-full max-w-md items-center justify-between rounded-2xl border border-[#F1E4EC] bg-white/95 px-2 shadow-[0_-4px_24px_rgba(16,24,40,0.08)] backdrop-blur-md">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive =
@@ -65,13 +69,13 @@ export default function SlideNav() {
               <div key={item.id} className="flex flex-1 items-center">
                 <Link
                   to={item.to}
-                  className={`flex w-full flex-col items-center justify-center gap-1 md:gap-1.5 rounded-xl md:rounded-2xl py-1.5 md:py-2 text-[10px] md:text-sm font-semibold transition ${
+                  className={`flex w-full min-h-[44px] flex-col items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold transition ${
                     isActive
-                      ? "bg-[#FFF1F8] text-[#E85C9C]"
-                      : "text-[#777] hover:bg-[#f8f8f8]"
+                      ? "bg-[#FCE7F3] text-[#E6007E]"
+                      : "text-[#667085] hover:bg-[#FFF9FC]"
                   }`}
                 >
-                  <Icon size={16} className="md:w-[18px] md:h-[18px]" />
+                  <Icon size={18} />
                   <span>{item.label}</span>
                 </Link>
                 {item.id === "bookings" && (

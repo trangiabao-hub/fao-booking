@@ -170,6 +170,11 @@ function SuccessCard({ details }) {
           <p className="text-slate-600 text-sm lg:text-base mt-1.5 max-w-md lg:max-w-xl mx-auto leading-relaxed">
             Shop đã nhận thanh toán. Bạn cần thêm một bước để shop xác nhận đơn.
           </p>
+          {details.orderIdNew ? (
+            <p className="mt-3 mx-auto max-w-md text-xs sm:text-sm text-pink-800 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2">
+              Sau khi chụp, mở album ghép ảnh photobooth — nhận <strong>2 strip in miễn phí</strong> khi trả máy.
+            </p>
+          ) : null}
 
           <div className="mt-5 mx-auto max-w-lg lg:max-w-2xl">
             <OrderSummaryPanel
@@ -328,6 +333,19 @@ function SuccessCard({ details }) {
               Thao tác nhanh
             </p>
             <div className="flex flex-col sm:flex-row lg:flex-col gap-2">
+            {(details.orderIdNew || details.orderCode) && (
+              <Link
+                to={
+                  details.orderIdNew
+                    ? `/album/order/${details.orderIdNew}`
+                    : `/order/code/${details.orderCode}`
+                }
+                className="inline-flex flex-1 min-h-[44px] min-w-0 items-center justify-center gap-2 px-3 py-2.5 lg:py-3 rounded-xl bg-pink-600 text-white text-sm lg:text-[15px] font-semibold hover:bg-pink-700 transition-colors"
+              >
+                <CameraIcon className="w-4 h-4 shrink-0" />
+                Album & in ảnh miễn phí
+              </Link>
+            )}
             {(details.orderIdNew || details.orderCode) && (
               <Link
                 to={

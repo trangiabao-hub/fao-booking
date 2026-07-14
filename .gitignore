@@ -26,3 +26,4 @@ src/data/.blog-slugs-manifest.json
 *.njsproj
 *.sln
 *.sw?
+.vercel
