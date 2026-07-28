@@ -70,7 +70,7 @@ export default function CatalogCuratedEditSheet({
     mode === "branch"
       ? "Chọn cửa hàng bạn muốn nhận máy."
       : durationType === "SIX_HOURS"
-        ? "Gói 6 tiếng — chỉ đổi ngày và khung giờ nhận."
+        ? "Chọn ngày và khung giờ nhận — trả."
         : "Chọn ngày và giờ nhận / trả phù hợp.";
 
   const handleConfirm = useCallback(() => {

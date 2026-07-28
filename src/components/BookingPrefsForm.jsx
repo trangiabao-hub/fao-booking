@@ -33,11 +33,6 @@ function pickerSelected(d) {
   return d instanceof Date && isValid(d) ? d : null;
 }
 
-const DURATION_TYPES = [
-  { id: "SIX_HOURS", label: "Thuê 6 tiếng" },
-  { id: "ONE_DAY", label: "Thuê theo ngày" },
-];
-
 const ONE_DAY_PICKUP_OPTIONS = [
   {
     id: "MORNING_0900",
@@ -115,6 +110,16 @@ function formatWeekdayLabel(date) {
 
 function formatTimeShort(date) {
   return formatTimeVi(date);
+}
+
+function formatSixHourSlotLabel(slot, isGate) {
+  const from = formatTimeViFromString(slot);
+  const to = formatTimeViFromString(getSixHourAutoReturnTime(slot));
+  if (isGate) {
+    const period = slot === MORNING_PICKUP_TIME ? "Sáng" : "Chiều";
+    return `${period} · ${from} → ${to}`;
+  }
+  return `Nhận ${from} → trả ${to}`;
 }
 
 export function formatPickupReturnSummary(date) {
@@ -265,12 +270,9 @@ export default function BookingPrefsForm({
   variant = "default",
 }) {
   const isGate = variant === "gate";
-  const showDuration = sections === "all";
   const showTimeFields = sections === "all" || sections === "time";
   const showTimeSummaryRow =
-    durationType === "SIX_HOURS"
-      ? sections === "all" || sections === "time"
-      : sections === "all" && !isGate;
+    durationType !== "SIX_HOURS" && sections === "all" && !isGate;
   const showBranch = sections === "all" || sections === "branch";
   const showBillableTeaser = sections === "all" && !isGate;
   const effectiveMinPickup = useMemo(() => {
@@ -356,6 +358,16 @@ export default function BookingPrefsForm({
     [teaserSaving],
   );
   const MotionDiv = motion.div;
+  const MotionButton = motion.button;
+
+  const gateLabelClass =
+    "mb-1.5 block text-xs font-black uppercase tracking-widest text-[#888]";
+  const gateFieldClass =
+    "w-full max-w-full min-w-0 min-h-[48px] rounded-xl border-2 border-[#eee] bg-white px-3.5 py-3.5 text-base font-semibold focus:border-[#FF9FCA] focus:outline-none";
+  const gateChoiceClass =
+    "min-h-[52px] touch-manipulation rounded-xl border-2 font-black transition-all active:scale-[0.98]";
+  const gateLinkClass =
+    "flex min-h-[44px] items-center text-left text-sm font-semibold text-[#E85C9C] underline-offset-2 hover:underline touch-manipulation";
 
   useEffect(() => {
     if (durationType === "SIX_HOURS") {
@@ -403,11 +415,11 @@ export default function BookingPrefsForm({
 
   return (
     <div className="min-w-0 max-w-full overflow-x-hidden">
-      <div className={isGate ? "space-y-2.5" : "space-y-4"}>
+      <div className="space-y-4">
         {showFutureReleaseNotice && minPickupDate ? (
           <div
-            className={`rounded-xl border border-amber-200 bg-amber-50/90 px-3 text-amber-900 font-medium ${
-              isGate ? "py-1.5 text-[11px]" : "py-2 text-sm"
+            className={`rounded-xl border border-amber-200 bg-amber-50/90 px-3.5 text-amber-900 font-medium ${
+              isGate ? "py-2.5 text-xs leading-relaxed" : "py-2 text-sm"
             }`}
           >
             Máy mở đặt lịch từ{" "}
@@ -422,54 +434,70 @@ export default function BookingPrefsForm({
             .
           </div>
         ) : null}
-        {showDuration ? (
-        <div>
-          <label
-            className={`font-bold uppercase tracking-wider text-[#777] block ${
-              isGate
-                ? "text-[10px] font-black tracking-[0.1em] text-[#999] mb-1"
-                : "text-sm mb-2"
-            }`}
-          >
-            Gói thuê
-          </label>
-          <div className="grid grid-cols-2 gap-1.5 min-w-0">
-            {DURATION_TYPES.map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setDurationType(opt.id)}
-                className={`min-w-0 rounded-xl border-2 transition-all text-left ${
-                  isGate ? "px-2.5 py-2" : "px-3 py-2.5"
-                } ${
-                  durationType === opt.id
-                    ? "bg-[#222] text-white border-[#222]"
-                    : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                }`}
-              >
-                <span
-                  className={`font-black tracking-wide truncate block ${
-                    isGate ? "text-[13px]" : "text-sm"
-                  } ${
-                    durationType === opt.id ? "text-[#FF9FCA]" : "text-[#222]"
-                  }`}
-                >
-                  {opt.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-        ) : null}
-
         {showTimeFields ? (
         <>
-        <div className={`grid grid-cols-2 min-w-0 ${isGate ? "gap-2" : "gap-3"}`}>
+        {durationType === "SIX_HOURS" ? (
+          <>
+            <div className="min-w-0">
+              <label className={isGate ? gateLabelClass : "text-sm mb-1 font-bold uppercase tracking-wider text-[#777] block"}>
+                Ngày thuê
+              </label>
+              <DatePicker
+                selected={pickerSelected(date)}
+                onChange={(nextDate) => setDate(normalizeDate(nextDate))}
+                dateFormat="dd/MM/yyyy"
+                locale="vi"
+                minDate={pickupMinDate}
+                placeholderText="Chọn ngày thuê"
+                className={isGate ? gateFieldClass : "w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-white font-medium focus:border-[#FF9FCA] focus:outline-none px-4 py-3 text-base"}
+              />
+            </div>
+
+            <div className="min-w-0">
+              <label className={isGate ? gateLabelClass : "text-sm mb-1 font-bold uppercase tracking-wider text-[#777] block"}>
+                Nhận — trả
+              </label>
+              <div className={`min-w-0 ${isGate ? "flex flex-col gap-2.5" : "grid grid-cols-2 gap-1.5"}`}>
+                {[MORNING_PICKUP_TIME, SIX_HOUR_SECOND_PICKUP_TIME].map((slot) => {
+                  const active = timeFrom === slot;
+                  return (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => {
+                        setTimeFrom(slot);
+                        setTimeTo(getSixHourAutoReturnTime(slot));
+                      }}
+                      className={`${isGate ? gateChoiceClass : "min-w-0 rounded-xl border-2 font-black transition-all px-3 py-3 text-sm"} ${
+                        isGate ? "w-full px-4 py-3.5 text-sm leading-snug" : ""
+                      } ${
+                        active
+                          ? "bg-[#222] text-[#FF9FCA] border-[#222]"
+                          : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
+                      }`}
+                    >
+                      {formatSixHourSlotLabel(slot, isGate)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {sections === "all" ? (
+              <button
+                type="button"
+                onClick={() => setDurationType("ONE_DAY")}
+                className={isGate ? gateLinkClass : "text-left text-xs font-semibold text-[#E85C9C] underline-offset-2 hover:underline"}
+              >
+                Cần thuê nhiều ngày?
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <>
+        <div className={`grid grid-cols-2 min-w-0 ${isGate ? "gap-3" : "gap-3"}`}>
           <div className="min-w-0">
-            <label
-              className={`font-bold uppercase tracking-wider text-[#777] mb-0.5 block ${
-                isGate ? "text-[10px] font-black tracking-[0.1em] text-[#999]" : "text-sm mb-1"
-              }`}
-            >
+            <label className={isGate ? gateLabelClass : "text-sm mb-1 font-bold uppercase tracking-wider text-[#777] block"}>
               Ngày nhận
             </label>
             <DatePicker
@@ -479,82 +507,54 @@ export default function BookingPrefsForm({
               locale="vi"
               minDate={pickupMinDate}
               placeholderText="Chọn ngày nhận"
-              className={`w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-white font-medium focus:border-[#FF9FCA] focus:outline-none ${
-                isGate ? "px-2.5 py-2 text-[14px]" : "px-4 py-3 text-base"
-              }`}
+              className={isGate ? gateFieldClass : "w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-white font-medium focus:border-[#FF9FCA] focus:outline-none px-4 py-3 text-base"}
             />
           </div>
           <div className="min-w-0">
-            <label
-              className={`font-bold uppercase tracking-wider text-[#777] mb-0.5 block ${
-                isGate ? "text-[10px] font-black tracking-[0.1em] text-[#999]" : "text-sm mb-1"
-              }`}
-            >
+            <label className={isGate ? gateLabelClass : "text-sm mb-1 font-bold uppercase tracking-wider text-[#777] block"}>
               Ngày trả
             </label>
-            {durationType === "SIX_HOURS" ? (
-              <input
-                type="text"
-                value={
-                  toDateTime && isValid(toDateTime)
-                    ? format(toDateTime, "dd/MM/yyyy")
-                    : ""
-                }
-                disabled
-                className={`w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] font-medium text-[#777] cursor-not-allowed ${
-                  isGate ? "px-2.5 py-2 text-[14px]" : "px-4 py-3 text-base"
+            <DatePicker
+              selected={pickerSelected(endDate)}
+              onChange={(nextDate) => setEndDate(normalizeDate(nextDate))}
+              dateFormat="dd/MM/yyyy"
+              locale="vi"
+              minDate={endPickerMinDate}
+              placeholderText="Chọn ngày trả"
+              className={isGate ? gateFieldClass : "w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-white font-medium focus:border-[#FF9FCA] focus:outline-none px-4 py-3 text-base"}
+            />
+            {date && isValid(date) && (
+              <div
+                className={`grid grid-cols-3 min-w-0 ${
+                  isGate ? "mt-2 gap-1.5" : "flex flex-wrap gap-1.5 mt-2"
                 }`}
-              />
-            ) : (
-              <>
-                <DatePicker
-                  selected={pickerSelected(endDate)}
-                  onChange={(nextDate) => setEndDate(normalizeDate(nextDate))}
-                  dateFormat="dd/MM/yyyy"
-                  locale="vi"
-                  minDate={endPickerMinDate}
-                  placeholderText="Chọn ngày trả"
-                  className={`w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-white font-medium focus:border-[#FF9FCA] focus:outline-none ${
-                    isGate ? "px-2.5 py-2 text-[14px]" : "px-4 py-3 text-base"
-                  }`}
-                />
-                {durationType === "ONE_DAY" && date && isValid(date) && (
-                  <div
-                    className={`grid grid-cols-3 min-w-0 ${
-                      isGate ? "gap-1 mt-1" : "flex flex-wrap gap-1.5 mt-2"
-                    }`}
-                  >
-                    {QUICK_RETURN_DAY_OFFSETS.map((offset) => {
-                      const candidate = normalizeDate(addDays(date, offset));
-                      const active =
-                        endDate &&
-                        candidate &&
-                        candidate.getTime() ===
-                          normalizeDate(endDate)?.getTime();
-                      return (
-                        <button
-                          key={offset}
-                          type="button"
-                          onClick={() =>
-                            candidate && setEndDate(candidate)
-                          }
-                          className={`rounded-lg border font-semibold transition-all ${
-                            isGate
-                              ? "px-1 py-0.5 text-[10px] font-bold"
-                              : "px-2 py-1 text-xs"
-                          } ${
-                            active
-                              ? "bg-[#222] text-[#FF9FCA] border-[#222]"
-                              : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                          }`}
-                        >
-                          +{offset} ngày
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
+              >
+                {QUICK_RETURN_DAY_OFFSETS.map((offset) => {
+                  const candidate = normalizeDate(addDays(date, offset));
+                  const active =
+                    endDate &&
+                    candidate &&
+                    candidate.getTime() === normalizeDate(endDate)?.getTime();
+                  return (
+                    <button
+                      key={offset}
+                      type="button"
+                      onClick={() => candidate && setEndDate(candidate)}
+                      className={`rounded-lg border font-semibold transition-all touch-manipulation ${
+                        isGate
+                          ? "min-h-[40px] px-1.5 py-2 text-xs font-bold"
+                          : "px-2 py-1 text-xs"
+                      } ${
+                        active
+                          ? "bg-[#222] text-[#FF9FCA] border-[#222]"
+                          : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
+                      }`}
+                    >
+                      +{offset} ngày
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
@@ -569,52 +569,19 @@ export default function BookingPrefsForm({
             >
               Nhận
             </label>
-            {durationType === "SIX_HOURS" ? (
-              <div className="grid grid-cols-2 gap-1.5 min-w-0">
-                {[MORNING_PICKUP_TIME, SIX_HOUR_SECOND_PICKUP_TIME].map(
-                  (slot) => {
-                    const active = timeFrom === slot;
-                    return (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => {
-                          setTimeFrom(slot);
-                          setTimeTo(getSixHourAutoReturnTime(slot));
-                        }}
-                        className={`min-w-0 rounded-xl border-2 font-black uppercase tracking-wider transition-all ${
-                          isGate
-                            ? "px-1 py-2 text-[11px] leading-tight"
-                            : "px-3 py-3 text-sm"
-                        } ${
-                          active
-                            ? "bg-[#222] text-[#FF9FCA] border-[#222]"
-                            : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
-                        }`}
-                      >
-                        {isGate
-                          ? formatTimeViFromString(slot)
-                          : `Nhận ${formatTimeViFromString(slot)}`}
-                      </button>
-                    );
-                  },
-                )}
-              </div>
-            ) : (
-              <div
-                className={`w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] font-medium text-[#777] ${
-                  isGate ? "px-2.5 py-2 text-[13px]" : "px-4 py-3 text-sm"
-                }`}
-              >
-                {!pickupType
-                  ? "Chưa chọn giờ nhận"
-                  : pickupType === "EVENING"
-                    ? `Nhận Tối (${formatTimeViFromString(pickupSlot)})`
-                    : pickupType === "AFTERNOON"
-                      ? `Nhận Chiều (${formatTimeViFromString(pickupSlot || SIX_HOUR_SECOND_PICKUP_TIME)})`
-                      : `Nhận Sáng (${formatTimeViFromString(MORNING_PICKUP_TIME)})`}
-              </div>
-            )}
+            <div
+              className={`w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] font-medium text-[#777] ${
+                isGate ? "px-2.5 py-2 text-[13px]" : "px-4 py-3 text-sm"
+              }`}
+            >
+              {!pickupType
+                ? "Chưa chọn giờ nhận"
+                : pickupType === "EVENING"
+                  ? `Nhận Tối (${formatTimeViFromString(pickupSlot)})`
+                  : pickupType === "AFTERNOON"
+                    ? `Nhận Chiều (${formatTimeViFromString(pickupSlot || SIX_HOUR_SECOND_PICKUP_TIME)})`
+                    : `Nhận Sáng (${formatTimeViFromString(MORNING_PICKUP_TIME)})`}
+            </div>
           </div>
           <div className="min-w-0">
             <label
@@ -624,44 +591,22 @@ export default function BookingPrefsForm({
             >
               Trả
             </label>
-            {durationType === "SIX_HOURS" ? (
-              <input
-                type="time"
-                value={timeTo}
-                disabled
-                className={`w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] font-medium text-[#777] cursor-not-allowed ${
-                  isGate ? "px-2.5 py-2 text-[14px]" : "px-4 py-3 text-base"
-                }`}
-              />
-            ) : durationType === "ONE_DAY" ? (
-              <input
-                type="time"
-                value={timeTo || ""}
-                disabled
-                className={`w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] font-medium text-[#777] cursor-not-allowed ${
-                  isGate ? "px-2.5 py-2 text-[14px]" : "px-4 py-3 text-base"
-                }`}
-              />
-            ) : (
-              <div
-                className={`w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] font-medium text-[#777] ${
-                  isGate ? "px-2.5 py-2 text-[13px]" : "px-4 py-3 text-sm"
-                }`}
-              >
-                Tự động
-              </div>
-            )}
+            <input
+              type="time"
+              value={timeTo || ""}
+              disabled
+              className={`w-full max-w-full min-w-0 rounded-xl border-2 border-[#eee] bg-[#f5f5f5] font-medium text-[#777] cursor-not-allowed ${
+                isGate ? "px-2.5 py-2 text-[14px]" : "px-4 py-3 text-base"
+              }`}
+            />
           </div>
         </div>
         ) : null}
 
-        {durationType === "ONE_DAY" &&
-          (isGate ? (
-            <div className="pt-0.5 space-y-1">
-              <div className="text-[10px] font-black uppercase tracking-[0.1em] text-[#999]">
-                Giờ nhận máy
-              </div>
-              <div className="grid min-w-0 grid-cols-4 gap-1">
+        {isGate ? (
+            <div className="space-y-2">
+              <div className={gateLabelClass}>Giờ nhận/trả máy</div>
+              <div className="grid min-w-0 grid-cols-2 gap-2">
                 {ONE_DAY_PICKUP_OPTIONS.map((option) => {
                   const active = timeFrom === option.time;
                   return (
@@ -674,7 +619,7 @@ export default function BookingPrefsForm({
                         setTimeFrom(option.time);
                         setTimeTo(option.time);
                       }}
-                      className={`min-w-0 truncate rounded-lg border-2 py-1.5 text-[10px] font-bold leading-tight transition-all ${
+                      className={`${gateChoiceClass} min-w-0 px-2 py-3 text-xs font-bold leading-tight ${
                         active
                           ? "bg-[#222] text-[#FF9FCA] border-[#222]"
                           : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
@@ -698,7 +643,7 @@ export default function BookingPrefsForm({
               >
                 <div className="pt-2 space-y-3">
                   <div className="text-sm text-[#666] font-semibold">
-                    Giờ nhận máy
+                    Giờ nhận/trả máy
                   </div>
                   <div className="grid min-w-0 grid-cols-3 gap-2">
                     {ONE_DAY_PICKUP_OPTIONS.map((option) => {
@@ -727,7 +672,19 @@ export default function BookingPrefsForm({
                 </div>
               </MotionDiv>
             </AnimatePresence>
-          ))}
+          )}
+
+            {sections === "all" ? (
+              <button
+                type="button"
+                onClick={() => setDurationType("SIX_HOURS")}
+                className={isGate ? gateLinkClass : "text-left text-xs font-semibold text-[#E85C9C] underline-offset-2 hover:underline"}
+              >
+                Chỉ thuê 6 tiếng?
+              </button>
+            ) : null}
+          </>
+        )}
         </>
         ) : null}
 
@@ -775,16 +732,10 @@ export default function BookingPrefsForm({
 
         {showBranch ? (
         <div>
-          <label
-            className={`font-bold uppercase tracking-wider text-[#777] block ${
-              isGate
-                ? "text-[10px] font-black tracking-[0.1em] text-[#999] mb-1"
-                : "text-sm mb-2"
-            }`}
-          >
+          <label className={isGate ? gateLabelClass : "text-sm mb-2 font-bold uppercase tracking-wider text-[#777] block"}>
             Chi nhánh
           </label>
-          <div className={isGate ? "grid grid-cols-2 gap-1.5 min-w-0" : "space-y-2"}>
+          <div className={isGate ? "flex min-w-0 items-stretch gap-2" : "space-y-2"}>
             {BRANCHES.map((branch) => {
               const pickupDay = date ? normalizeDate(date) : normalizeDate(new Date());
               const bookable = isBranchBookable(branch, pickupDay);
@@ -813,15 +764,17 @@ export default function BookingPrefsForm({
                   setBranchId("Q9");
                 };
                 return (
-                  <button
+                  <MotionButton
                     key={branch.id}
                     type="button"
+                    layout
                     onClick={activateQ9}
                     aria-label={`${branch.label} — đặt từ ${openLabel || Q9_BOOKING_OPENS_DATE}`}
-                    className={`relative w-full overflow-hidden rounded-xl border-2 border-dashed border-[#f5b8d4]/90 bg-gradient-to-br from-[#fff8fc] via-[#fff5f9] to-[#ffecf5] text-left cursor-pointer transition hover:border-[#E85C9C]/80 hover:shadow-md active:scale-[0.99] ${
+                    transition={{ layout: { type: "spring", stiffness: 420, damping: 34 } }}
+                    className={`relative min-w-0 overflow-hidden rounded-xl border-2 border-dashed border-[#f5b8d4]/90 bg-gradient-to-br from-[#fff8fc] via-[#fff5f9] to-[#ffecf5] text-left cursor-pointer hover:border-[#E85C9C]/80 hover:shadow-md active:scale-[0.99] touch-manipulation ${
                       isGate
-                        ? "col-span-2 px-2 py-1.5"
-                        : "px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
+                        ? `min-h-[52px] px-3 py-3 ${branchId === "Q9" ? "flex-[2.6]" : "flex-[1]"}`
+                        : "w-full px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
                     }`}
                   >
                     {!isGate ? (
@@ -833,7 +786,7 @@ export default function BookingPrefsForm({
                     <div className="relative flex items-start justify-between gap-2">
                       <p
                         className={`min-w-0 flex-1 font-black uppercase tracking-wide text-[#c2185b] leading-tight ${
-                          isGate ? "text-[11px]" : "text-sm"
+                          isGate ? "text-sm" : "text-sm"
                         }`}
                       >
                         {isGate ? "Q9" : branch.label}
@@ -841,7 +794,7 @@ export default function BookingPrefsForm({
                       <span
                         className={`inline-flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-[#E85C9C] to-[#ff7eb3] font-black uppercase tracking-wider text-white ${
                           isGate
-                            ? "px-1.5 py-px text-[8px]"
+                            ? "px-2 py-0.5 text-[10px]"
                             : "px-2 py-0.5 text-[9px] shadow-sm ring-2 ring-white/80"
                         }`}
                       >
@@ -862,19 +815,25 @@ export default function BookingPrefsForm({
                         đặt ngày nhận từ {openLabel || "—"} (đặt trước được).
                       </p>
                     ) : null}
-                  </button>
+                  </MotionButton>
                 );
               }
 
               const selected = branchId === branch.id;
               return (
-                <button
+                <MotionButton
                   key={branch.id}
                   type="button"
+                  layout
                   disabled={!bookable}
                   onClick={() => bookable && setBranchId(branch.id)}
-                  className={`relative w-full min-w-0 overflow-hidden rounded-xl border-2 text-left transition-all ${
-                    isGate ? "px-2 py-2" : "px-3 py-2.5"
+                  transition={{ layout: { type: "spring", stiffness: 420, damping: 34 } }}
+                  className={`relative min-w-0 overflow-hidden rounded-xl border-2 text-left touch-manipulation active:scale-[0.98] transition-colors duration-300 ${
+                    isGate
+                      ? selected
+                        ? "flex-[2.6] px-4 py-4 min-h-[76px]"
+                        : "flex-[1] px-3 py-3 min-h-[76px]"
+                      : "w-full px-3 py-2.5"
                   } ${
                     !bookable
                       ? "cursor-not-allowed border-[#eee] bg-[#f5f5f5] text-[#bbb]"
@@ -883,10 +842,14 @@ export default function BookingPrefsForm({
                         : "border-[#eee] bg-white hover:border-[#FF9FCA]"
                   }`}
                 >
-                  <div className="relative flex items-center justify-between gap-1">
+                  <div
+                    className={`relative flex gap-1 ${
+                      selected && isGate ? "items-start" : "items-center justify-between"
+                    }`}
+                  >
                     <p
-                      className={`min-w-0 flex-1 font-black uppercase tracking-wide leading-tight truncate ${
-                        isGate ? "text-[11px]" : "text-sm"
+                      className={`min-w-0 flex-1 font-black uppercase tracking-wide leading-tight ${
+                        isGate ? (selected ? "text-base" : "text-sm truncate") : "text-sm"
                       } ${
                         !bookable
                           ? "text-[#bbb]"
@@ -905,7 +868,7 @@ export default function BookingPrefsForm({
                       <span
                         className={`shrink-0 rounded-full bg-[#FF9FCA]/15 font-black uppercase tracking-wider text-[#FF9FCA] ring-1 ring-[#FF9FCA]/30 ${
                           isGate
-                            ? "px-1 py-px text-[8px]"
+                            ? "px-2 py-0.5 text-[10px]"
                             : "px-2 py-0.5 text-[9px]"
                         }`}
                       >
@@ -913,20 +876,23 @@ export default function BookingPrefsForm({
                       </span>
                     ) : null}
                   </div>
-                  {!isGate && branch.address ? (
-                    <p
-                      className={`relative mt-1.5 text-[11px] font-medium leading-snug break-words ${
-                        !bookable
-                          ? "text-[#ccc]"
-                          : selected
-                            ? "text-[#f5c0dc]"
-                            : "text-[#666]"
-                      }`}
-                    >
-                      {branch.address}
-                    </p>
+                  {selected && bookable && branch.address ? (
+                    <AnimatePresence initial={false}>
+                      <motion.p
+                        key={`${branch.id}-address`}
+                        initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                        animate={{ opacity: 1, height: "auto", marginTop: 8 }}
+                        exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                        transition={{ duration: 0.22, ease: "easeOut" }}
+                        className={`overflow-hidden font-medium leading-snug break-words ${
+                          isGate ? "text-xs text-[#ffb6d7]" : "text-[11px] text-[#f5c0dc]"
+                        }`}
+                      >
+                        {branch.address}
+                      </motion.p>
+                    </AnimatePresence>
                   ) : null}
-                </button>
+                </MotionButton>
               );
             })}
           </div>

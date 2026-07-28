@@ -82,7 +82,7 @@ export default function AvailabilityGate({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           onClick={handleBackdropClick}
-          className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-3 sm:px-4"
         >
           <MotionDiv
             initial={{ y: "100%" }}
@@ -90,17 +90,15 @@ export default function AvailabilityGate({
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 400 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#FFFBF5] w-full max-w-md rounded-3xl mb-24 md:mb-28 max-h-[calc(100dvh-8.5rem)] md:max-h-[85vh] flex flex-col overflow-hidden min-w-0"
+            className="mb-20 flex max-h-[calc(100dvh-6rem)] w-full min-w-0 max-w-md flex-col overflow-hidden rounded-3xl bg-[#FFFBF5] md:mb-28 md:max-h-[85vh]"
           >
-            <div className="px-5 pt-5 pb-3 border-b border-[#FFE4F0] bg-[#FFFBF5]">
-              <div className="mb-2">
-                <h3 className="text-xl font-black text-[#222] uppercase tracking-wider">
-                  Chọn giờ nhận / trả
-                </h3>
-              </div>
+            <div className="px-5 pt-5 pb-4 border-b border-[#FFE4F0] bg-[#FFFBF5]">
+              <h3 className="text-lg font-black text-[#222] uppercase tracking-wide sm:text-xl">
+                Chọn ngày & khung giờ
+              </h3>
             </div>
 
-            <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-4 min-w-0">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-5 min-w-0">
               <BookingPrefsForm
                 branchId={branchId}
                 date={date}
@@ -119,15 +117,16 @@ export default function AvailabilityGate({
                 setPickupType={setPickupType}
                 setPickupSlot={setPickupSlot}
                 error={error}
+                variant="gate"
               />
             </div>
 
-            <div className="px-5 pt-3 pb-4 border-t border-[#FFE4F0] bg-[#FFFBF5]">
+            <div className="border-t border-[#FFE4F0] bg-[#FFFBF5] px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <button
                 type="button"
                 onClick={onConfirm}
                 disabled={!isComplete}
-                className={`w-full py-3 rounded-xl font-black uppercase tracking-wider transition-all ${
+                className={`w-full min-h-[52px] touch-manipulation rounded-xl py-4 text-base font-black uppercase tracking-wide transition-all active:scale-[0.99] ${
                   isComplete
                     ? "bg-[#222] text-[#FF9FCA] hover:bg-[#333]"
                     : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-100"
@@ -135,7 +134,7 @@ export default function AvailabilityGate({
               >
                 Giữ ưu đãi & xem máy còn trống
               </button>
-              <div className="text-center text-sm text-[#888] mt-2">
+              <div className="mt-2.5 text-center text-sm leading-relaxed text-[#888]">
                 Bạn có thể đổi lại thời gian bất cứ lúc nào.
               </div>
             </div>

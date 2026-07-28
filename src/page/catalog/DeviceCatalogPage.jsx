@@ -204,7 +204,7 @@ export default function DeviceCatalogPage() {
       endDate: initialEndDate,
       timeFrom: initialTimeFrom,
       timeTo: initialTimeTo,
-      durationType: initialDurationType || "ONE_DAY",
+      durationType: initialDurationType || "SIX_HOURS",
       pickupType: initialPickupType,
       pickupSlot: initialPickupSlot,
     });
@@ -252,7 +252,7 @@ export default function DeviceCatalogPage() {
       typeof window !== "undefined"
         ? JSON.parse(localStorage.getItem("fao_booking_prefs") || "null")
         : null;
-    const durationType = initialDurationType || p?.durationType || "ONE_DAY";
+    const durationType = initialDurationType || p?.durationType || "SIX_HOURS";
 
     // Slot quá khứ: đẩy ngày nhận về hôm nay, giữ nguyên giờ/chi nhánh để khách chỉ cần xác nhận lại.
     let date = initialDate;
@@ -2210,7 +2210,7 @@ export default function DeviceCatalogPage() {
             <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#FFF5F9] to-white border-b border-pink-100/50">
               <span className="text-sm font-black text-[#333] uppercase tracking-wide">
                 {availabilityPrefs.durationType === "SIX_HOURS"
-                  ? "Gói 6 tiếng"
+                  ? "6 tiếng"
                   : "Thuê theo ngày"}
               </span>
               <button

@@ -225,11 +225,11 @@ function ChicCardInner({
 
             <div className="flex flex-col items-end gap-1.5">
               {savingLabel ? (
-                <div className="rounded-xl border border-amber-200 bg-black/85 px-2.5 py-1.5 text-right shadow-md backdrop-blur-md">
-                  <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-amber-300/90">
-                    Giảm
+                <div className="flex min-w-[4.75rem] flex-col items-center justify-center rounded-xl border border-amber-200 bg-black/85 px-3 py-2 text-center shadow-md backdrop-blur-md">
+                  <span className="mb-[2px] text-[9px] font-bold leading-none tracking-wide text-amber-300/90">
+                    Giảm ngay
                   </span>
-                  <span className="block text-sm font-black leading-none text-amber-100 sm:text-base">
+                  <span className="text-sm font-black leading-none text-amber-100 sm:text-base">
                     {savingLabel}
                   </span>
                 </div>
