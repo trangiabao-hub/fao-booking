@@ -225,8 +225,13 @@ function ChicCardInner({
 
             <div className="flex flex-col items-end gap-1.5">
               {savingLabel ? (
-                <div className="rounded-full border border-amber-200 bg-black/85 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.06em] text-amber-200 shadow-md backdrop-blur-md">
-                  Giảm {savingLabel}
+                <div className="rounded-xl border border-amber-200 bg-black/85 px-2.5 py-1.5 text-right shadow-md backdrop-blur-md">
+                  <span className="block text-[9px] font-bold uppercase tracking-[0.08em] text-amber-300/90">
+                    Giảm
+                  </span>
+                  <span className="block text-sm font-black leading-none text-amber-100 sm:text-base">
+                    {savingLabel}
+                  </span>
                 </div>
               ) : isHot && !blockedBeforeRelease ? (
                 <div className="inline-flex items-center gap-1 rounded-full border border-[#ffe6a9] bg-[#fff7dc]/95 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.06em] text-[#a65a00] shadow-sm backdrop-blur-md">
@@ -324,36 +329,42 @@ function ChicCardInner({
           )}
         </div>
 
-        <div className="flex flex-col p-3 sm:p-4">
-          <div className="min-h-[48px]">
+        <div className="flex flex-col gap-3.5 p-3.5 sm:gap-4 sm:p-4">
+          <div>
             <h3 className="line-clamp-2 text-[13px] font-black uppercase leading-snug tracking-[0.04em] text-[#171717] sm:text-sm lg:text-[15px]">
               {device.displayName}
             </h3>
 
             {branchShort ? (
-              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.08em] text-sky-700">
+              <p className="mt-1.5 text-[10px] font-black uppercase tracking-[0.08em] text-sky-700">
                 Chỉ có tại {branchShort}
               </p>
             ) : null}
           </div>
 
-          <div className="mt-3 rounded-2xl border border-pink-100 bg-gradient-to-br from-[#fff8fc] to-white px-3 py-2.5">
-            <span className="block text-[11px] font-semibold text-gray-400 line-through">
-              {originalLabel}
-            </span>
+          <div className="rounded-2xl border border-pink-100 bg-gradient-to-br from-[#fff8fc] to-white px-3.5 py-3">
+            <div className="flex flex-col gap-1.5">
+              {savingLabel ? (
+                <span className="text-sm font-semibold leading-none text-gray-400 line-through decoration-rose-400 decoration-1 sm:text-base">
+                  {originalLabel}
+                </span>
+              ) : (
+                <span className="text-sm font-bold leading-none text-gray-500 sm:text-base">
+                  {originalLabel}
+                </span>
+              )}
 
-            <div className="mt-0.5 flex items-end justify-between gap-2">
-              <span className="text-xl font-black leading-none text-[#d43487] sm:text-2xl">
+              <span className="text-xl font-black leading-tight text-[#d43487] sm:text-2xl">
                 {discountedDisplayLabel}
               </span>
             </div>
 
-            <p className="mt-1 text-[10px] font-semibold text-[#9b5879]">
+            <p className="mt-2.5 text-[10px] font-semibold leading-snug text-[#9b5879]">
               {priceFootnote}
             </p>
           </div>
 
-          <div className="mt-3 flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5">
             {!isAvailable &&
             !hasSixHourChoices &&
             !hasSuggestedSlot &&

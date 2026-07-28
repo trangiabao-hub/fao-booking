@@ -12,13 +12,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { signInWithPopup } from "firebase/auth";
 import {
   X,
-  Calendar,
-  MapPin,
   Clock,
   User,
   Phone,
   Check,
-  Sparkles,
+  ChevronRight,
+  Tag,
+  Gift,
+  Loader2,
 } from "lucide-react";
 import api from "../config/axios";
 import {
@@ -34,7 +35,6 @@ import {
 import { auth, googleProvider } from "../config/firebase";
 import { resolveGoogleSignInError } from "../utils/googleSignInEnvironment";
 import EmbeddedBrowserGoogleHint from "./EmbeddedBrowserGoogleHint";
-import OrderSummaryPanel from "./OrderSummaryPanel";
 import {
   BRANCHES,
   DURATION_OPTIONS,
@@ -68,14 +68,10 @@ import {
 import { calculateRentalInfo, roundDownToThousand } from "../utils/pricing";
 import { getStrictestReleaseDate } from "../utils/deviceReleaseDate";
 import { formatTimeVi } from "../utils/formatTimeVi";
-import {
-  buildBookingDepositCommitmentLines,
-  resolveDevicesLegDepositTotalVnd,
-} from "../utils/bookingDepositPolicy";
+import { buildBookingDepositCommitmentLines } from "../utils/bookingDepositPolicy";
 import BookingPrefsForm, {
   computeAvailabilityRange,
   getAvailabilityRangeError,
-  formatPickupReturnSummary,
 } from "./BookingPrefsForm";
 
 /** Đồng bộ fao-booking với trang /booking (noteVoucher). */
@@ -327,6 +323,145 @@ function formatChargeableDaysLabel(days) {
     : `${normalized.toFixed(1)} ngày`;
 }
 
+const QUICK_BOOK_STEPS = [
+  { id: 1, label: "Lịch thuê" },
+  { id: 2, label: "Thông tin" },
+  { id: 3, label: "Thanh toán" },
+];
+
+function StepProgressBar({ step }) {
+  return (
+    <div className="shrink-0 border-b border-[#f0f0f0] bg-white px-4 py-2.5">
+      <div className="flex gap-1">
+        {QUICK_BOOK_STEPS.map((s) => (
+          <div
+            key={s.id}
+            className={`h-[3px] flex-1 rounded-full transition-colors duration-300 ${
+              step >= s.id ? "bg-[#E85C9C]" : "bg-[#ebebeb]"
+            }`}
+          />
+        ))}
+      </div>
+      <div className="mt-1.5 flex justify-between text-[11px] font-semibold text-[#888]">
+        {QUICK_BOOK_STEPS.map((s) => (
+          <span
+            key={s.id}
+            className={step >= s.id ? "text-[#E85C9C]" : undefined}
+          >
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AvailabilityStatus({ isChecking }) {
+  if (!isChecking) return null;
+  return (
+    <div className="mt-3 flex items-center gap-2.5 rounded-lg border border-[#f0f0f0] bg-[#fafafa] px-3 py-2.5">
+      <Loader2 size={16} className="shrink-0 animate-spin text-[#E85C9C]" />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="h-2.5 w-3/5 animate-pulse rounded bg-[#eee]" />
+        <div className="h-2 w-2/5 animate-pulse rounded bg-[#f3f3f3]" />
+      </div>
+    </div>
+  );
+}
+
+function CheckoutRow({ label, value, hint, action, onPress }) {
+  const interactive = typeof onPress === "function";
+  const Wrapper = interactive ? "button" : "div";
+  return (
+    <Wrapper
+      type={interactive ? "button" : undefined}
+      onClick={onPress}
+      className={`flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left ${
+        interactive
+          ? "transition-colors hover:bg-[#fafafa] active:bg-[#f5f5f5]"
+          : ""
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-medium text-[#999]">{label}</div>
+        <div className="mt-0.5 text-[13px] font-semibold text-[#222] leading-snug break-words">
+          {value}
+        </div>
+        {hint ? (
+          <div className="mt-0.5 text-[11px] text-[#888] leading-relaxed line-clamp-2">
+            {hint}
+          </div>
+        ) : null}
+      </div>
+      {action ? (
+        <div className="shrink-0">{action}</div>
+      ) : interactive ? (
+        <ChevronRight size={16} className="shrink-0 text-[#ccc]" />
+      ) : null}
+    </Wrapper>
+  );
+}
+
+function CheckoutModeSegment({ checkoutMode, setCheckoutMode, discountLabel }) {
+  const options = [
+    {
+      id: "GOOGLE",
+      title: "Đăng nhập Google",
+      subtitle: "Dùng điểm thành viên",
+    },
+    {
+      id: "GUEST",
+      title: "Khách vãng lai",
+      subtitle: "Đặt nhanh, không cần tài khoản",
+    },
+  ];
+  return (
+    <div className="rounded-xl border border-[#f0f0f0] bg-[#fafafa] p-1">
+      <div className="grid grid-cols-2 gap-1">
+        {options.map((opt) => {
+          const active = checkoutMode === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setCheckoutMode(opt.id)}
+              className={`rounded-lg px-2.5 py-2.5 text-left transition-all active:scale-[0.98] ${
+                active
+                  ? "bg-white shadow-sm ring-1 ring-[#E85C9C]/25"
+                  : "hover:bg-white/70"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-1">
+                <span
+                  className={`text-[13px] font-bold leading-tight ${
+                    active ? "text-[#E85C9C]" : "text-[#333]"
+                  }`}
+                >
+                  {opt.title}
+                </span>
+                {active ? (
+                  <Check size={14} className="shrink-0 text-[#E85C9C]" strokeWidth={2.5} />
+                ) : null}
+              </div>
+              <p className="mt-0.5 text-[10px] font-medium text-[#888] leading-snug">
+                {opt.subtitle}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex items-center gap-1.5 px-1 pb-0.5">
+        <Tag size={12} className="shrink-0 text-[#E85C9C]" />
+        <span className="text-[11px] font-semibold text-[#666]">
+          Giảm ngay{" "}
+          <span className="font-bold text-[#E85C9C]">{discountLabel}</span>
+          {" "}cho cả hai hình thức
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function QuickBookModal({
   device,
   devices = [],
@@ -530,6 +665,8 @@ export default function QuickBookModal({
     depositAndPolicies: false,
     cccdPerDevice: false,
   });
+  const [showPriceDetail, setShowPriceDetail] = useState(false);
+  const [showPointCustom, setShowPointCustom] = useState(false);
   const agreementSectionRef = useRef(null);
   const cccdConfirmedRef = useRef(false);
   const selectedBranchPickupAddress = useMemo(() => {
@@ -1174,6 +1311,15 @@ export default function QuickBookModal({
       ),
     [maxPointToUse, memberPoint],
   );
+  const pointPresets = useMemo(() => {
+    if (maxPointToUse <= 0) return [];
+    const list = [{ label: "Không dùng", value: 0 }];
+    if (suggestedHalfPoints > 0 && suggestedHalfPoints < maxPointToUse) {
+      list.push({ label: "Một nửa", value: suggestedHalfPoints });
+    }
+    list.push({ label: "Tối đa", value: maxPointToUse });
+    return list;
+  }, [maxPointToUse, suggestedHalfPoints]);
   useEffect(() => {
     setPointToUse((prev) => Math.max(0, Math.min(prev, maxPointToUse)));
   }, [maxPointToUse]);
@@ -1185,29 +1331,13 @@ export default function QuickBookModal({
     () => Math.max(0, payableBeforePoint - pointDiscountAmount),
     [payableBeforePoint, pointDiscountAmount],
   );
-  const checkoutSummaryDetails = useMemo(() => {
-    const branchLabel =
-      BRANCHES.find((b) => b.id === selectedBranch)?.label || null;
-    const deviceNames = rentalInfoPerDevice
-      .map((r) => r.device?.displayName || r.device?.name)
-      .filter(Boolean);
-    return {
-      customerName: customer.fullName?.trim() || null,
-      branchId: selectedBranch,
-      branchLabel,
-      deviceNames,
-      bookingFrom: isValid(t1) ? t1.toISOString() : null,
-      bookingTo: isValid(t2) ? t2.toISOString() : null,
-      total: payableTotal,
-    };
-  }, [
-    selectedBranch,
-    rentalInfoPerDevice,
-    customer.fullName,
-    t1,
-    t2,
-    payableTotal,
-  ]);
+  const checkoutDeviceNames = useMemo(
+    () =>
+      rentalInfoPerDevice
+        .map((r) => r.device?.displayName || r.device?.name)
+        .filter(Boolean),
+    [rentalInfoPerDevice],
+  );
   const earnedPointPreview = useMemo(() => {
     const tierKey = hasGoogleSession
       ? memberTierKeyFromTotalSpent(memberTotalSpent)
@@ -1221,9 +1351,9 @@ export default function QuickBookModal({
     );
     return `50.000đ = ${n} điểm theo hạng`;
   }, [hasGoogleSession, memberTotalSpent]);
-  const discountedLabel = formatPriceK(payableTotal);
   const selectedDiscountAmount = basePromotionDiscount;
   const selectedDiscountLabel = priceBreakdown?.discountLabel || "Khuyến mãi";
+  const totalSavingsAmount = selectedDiscountAmount + pointDiscountAmount;
   const isLoggedInUser = hasGoogleSession;
   const shouldShowContactForm =
     checkoutMode === "GUEST" || (checkoutMode === "GOOGLE" && hasGoogleSession);
@@ -1545,97 +1675,84 @@ export default function QuickBookModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[120] flex items-end sm:items-center justify-center p-3 sm:p-4"
+        className="fixed inset-0 z-[120] flex items-end justify-center bg-black/45 sm:items-center sm:p-4"
         onClick={onClose}
       >
         <motion.div
           initial={{ y: "100%", opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: "100%", opacity: 0 }}
-          transition={{ type: "spring", damping: 25, stiffness: 300 }}
+          transition={{ type: "spring", damping: 28, stiffness: 340 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-[#FFFBF5] w-full max-w-md md:max-w-2xl rounded-3xl max-h-[94dvh] sm:max-h-[90vh] overflow-hidden flex flex-col"
+          className="flex max-h-[94dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-[0_-8px_40px_rgba(0,0,0,0.12)] sm:max-h-[90vh] sm:max-w-lg sm:rounded-2xl sm:shadow-2xl md:max-w-2xl"
         >
-          {/* Header */}
-          <div className="flex shrink-0 items-center justify-between p-3 sm:p-4 border-b border-[#FFE4F0]">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full border-2 border-white shadow-lg overflow-hidden bg-white shrink-0">
-                <img
-                  src={
-                    effectiveDevices[0]?.img || effectiveDevices[0]?.images?.[0]
-                  }
-                  alt={
-                    effectiveDevices[0]?.displayName ||
-                    effectiveDevices[0]?.name
-                  }
-                  className="w-full h-full object-cover"
-                />
+          {/* Drag handle — TikTok Shop / Shopee bottom sheet cue */}
+          <div className="flex shrink-0 justify-center pt-2 sm:hidden" aria-hidden>
+            <div className="h-1 w-10 rounded-full bg-[#ddd]" />
+          </div>
+
+          {/* Product header — Shopee cart row */}
+          <div className="flex shrink-0 items-start gap-3 border-b border-[#f0f0f0] px-4 py-3">
+            <div className="h-[72px] w-[72px] shrink-0 overflow-hidden rounded-lg border border-[#f0f0f0] bg-[#fafafa]">
+              <img
+                src={
+                  effectiveDevices[0]?.img || effectiveDevices[0]?.images?.[0]
+                }
+                alt={
+                  effectiveDevices[0]?.displayName ||
+                  effectiveDevices[0]?.name
+                }
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <div className="min-w-0 flex-1 pt-0.5">
+              <div className="line-clamp-2 text-[14px] font-semibold leading-snug text-[#222]">
+                {isMulti
+                  ? `${effectiveDevices.length} máy cho thuê`
+                  : effectiveDevices[0]?.displayName ||
+                    effectiveDevices[0]?.name}
               </div>
-              <div className="min-w-0">
-                <div className="font-black text-[#222] text-sm line-clamp-1 uppercase">
-                  {isMulti
-                    ? `${effectiveDevices.length} máy`
-                    : effectiveDevices[0]?.displayName ||
-                      effectiveDevices[0]?.name}
-                </div>
-                <div className="text-xs font-bold text-[#E85C9C]">
-                  {discountedLabel}{" "}
-                  <span className="text-[#999] font-normal uppercase text-[10px] ml-1">
-                    ({durationDays < 1 ? "Gói 6h" : `${durationDays} ngày`})
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-[18px] font-bold tabular-nums text-[#E85C9C]">
+                  {payableTotal.toLocaleString("vi-VN")}đ
+                </span>
+                {totalSavingsAmount > 0 && (
+                  <span className="rounded bg-[#fff0f5] px-1.5 py-px text-[10px] font-bold text-[#E85C9C]">
+                    Tiết kiệm {totalSavingsAmount.toLocaleString("vi-VN")}đ
                   </span>
-                </div>
+                )}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-[#888]">
+                <span className="rounded bg-[#f5f5f5] px-1.5 py-px font-medium text-[#666]">
+                  {durationDays < 1 ? "Gói 6h" : `${durationDays} ngày`}
+                </span>
                 {isValid(t1) && isValid(t2) && (
-                  <div className="text-[10px] text-[#888] font-bold mt-0.5 uppercase tracking-wide">
-                    {format(t1, "dd/MM", { locale: vi })} {formatTimeVi(t1)} —{" "}
-                    {format(t2, "dd/MM", { locale: vi })} {formatTimeVi(t2)}
-                  </div>
+                  <>
+                    <span className="text-[#ddd]">|</span>
+                    <Clock size={11} className="shrink-0" />
+                    <span>
+                      {format(t1, "dd/MM", { locale: vi })} {formatTimeVi(t1)}
+                      {" → "}
+                      {format(t2, "dd/MM", { locale: vi })} {formatTimeVi(t2)}
+                    </span>
+                  </>
                 )}
               </div>
             </div>
             <button
+              type="button"
               onClick={onClose}
-              className="p-2 hover:bg-[#FF9FCA]/20 rounded-full transition-colors"
+              aria-label="Đóng"
+              className="-mr-1 shrink-0 rounded-full p-2 text-[#888] transition-colors hover:bg-[#f5f5f5] active:scale-95"
             >
-              <X size={20} className="text-[#555]" />
+              <X size={20} />
             </button>
           </div>
 
-          {/* Progress */}
-          <div className="shrink-0 px-4 py-3 bg-[#222] border-b border-[#333]">
-            <div className="flex items-center gap-2">
-              {[1, 2, 3].map((s) => (
-                <div key={s} className="flex items-center gap-2">
-                  <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-all ${
-                      step >= s
-                        ? "bg-[#FF9FCA] text-[#222]"
-                        : "bg-[#333] border border-[#555] text-[#777]"
-                    }`}
-                  >
-                    {step > s ? <Check size={14} strokeWidth={3} /> : s}
-                  </div>
-                  {s < 3 && (
-                    <div
-                      className={`w-8 h-0.5 ${
-                        step > s ? "bg-[#FF9FCA]" : "bg-[#444]"
-                      }`}
-                    />
-                  )}
-                </div>
-              ))}
-              <span className="ml-2 text-xs text-[#FF9FCA] font-black uppercase tracking-[0.15em]">
-                BƯỚC {step}:{" "}
-                {step === 1
-                  ? "CHỌN NGÀY"
-                  : step === 2
-                    ? "THÔNG TIN"
-                    : "XÁC NHẬN"}
-              </span>
-            </div>
-          </div>
+          <StepProgressBar step={step} />
 
           {/* Content */}
-          <div className="min-h-0 flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-5">
+          <div className="min-h-0 flex-1 min-w-0 overflow-y-auto overflow-x-hidden px-4 py-3 sm:py-4">
             {step === 1 && (
               <div>
                 <BookingPrefsForm
@@ -1657,310 +1774,56 @@ export default function QuickBookModal({
                   setPickupSlot={setPickupSlot}
                   minPickupDate={strictestDeviceRelease}
                   error={timeSelectionError || step1AvailabilityMessage}
-                  depositLegVnd={
-                    resolveDevicesLegDepositTotalVnd(effectiveDevices) ??
-                    undefined
-                  }
+                  variant="gate"
                 />
-
-                {canPickSameModelQuantity && (
-                  <div className="mt-3 rounded-xl border border-[#FAD6E8] bg-[#FFF8FB] p-3 sm:p-3.5">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C94B86] mb-2">
-                      Số lượng (cùng mẫu máy)
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={sameModelQuantity <= 1 || isCheckingAvailability}
-                          onClick={() =>
-                            setSameModelQuantity((q) => Math.max(1, q - 1))
-                          }
-                          className="w-10 h-10 rounded-lg border-2 border-[#222] text-[#222] font-black text-lg leading-none hover:bg-[#222]/5 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          −
-                        </button>
-                        <span className="min-w-[2rem] text-center text-lg font-black text-[#222]">
-                          {sameModelQuantity}
-                        </span>
-                        <span
-                          className="inline-flex rounded-lg"
-                          title={
-                            isCheckingAvailability
-                              ? "Đang kiểm tra số máy còn trống..."
-                              : sameModelQuantity >= sameModelMaxPick
-                                ? "Không đủ số lượng máy để thêm"
-                                : undefined
-                          }
-                        >
-                          <button
-                            type="button"
-                            disabled={
-                              sameModelQuantity >= sameModelMaxPick ||
-                              isCheckingAvailability
-                            }
-                            onClick={() =>
-                              setSameModelQuantity((q) =>
-                                Math.min(sameModelMaxPick, q + 1),
-                              )
-                            }
-                            className={`w-10 h-10 rounded-lg border-2 border-[#222] text-[#222] font-black text-lg leading-none hover:bg-[#222]/5 disabled:opacity-40 disabled:cursor-not-allowed ${
-                              sameModelQuantity >= sameModelMaxPick ||
-                              isCheckingAvailability
-                                ? "pointer-events-none"
-                                : ""
-                            }`}
-                            aria-label={
-                              isCheckingAvailability
-                                ? "Đang kiểm tra số máy còn trống"
-                                : sameModelQuantity >= sameModelMaxPick
-                                  ? "Không đủ số lượng máy để thêm"
-                                  : "Tăng số lượng"
-                            }
-                          >
-                            +
-                          </button>
-                        </span>
-                      </div>
-                      <p className="text-xs font-medium text-[#555] max-w-[14rem] sm:max-w-none sm:text-right">
-                        {sameModelFreeCount != null
-                          ? `Còn ${sameModelFreeCount} máy trống trong khung giờ này.`
-                          : "Đang kiểm tra số máy còn trống..."}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Availability Check */}
-                <div className="min-h-[44px] mt-3">
-                  {isCheckingAvailability && (
-                    <div className="text-center py-2 text-sm text-[#777] font-medium">
-                      Đang kiểm tra tình trạng máy...
-                    </div>
-                  )}
-                </div>
+                <AvailabilityStatus isChecking={isCheckingAvailability} />
               </div>
             )}
 
             {step === 2 && (
-              <div className="space-y-3 sm:space-y-4">
-                <div className="rounded-2xl border border-pink-200 bg-pink-50/80 px-3 py-2.5 text-xs text-pink-900">
-                  <strong>Tặng 2 ảnh photobooth</strong> khi trả máy — ghép online sau khi chụp.
-                  In thêm chỉ 10.000đ/strip.
+              <div className="space-y-3">
+                <div className="flex items-start gap-2.5 rounded-lg border border-[#ffe4ef] bg-[#fff8fb] px-3 py-2.5">
+                  <Gift size={16} className="mt-0.5 shrink-0 text-[#E85C9C]" />
+                  <p className="text-[12px] leading-relaxed text-[#555]">
+                    <strong className="font-semibold text-[#333]">Tặng 2 ảnh photobooth</strong>{" "}
+                    khi trả máy. In thêm 10.000đ/strip.
+                  </p>
                 </div>
+
                 {isLoggedInUser ? (
-                  <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-emerald-50/50 p-3 sm:p-4">
-                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
-                      Tài khoản đã đăng nhập
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2.5">
+                    <div className="text-[13px] font-semibold text-[#222]">
+                      Xin chào, {customer.fullName?.trim() || "bạn"}!
                     </div>
-                    <div className="mt-1 text-base font-black text-[#222]">
-                      Đặt đơn bằng tài khoản của bạn
-                    </div>
-                    <div className="mt-1 text-xs text-[#5f7c6f] font-medium">
-                      Thông tin đã được điền tự động. Bạn có thể chỉnh sửa và hệ
-                      thống sẽ cập nhật khi tạo đơn.
+                    <div className="mt-0.5 text-[11px] text-emerald-800/80">
+                      Thông tin đã điền sẵn. Chỉnh sửa nếu cần trước khi thanh toán.
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-[#FFD7EA] bg-gradient-to-r from-[#FFF7FB] via-white to-[#FFFDFE] p-3 sm:p-4">
-                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#E85C9C]">
-                      Chọn hình thức đặt
-                    </div>
-                    <div className="mt-1 text-base font-black text-[#222]">
-                      Chọn cách đặt phù hợp
-                    </div>
-                    <div className="mt-1 text-xs text-[#8a6a79] font-medium">
-                      Mỗi hình thức có mức giảm khác nhau, xem trực tiếp trên
-                      từng tab
-                    </div>
-                  </div>
-                )}
-
-                {/* 2 big tabs */}
-                {!isLoggedInUser && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setCheckoutMode("GOOGLE")}
-                      className={`rounded-2xl border-2 px-3 py-3 sm:px-4 sm:py-4 text-left transition-all ${
-                        checkoutMode === "GOOGLE"
-                          ? "border-[#E85C9C] bg-gradient-to-br from-[#2B1D26] to-[#1D1D1F] shadow-[0_10px_28px_rgba(232,92,156,0.22)]"
-                          : "border-[#eee] bg-white hover:border-[#FF9FCA] hover:shadow-[0_8px_20px_rgba(255,159,202,0.14)]"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
-                            checkoutMode === "GOOGLE"
-                              ? "bg-[#FF9FCA]/20 text-[#FFD9EA]"
-                              : "bg-[#FFF0F7] text-[#E85C9C]"
-                          }`}
-                        >
-                          Google
-                        </span>
-
-                        <div className="flex items-center gap-2 flex-wrap justify-end">
-                          <span
-                            className={`rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-black ring-2 ${
-                              checkoutMode === "GOOGLE"
-                                ? "bg-gradient-to-r from-[#FF77B8] to-[#FFB6D9] text-[#1f1f1f] ring-[#FFD3E8]"
-                                : "bg-[#FFEAF4] text-[#C93B82] ring-[#FFD7EA]"
-                            }`}
-                          >
-                            Giảm ngay
-                            <span className="ml-1 text-sm sm:text-base font-extrabold">
-                              {formatPriceK(basePromotionDiscount)}
-                            </span>
-                          </span>
-                          <div
-                            className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                              checkoutMode === "GOOGLE"
-                                ? "border-[#FF9FCA] bg-[#FF9FCA]"
-                                : "border-[#d7d7d7]"
-                            }`}
-                          >
-                            {checkoutMode === "GOOGLE" && (
-                              <Check
-                                size={11}
-                                className="text-[#222]"
-                                strokeWidth={3}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div
-                        className={`mt-3 sm:mt-4 text-base font-black uppercase tracking-wide ${
-                          checkoutMode === "GOOGLE"
-                            ? "text-[#FF9FCA]"
-                            : "text-[#222]"
-                        }`}
-                      >
-                        Đăng nhập
-                      </div>
-
-                      <div
-                        className={`mt-1 text-sm font-bold leading-snug ${
-                          checkoutMode === "GOOGLE"
-                            ? "text-white"
-                            : "text-[#444]"
-                        }`}
-                      >
-                        Đăng nhập để dùng điểm thành viên
-                      </div>
-
-                      <div
-                        className={`mt-2 sm:mt-3 text-xs leading-relaxed ${
-                          checkoutMode === "GOOGLE"
-                            ? "text-[#F4DCE8]"
-                            : "text-[#777]"
-                        }`}
-                      >
-                        Lưu lịch sử thuê và đổi điểm nhanh hơn
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setCheckoutMode("GUEST")}
-                      className={`rounded-2xl border-2 px-3 py-3 sm:px-4 sm:py-4 text-left transition-all ${
-                        checkoutMode === "GUEST"
-                          ? "border-[#E85C9C] bg-gradient-to-br from-[#2B1D26] to-[#1D1D1F] shadow-[0_10px_28px_rgba(232,92,156,0.22)]"
-                          : "border-[#eee] bg-white hover:border-[#FF9FCA] hover:shadow-[0_8px_20px_rgba(255,159,202,0.14)]"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
-                            checkoutMode === "GUEST"
-                              ? "bg-[#FF9FCA]/20 text-[#FFD9EA]"
-                              : "bg-[#FFF0F7] text-[#E85C9C]"
-                          }`}
-                        >
-                          Guest
-                        </span>
-
-                        <div className="flex items-center gap-2 flex-wrap justify-end">
-                          <span
-                            className={`rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-black ring-2 ${
-                              checkoutMode === "GUEST"
-                                ? "bg-gradient-to-r from-[#FF77B8] to-[#FFB6D9] text-[#1f1f1f] ring-[#FFD3E8]"
-                                : "bg-[#FFEAF4] text-[#C93B82] ring-[#FFD7EA]"
-                            }`}
-                          >
-                            Giảm ngay
-                            <span className="ml-1 text-sm sm:text-base font-extrabold">
-                              {formatPriceK(basePromotionDiscount)}
-                            </span>
-                          </span>
-                          <div
-                            className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                              checkoutMode === "GUEST"
-                                ? "border-[#FF9FCA] bg-[#FF9FCA]"
-                                : "border-[#d7d7d7]"
-                            }`}
-                          >
-                            {checkoutMode === "GUEST" && (
-                              <Check
-                                size={11}
-                                className="text-[#222]"
-                                strokeWidth={3}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div
-                        className={`mt-3 sm:mt-4 text-base font-black uppercase tracking-wide ${
-                          checkoutMode === "GUEST"
-                            ? "text-[#FF9FCA]"
-                            : "text-[#222]"
-                        }`}
-                      >
-                        Vãng lai
-                      </div>
-
-                      <div
-                        className={`mt-1 text-sm font-bold leading-snug ${
-                          checkoutMode === "GUEST"
-                            ? "text-white"
-                            : "text-[#444]"
-                        }`}
-                      >
-                        Đặt nhanh không cần đăng nhập
-                      </div>
-
-                      <div
-                        className={`mt-2 sm:mt-3 text-xs leading-relaxed ${
-                          checkoutMode === "GUEST"
-                            ? "text-[#F4DCE8]"
-                            : "text-[#777]"
-                        }`}
-                      >
-                        Áp dụng khuyến mãi mặc định của shop
-                      </div>
-                    </button>
-                  </div>
+                  <CheckoutModeSegment
+                    checkoutMode={checkoutMode}
+                    setCheckoutMode={setCheckoutMode}
+                    discountLabel={formatPriceK(basePromotionDiscount)}
+                  />
                 )}
 
                 {/* Google: login or status */}
                 {checkoutMode === "GOOGLE" && !hasGoogleSession && (
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     <EmbeddedBrowserGoogleHint />
                     <button
                       type="button"
                       onClick={handleGoogleLogin}
                       disabled={isGoogleLoading}
-                      className="w-full rounded-2xl border-2 border-[#FF9FCA] bg-gradient-to-r from-[#FFF0F8] via-white to-[#FFF7FB] px-3 sm:px-4 py-3 text-sm font-black text-[#E85C9C] hover:brightness-[0.98] disabled:opacity-50 transition-colors"
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#f0f0f0] bg-white px-4 py-3 text-[13px] font-semibold text-[#333] shadow-sm transition-all hover:border-[#E85C9C]/40 hover:bg-[#fff8fb] active:scale-[0.99] disabled:opacity-50"
                     >
                       {isGoogleLoading ? (
-                        "Đang đăng nhập..."
-                      ) : (
                         <>
-                          Đăng nhập Google để dùng điểm thành viên
+                          <Loader2 size={16} className="animate-spin text-[#E85C9C]" />
+                          Đang đăng nhập...
                         </>
+                      ) : (
+                        "Đăng nhập Google để dùng điểm thành viên"
                       )}
                     </button>
                   </div>
@@ -1969,9 +1832,8 @@ export default function QuickBookModal({
                 {checkoutMode === "GOOGLE" &&
                   hasGoogleSession &&
                   isMemberDataLoading && (
-                    <div
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-500"
-                    >
+                    <div className="flex items-center gap-2 rounded-lg border border-[#f0f0f0] bg-[#fafafa] px-3 py-2.5 text-[12px] font-medium text-[#888]">
+                      <Loader2 size={14} className="animate-spin text-[#E85C9C]" />
                       Đang tải dữ liệu thành viên...
                     </div>
                   )}
@@ -1993,7 +1855,7 @@ export default function QuickBookModal({
                           ig: pickStoredSocialLink(savedCustomer),
                         }))
                       }
-                      className="w-full rounded-2xl border-2 border-dashed border-[#FF9FCA]/50 bg-[#FFF9FC] px-3 py-2.5 text-sm font-bold text-[#E85C9C] hover:bg-[#FFF0F7] transition-colors"
+                      className="w-full rounded-lg border border-dashed border-[#E85C9C]/40 bg-[#fff8fb] px-3 py-2.5 text-[12px] font-semibold text-[#E85C9C] transition-colors hover:bg-[#fff0f6] active:scale-[0.99]"
                     >
                       Dùng thông tin đã lưu
                       {savedCustomer.fullName
@@ -2004,29 +1866,28 @@ export default function QuickBookModal({
 
                 {/* Contact form */}
                 {shouldShowContactForm && (
-                  <div className="rounded-2xl border border-[#FFE4F0] bg-white p-3 sm:p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#666]">
+                  <div className="overflow-hidden rounded-xl border border-[#f0f0f0] bg-white">
+                    <div className="border-b border-[#f5f5f5] px-3.5 py-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[13px] font-semibold text-[#222]">
                           Thông tin người thuê
                         </div>
-                        <div className="mt-1 text-[11px] text-[#888]">
-                          Điền nhanh để shop xác nhận đơn
-                        </div>
+                        {checkoutMode === "GOOGLE" && hasGoogleSession && (
+                          <span className="rounded bg-emerald-50 px-1.5 py-px text-[10px] font-semibold text-emerald-700">
+                            Đã xác thực
+                          </span>
+                        )}
                       </div>
-
-                      {checkoutMode === "GOOGLE" && hasGoogleSession && (
-                        <div className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-                          Đã xác thực
-                        </div>
-                      )}
+                      <p className="mt-0.5 text-[11px] text-[#999]">
+                        Shop dùng thông tin này để xác nhận đơn
+                      </p>
                     </div>
 
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-3 p-3.5">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
-                          <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-1.5 uppercase tracking-[0.2em] px-1">
-                            <User size={13} className="text-[#E85C9C]" />
+                          <label className="mb-1.5 flex items-center gap-1.5 px-0.5 text-[11px] font-semibold text-[#666]">
+                            <User size={12} className="text-[#E85C9C]" />
                             Họ và tên
                           </label>
                           <input
@@ -2038,10 +1899,10 @@ export default function QuickBookModal({
                               }))
                             }
                             placeholder="Nguyễn Thị Bông"
-                            className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
+                            className={`w-full rounded-lg border bg-white px-3 py-2.5 text-[13px] font-medium text-[#333] focus:outline-none ${
                               fullNameError
                                 ? "border-red-300 focus:border-red-400"
-                                : "border-[#eee] focus:border-[#FF9FCA]"
+                                : "border-[#eee] focus:border-[#E85C9C]"
                             }`}
                           />
                           {fullNameError && (
@@ -2052,8 +1913,8 @@ export default function QuickBookModal({
                         </div>
 
                         <div>
-                          <label className="flex items-center gap-2 text-[11px] font-black text-[#666] mb-1.5 uppercase tracking-[0.2em] px-1">
-                            <Phone size={13} className="text-[#E85C9C]" />
+                          <label className="mb-1.5 flex items-center gap-1.5 px-0.5 text-[11px] font-semibold text-[#666]">
+                            <Phone size={12} className="text-[#E85C9C]" />
                             Số điện thoại
                           </label>
                           <input
@@ -2066,10 +1927,10 @@ export default function QuickBookModal({
                             }
                             placeholder="0901234567"
                             inputMode="tel"
-                            className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
+                            className={`w-full rounded-lg border bg-white px-3 py-2.5 text-[13px] font-medium text-[#333] focus:outline-none ${
                               phoneError
                                 ? "border-red-300 focus:border-red-400"
-                                : "border-[#eee] focus:border-[#FF9FCA]"
+                                : "border-[#eee] focus:border-[#E85C9C]"
                             }`}
                           />
                           {phoneError && (
@@ -2082,19 +1943,19 @@ export default function QuickBookModal({
 
                       {checkoutMode === "GOOGLE" && (
                         <div>
-                          <label className="text-[11px] font-black text-[#666] mb-1.5 block uppercase tracking-[0.2em] px-1">
+                          <label className="mb-1.5 block px-0.5 text-[11px] font-semibold text-[#666]">
                             Email liên kết
                           </label>
-                          <div className="flex items-center justify-between gap-3 rounded-xl border border-[#eee] bg-[#fafafa] px-3 py-2.5">
+                          <div className="flex items-center justify-between gap-3 rounded-lg border border-[#eee] bg-[#fafafa] px-3 py-2.5">
                             <div className="min-w-0">
-                              <div className="truncate text-sm font-semibold text-[#444]">
+                              <div className="truncate text-[13px] font-semibold text-[#444]">
                                 {customer.gmail || "email@example.com"}
                               </div>
                               <div className="text-[10px] text-[#999]">
-                                Email xác thực từ đăng nhập Google
+                                Từ đăng nhập Google
                               </div>
                             </div>
-                            <div className="shrink-0 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                            <div className="shrink-0 rounded bg-emerald-100 px-1.5 py-px text-[10px] font-semibold text-emerald-700">
                               Verified
                             </div>
                           </div>
@@ -2107,14 +1968,15 @@ export default function QuickBookModal({
                       )}
 
                       <div>
-                        <label className="text-[11px] font-black text-[#666] mb-1.5 block uppercase tracking-[0.2em] px-1">
+                        <label className="mb-1.5 block px-0.5 text-[11px] font-semibold text-[#666]">
                           {QUICK_BOOK_IG_TEMPORARILY_DISABLED
                             ? "Facebook"
                             : "Instagram / Facebook"}
+                          <span className="ml-1 font-normal text-red-500">*</span>
                         </label>
                         {QUICK_BOOK_IG_TEMPORARILY_DISABLED ? (
                           <p className="mb-2 px-1 text-[11px] text-[#888] font-medium">
-                            Instagram tạm thời không khả dụng — vui lòng nhập
+                            Instagram tạm thời không khả dụng. Vui lòng nhập
                             link Facebook.
                           </p>
                         ) : (
@@ -2141,11 +2003,8 @@ export default function QuickBookModal({
                             </label>
                           </div>
                         )}
-                        <label className="text-[10px] font-bold text-[#888] mb-1 block uppercase tracking-wider px-1">
-                          Link{" "}
-                          <span className="text-red-500 normal-case font-semibold">
-                            (bắt buộc)
-                          </span>
+                        <label className="mb-1 block px-0.5 text-[10px] font-medium text-[#999]">
+                          Link profile
                         </label>
                         <input
                           value={customer.ig}
@@ -2153,10 +2012,10 @@ export default function QuickBookModal({
                             setCustomer((c) => ({ ...c, ig: e.target.value }))
                           }
                           placeholder="https://facebook.com/username"
-                          className={`w-full px-3 py-2.5 rounded-xl border-2 focus:outline-none bg-white font-medium text-sm text-[#333] ${
+                          className={`w-full rounded-lg border bg-white px-3 py-2.5 text-[13px] font-medium text-[#333] focus:outline-none ${
                             socialLinkError
                               ? "border-red-300 focus:border-red-400"
-                              : "border-[#eee] focus:border-[#FF9FCA]"
+                              : "border-[#eee] focus:border-[#E85C9C]"
                           }`}
                         />
                         {socialLinkError && (
@@ -2179,220 +2038,200 @@ export default function QuickBookModal({
             )}
 
             {step === 3 && (
-              <div className="space-y-3 sm:space-y-3.5">
-                <div className="rounded-xl border border-[#F5D7E6] bg-[#FFFAFC] px-3.5 py-2.5 sm:px-4 sm:py-3">
-                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
-                    Bước cuối · Xác nhận & thanh toán
-                  </div>
-                  <p className="mt-1.5 text-[12px] text-stone-600 leading-relaxed">
-                    Kiểm tra máy và giá, dùng điểm nếu cần, tick cam kết rồi
-                    thanh toán.
-                  </p>
-                </div>
-
-                <OrderSummaryPanel
-                  details={checkoutSummaryDetails}
-                  title="📋 Tóm tắt đơn hàng"
-                  subtitle="Rà soát đủ thông tin trước khi thanh toán."
-                  compact
-                  className="border-[#F0E8EC] shadow-none"
-                />
-
-                {/* 1) Thiết bị — ưu tiên trên cùng */}
-                <div className="p-3.5 sm:p-4 bg-white rounded-xl border border-[#F0E8EC] space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
-                      Thông tin máy
+              <div className="space-y-3">
+                {/* Price block — Shopee order summary */}
+                <div className="overflow-hidden rounded-xl border border-[#f0f0f0] bg-white">
+                  <div className="border-b border-[#f5f5f5] px-3.5 py-3">
+                    <div className="flex items-end justify-between gap-3">
+                      <div>
+                        <div className="text-[11px] font-medium text-[#999]">
+                          Tổng thanh toán
+                        </div>
+                        <div className="mt-0.5 text-[22px] font-bold tabular-nums leading-none text-[#E85C9C]">
+                          {payableTotal.toLocaleString("vi-VN")}đ
+                        </div>
+                      </div>
+                      {totalSavingsAmount > 0 && (
+                        <span className="shrink-0 rounded bg-[#fff0f5] px-2 py-1 text-[11px] font-semibold tabular-nums text-[#E85C9C]">
+                          −{totalSavingsAmount.toLocaleString("vi-VN")}đ
+                        </span>
+                      )}
                     </div>
                     <button
                       type="button"
-                      onClick={() => setStep(1)}
-                      className="rounded-lg border border-[#F5D7E6] bg-[#FFF8FB] px-2.5 py-1.5 text-[11px] font-bold text-[#E85C9C] hover:bg-[#FFF0F6] transition-colors shrink-0"
+                      onClick={() => setShowPriceDetail((v) => !v)}
+                      className="mt-2 flex items-center gap-0.5 text-[11px] font-semibold text-[#999] transition-colors hover:text-[#E85C9C]"
                     >
-                      Sửa máy / lịch
+                      {showPriceDetail ? "Ẩn chi tiết" : "Xem chi tiết giá"}
+                      <ChevronRight
+                        size={14}
+                        className={`transition-transform ${showPriceDetail ? "rotate-90" : ""}`}
+                      />
                     </button>
                   </div>
-                  <div className="p-3 sm:p-3.5 bg-[#FFF8FB] rounded-xl border border-[#FAD6E8]">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C94B86] mb-2">
-                      Thiết bị {isMulti && `(${effectiveDevices.length} máy)`}
-                    </div>
-                    {isMulti ? (
-                      <div className="space-y-2">
-                        {rentalInfoPerDevice.map((r) => {
-                          const dev = r.device;
-                          const days = r.chargeableDays ?? chargeableDays;
-                          const fullDays = Math.floor(days);
-                          const basePrice = r.price || 0;
-                          const breakdown =
-                            fullDays > 3
-                              ? formatPriceBreakdown(dev, fullDays)
-                              : null;
-                          const daysLabel = formatChargeableDaysLabel(days);
-                          return (
-                            <div
-                              key={dev.id}
-                              className="border-b border-[#FFE4F0] pb-2 last:border-0 last:pb-0"
-                            >
-                              <div className="flex justify-between items-start gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <div className="font-bold text-stone-900 text-[13px] leading-snug">
-                                    {dev.displayName || dev.name}
-                                  </div>
-                                  <p className="text-[12px] text-stone-500 mt-1 leading-relaxed">
-                                    {breakdown ||
-                                      `${daysLabel} ${formatPriceK(basePrice)}`}
-                                  </p>
-                                </div>
-                                <span className="font-black text-[#E85C9C] shrink-0 text-[13px] tabular-nums">
-                                  {formatPriceK(basePrice)}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="flex justify-between items-start gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-black text-stone-900 uppercase text-[13px] leading-snug">
-                            {effectiveDevices[0]?.displayName ||
-                              effectiveDevices[0]?.name}
-                          </div>
-                          {(() => {
-                            const r0 = rentalInfoPerDevice[0];
-                            const fullDays = Math.floor(chargeableDays);
-                            const breakdown =
-                              fullDays > 3 && r0?.device
-                                ? formatPriceBreakdown(r0.device, fullDays)
-                                : null;
-                            const base0 = r0?.price || 0;
-                            const daysLabel =
-                              formatChargeableDaysLabel(chargeableDays);
-                            return (
-                              <p className="text-[12px] text-stone-500 mt-1 leading-relaxed">
-                                {breakdown ||
-                                  `${daysLabel} ${formatPriceK(base0)}`}
-                              </p>
-                            );
-                          })()}
-                        </div>
-                        <span className="font-black text-[#E85C9C] shrink-0 text-[13px] tabular-nums">
-                          {formatPriceK(rentalInfoPerDevice[0]?.price || 0)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 2) Giá + điểm */}
-                <div className="rounded-xl border border-[#EDD5E3] bg-gradient-to-b from-white via-[#FFFCFD] to-[#FFF7FA] p-3.5 sm:p-4 space-y-3 sm:space-y-3.5 shadow-[0_6px_24px_rgba(232,92,156,0.07)]">
-                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
-                    Thanh toán hôm nay
-                  </div>
-                  {priceBreakdown && (
-                    <div className="space-y-2 pt-0.5">
-                      <div className="flex justify-between items-baseline gap-3 text-[13px] leading-snug">
-                        <span className="text-stone-500">✨ Giá gốc</span>
-                        <span className="font-bold text-stone-900 tabular-nums shrink-0">
-                          {(priceBreakdown.original || 0).toLocaleString(
-                            "vi-VN",
-                          )}
-                          đ
-                        </span>
-                      </div>
-                      {selectedDiscountAmount > 0 && (
-                        <div className="flex justify-between items-baseline gap-3 text-[13px] leading-snug">
-                          <span
-                            className={
-                              isFirstOrderVoucherSelected
-                                ? "text-emerald-700"
-                                : "text-[#E85C9C]"
-                            }
+                  {showPriceDetail && (
+                    <div className="space-y-1.5 px-3.5 py-2.5 text-[12px] leading-snug">
+                      {rentalInfoPerDevice.map((r) => {
+                        const dev = r.device;
+                        const days = r.chargeableDays ?? chargeableDays;
+                        const fullDays = Math.floor(days);
+                        const breakdown =
+                          fullDays > 3 ? formatPriceBreakdown(dev, fullDays) : null;
+                        return (
+                          <div
+                            key={dev.id}
+                            className="flex justify-between gap-3 text-stone-500"
                           >
-                            {isFirstOrderVoucherSelected ? "🎉" : "🔥"}{" "}
+                            <span className="min-w-0">
+                              {dev.displayName || dev.name}
+                              <span className="text-stone-400">
+                                {" · "}
+                                {breakdown || formatChargeableDaysLabel(days)}
+                              </span>
+                            </span>
+                            <span className="shrink-0 font-bold text-stone-800 tabular-nums">
+                              {formatPriceK(r.price || 0)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {priceBreakdown && (
+                        <div className="flex justify-between gap-3 border-t border-[#F5EBF0] pt-1.5">
+                          <span className="text-stone-500">Tạm tính</span>
+                          <span className="font-bold text-stone-800 tabular-nums">
+                            {(priceBreakdown.original || 0).toLocaleString("vi-VN")}đ
+                          </span>
+                        </div>
+                      )}
+                      {selectedDiscountAmount > 0 && (
+                        <div className="flex justify-between gap-3">
+                          <span className="text-emerald-700">
                             {selectedDiscountLabel}
                           </span>
-                          <span
-                            className={
-                              isFirstOrderVoucherSelected
-                                ? "font-bold text-emerald-700 tabular-nums shrink-0"
-                                : "font-bold text-[#E85C9C] tabular-nums shrink-0"
-                            }
-                          >
-                            (−{selectedDiscountAmount.toLocaleString("vi-VN")}đ)
+                          <span className="font-bold text-emerald-700 tabular-nums">
+                            −{selectedDiscountAmount.toLocaleString("vi-VN")}đ
+                          </span>
+                        </div>
+                      )}
+                      {pointDiscountAmount > 0 && (
+                        <div className="flex justify-between gap-3">
+                          <span className="text-emerald-700">
+                            Trừ {pointToUse.toLocaleString("vi-VN")} điểm
+                          </span>
+                          <span className="font-bold text-emerald-700 tabular-nums">
+                            −{pointDiscountAmount.toLocaleString("vi-VN")}đ
                           </span>
                         </div>
                       )}
                     </div>
                   )}
+                </div>
 
-                  {isLoggedInUser && (
-                    <div className="rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50 to-white px-3.5 py-3 sm:px-4 sm:py-3.5 space-y-3">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-amber-900/70">
-                            Ví điểm của bạn
-                          </div>
-                          <div className="mt-1 flex items-baseline gap-2 flex-wrap">
-                            <span className="text-[1.625rem] sm:text-[1.75rem] font-black tabular-nums text-amber-950 leading-none tracking-tight">
-                              {memberPoint.toLocaleString("vi-VN")}
-                            </span>
-                            <span className="text-[13px] font-bold text-amber-900/80">
+                {/* Order rows — Shopee address/order style */}
+                <div className="overflow-hidden rounded-xl border border-[#f0f0f0] bg-white divide-y divide-[#f5f5f5]">
+                  <CheckoutRow
+                    label="Máy thuê"
+                    value={
+                      isMulti
+                        ? `${effectiveDevices.length} máy`
+                        : effectiveDevices[0]?.displayName ||
+                          effectiveDevices[0]?.name
+                    }
+                    hint={isMulti ? checkoutDeviceNames.join(" · ") : null}
+                    action={
+                      <button
+                        type="button"
+                        onClick={() => setStep(1)}
+                        className="rounded-md border border-[#eee] bg-white px-2 py-1 text-[11px] font-semibold text-[#666] transition-colors hover:border-[#E85C9C]/40 hover:text-[#E85C9C]"
+                      >
+                        Sửa
+                      </button>
+                    }
+                  />
+                  {isValid(t1) && isValid(t2) && (
+                    <CheckoutRow
+                      label="Thời gian nhận / trả"
+                      value={`${format(t1, "HH:mm dd/MM")} → ${format(t2, "HH:mm dd/MM")}`}
+                      hint={`${
+                        chargeableDays < 1
+                          ? "Gói 6 giờ"
+                          : `${formatChargeableDaysLabel(chargeableDays)} thuê`
+                      } · ${
+                        BRANCHES.find((b) => b.id === selectedBranch)?.label ||
+                        "cửa hàng"
+                      }`}
+                    />
+                  )}
+                  <CheckoutRow
+                    label="Khách hàng"
+                    value={customer.fullName?.trim() || "-"}
+                    hint={
+                      customer.phone ? normalizePhone(customer.phone) : null
+                    }
+                    action={
+                      <button
+                        type="button"
+                        onClick={() => setStep(2)}
+                        className="rounded-md border border-[#eee] bg-white px-2 py-1 text-[11px] font-semibold text-[#666] transition-colors hover:border-[#E85C9C]/40 hover:text-[#E85C9C]"
+                      >
+                        Sửa
+                      </button>
+                    }
+                  />
+                </div>
+
+                {/* 3) Điểm thành viên */}
+                {isLoggedInUser && (
+                  <div className="rounded-xl border border-amber-100 bg-amber-50/40 px-3.5 py-3 space-y-2.5">
+                    {maxPointToUse > 0 ? (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[12px] font-bold text-amber-950">
+                            Dùng điểm
+                            <span className="font-medium text-amber-900/55">
+                              {" · "}có {memberPoint.toLocaleString("vi-VN")}{" "}
                               điểm
                             </span>
-                            <span className="text-[11px] text-amber-800/50">
-                              · 1 điểm = 1.000đ
-                            </span>
-                          </div>
-                          <p className="mt-2 text-[11px] text-amber-900/45 leading-relaxed max-w-[18rem]">
-                            Điểm giữ lâu dài — chỉ trừ khi bạn muốn giảm bill
-                            hôm nay.
-                          </p>
+                          </span>
+                          <span
+                            className={
+                              pointDiscountAmount > 0
+                                ? "shrink-0 text-[12px] font-black text-amber-950 tabular-nums"
+                                : "shrink-0 text-[11px] text-amber-900/45"
+                            }
+                          >
+                            {pointDiscountAmount > 0
+                              ? `−${pointDiscountAmount.toLocaleString("vi-VN")}đ`
+                              : "1 điểm = 1.000đ"}
+                          </span>
                         </div>
-                        {pointDiscountAmount > 0 && (
-                          <div className="text-right shrink-0 rounded-lg bg-white border border-amber-100/90 px-2.5 py-1.5">
-                            <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-amber-800/55">
-                              Trừ hôm nay
-                            </div>
-                            <div className="text-[13px] font-black text-amber-950 tabular-nums mt-0.5">
-                              −{pointDiscountAmount.toLocaleString("vi-VN")}đ
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="pt-0.5">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-stone-500 mb-2">
-                          Trừ cho đơn này
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2.5">
-                          <div className="inline-flex rounded-full border border-amber-200/90 bg-white p-0.5 shadow-sm">
+                        <div className="flex gap-1.5">
+                          {pointPresets.map((preset) => (
                             <button
+                              key={preset.label}
                               type="button"
-                              onClick={() => setPointToUse(0)}
-                              className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition-all ${
-                                pointToUse === 0
-                                  ? "bg-amber-100 text-amber-950 shadow-sm ring-1 ring-amber-200/90"
-                                  : "text-amber-900/50 hover:bg-amber-50/90"
+                              onClick={() => {
+                                setPointToUse(preset.value);
+                                setShowPointCustom(false);
+                              }}
+                              className={`flex-1 rounded-xl border px-2 py-1.5 text-[11px] font-bold transition-colors ${
+                                pointToUse === preset.value
+                                  ? "border-amber-400 bg-amber-100 text-amber-950"
+                                  : "border-amber-200/80 bg-white text-amber-900/60 hover:bg-amber-50"
                               }`}
                             >
-                              Không trừ
+                              {preset.label}
+                              {preset.value > 0 && (
+                                <span className="block text-[10px] font-semibold opacity-60 tabular-nums">
+                                  −{(preset.value * 1000).toLocaleString("vi-VN")}đ
+                                </span>
+                              )}
                             </button>
-                            <button
-                              type="button"
-                              disabled={suggestedHalfPoints <= 0}
-                              onClick={() => setPointToUse(suggestedHalfPoints)}
-                              className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition-all disabled:opacity-35 disabled:pointer-events-none ${
-                                maxPointToUse > 0 &&
-                                suggestedHalfPoints > 0 &&
-                                pointToUse === suggestedHalfPoints
-                                  ? "bg-amber-100 text-amber-950 shadow-sm ring-1 ring-amber-200/90"
-                                  : "text-amber-900/50 hover:bg-amber-50/90"
-                              }`}
-                            >
-                              Một nửa
-                            </button>
-                          </div>
+                          ))}
+                        </div>
+                        {showPointCustom ||
+                        (pointToUse > 0 &&
+                          !pointPresets.some((p) => p.value === pointToUse)) ? (
                           <div className="flex items-center gap-2">
                             <input
                               type="number"
@@ -2408,157 +2247,60 @@ export default function QuickBookModal({
                                 setPointToUse(
                                   Math.max(
                                     0,
-                                    Math.min(
-                                      Math.floor(next),
-                                      maxPointToUse,
-                                    ),
+                                    Math.min(Math.floor(next), maxPointToUse),
                                   ),
                                 );
                               }}
-                              className="w-13 rounded-lg border border-amber-200 bg-white py-1.5 px-1 text-center text-[13px] font-bold text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-[#E85C9C]/25"
+                              className="w-20 rounded-lg border border-amber-200 bg-white py-1.5 px-2 text-center text-[13px] font-bold text-stone-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-[#E85C9C]/25"
                             />
-                            <span className="text-[11px] text-amber-900/55 font-medium">
-                              điểm
-                            </span>
-                            <span className="text-[10px] text-stone-400 tabular-nums">
-                              / {maxPointToUse.toLocaleString("vi-VN")} tối đa
+                            <span className="text-[11px] text-amber-900/55">
+                              điểm · tối đa{" "}
+                              {maxPointToUse.toLocaleString("vi-VN")}
                             </span>
                           </div>
-                        </div>
-                        {maxPointToUse > 0 && (
+                        ) : (
                           <button
                             type="button"
-                            onClick={() => setPointToUse(maxPointToUse)}
-                            className={`mt-2 text-left text-[11px] font-medium leading-relaxed transition-colors ${
-                              pointToUse === maxPointToUse
-                                ? "text-amber-900/75"
-                                : "text-stone-400 hover:text-[#C94B86]"
-                            }`}
+                            onClick={() => setShowPointCustom(true)}
+                            className="text-[11px] font-bold text-amber-900/45 hover:text-[#C94B86] transition-colors"
                           >
-                            {pointToUse === maxPointToUse
-                              ? "Đang trừ tối đa theo bill. Giảm số điểm nếu muốn giữ lại cho đơn sau."
-                              : `Chỉ khi cần: trừ tối đa ${maxPointToUse.toLocaleString("vi-VN")} điểm (−${(maxPointToUse * 1000).toLocaleString("vi-VN")}đ)`}
+                            Nhập số điểm khác
                           </button>
                         )}
-                      </div>
-
-                      {maxPointToUse === 0 && memberPoint > 0 && (
-                        <p className="text-[11px] text-amber-900/45 leading-relaxed">
-                          Đơn này chưa thể trừ thêm điểm (bill sau giảm quá
-                          nhỏ).
+                      </>
+                    ) : (
+                      memberPoint > 0 && (
+                        <p className="text-[11.5px] text-amber-900/55 leading-relaxed">
+                          Bạn có {memberPoint.toLocaleString("vi-VN")} điểm.
+                          Đơn này chưa trừ được, để dành cho đơn sau nhé.
                         </p>
-                      )}
-                      <p className="text-[11px] text-emerald-800/90 leading-relaxed pt-2 border-t border-amber-100">
-                        🎁 Dự kiến +
-                        {earnedPointPreview.toLocaleString("vi-VN")} điểm ·{" "}
-                        {earnedPointRulePreview}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="border-t border-[#EDD5E3] pt-3 mt-0.5 flex justify-between items-baseline gap-3">
-                    <span className="font-black text-stone-800 uppercase tracking-[0.1em] text-[11px] sm:text-xs">
-                      Chỉ còn
-                    </span>
-                    <span className="text-xl sm:text-[1.65rem] font-black text-[#E85C9C] shrink-0 tabular-nums leading-none tracking-tight">
-                      {payableTotal.toLocaleString("vi-VN")}đ
-                    </span>
-                  </div>
-                  {(selectedDiscountAmount > 0 || pointDiscountAmount > 0) && (
-                    <div className="text-center text-[12px] sm:text-[13px] font-bold text-emerald-700 pt-0.5">
-                      💥 Tiết kiệm{" "}
-                      {(
-                        selectedDiscountAmount + pointDiscountAmount
-                      ).toLocaleString("vi-VN")}
-                      đ
-                    </div>
-                  )}
-                </div>
-
-                {/* 3) Thời gian · chi nhánh · khách */}
-                <div className="p-3.5 sm:p-4 bg-white rounded-xl border border-[#F0E8EC] space-y-3">
-                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
-                    Chi tiết đặt
-                  </div>
-                  <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
-                    <div className="p-3 rounded-xl border border-stone-100 bg-stone-50/70">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-stone-500 mb-1.5">
-                        Thời gian
-                      </div>
-                      <div className="text-[13px] text-stone-800 space-y-1 leading-relaxed">
-                        {isValid(t1) && (
-                          <div>
-                            <span className="text-stone-500">Nhận:</span>{" "}
-                            {formatPickupReturnSummary(t1)}
-                          </div>
-                        )}
-                        {isValid(t2) && (
-                          <div>
-                            <span className="text-stone-500">Trả:</span>{" "}
-                            {formatPickupReturnSummary(t2)}
-                          </div>
-                        )}
-                        {chargeableDays > 0 && (
-                          <div className="font-bold text-[#E85C9C] text-[12px] pt-0.5">
-                            {chargeableDays < 1
-                              ? "Gói 6 giờ"
-                              : `${chargeableDays} ngày thuê`}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="p-3 rounded-xl border border-stone-100 bg-stone-50/70">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-stone-500 mb-1.5">
-                        Chi nhánh
-                      </div>
-                      <div className="font-bold text-[13px] text-stone-900 leading-snug">
-                        {BRANCHES.find((b) => b.id === selectedBranch)?.label}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-xl border border-[#E8F5E9] bg-emerald-50/60">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-800/90">
-                        Khách hàng
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setStep(2)}
-                        className="rounded-lg border border-emerald-200/90 bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 transition-colors"
-                      >
-                        Sửa
-                      </button>
-                    </div>
-                    <div className="font-bold text-[13px] text-stone-900 mt-1.5 leading-snug">
-                      {customer.fullName?.trim() || "—"}
-                    </div>
-                    {customer.phone && (
-                      <div className="text-[12px] text-stone-600 tabular-nums mt-0.5">
-                        {normalizePhone(customer.phone)}
-                      </div>
+                      )
                     )}
+                    <p className="text-[11px] text-emerald-800/90 leading-relaxed">
+                      Đơn này tích thêm +
+                      {earnedPointPreview.toLocaleString("vi-VN")} điểm ·{" "}
+                      {earnedPointRulePreview}
+                    </p>
                   </div>
-                </div>
+                )}
 
-                <div className="p-3.5 sm:p-4 bg-stone-50/90 rounded-xl border border-stone-200">
-                  <div className="text-[12px] text-stone-700 leading-relaxed">
-                    Cọc xử lý{" "}
-                    <strong>tại cửa hàng</strong> theo bốn điều bạn đã tick ở
-                    ô cam kết.
+                <div className="rounded-lg border border-[#f0f0f0] bg-[#fafafa] px-3.5 py-2.5">
+                  <div className="text-[12px] text-[#666] leading-relaxed">
+                    Cọc xử lý <strong className="text-[#333]">tại cửa hàng</strong> theo bốn điều cam kết bên dưới.
                   </div>
                 </div>
                 <div
                   ref={agreementSectionRef}
-                  className="p-3.5 sm:p-4 bg-white rounded-xl border border-[#F0E8EC] space-y-2.5"
+                  className="rounded-xl border border-[#f0f0f0] bg-white p-3.5 space-y-2"
                 >
-                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#C94B86]">
+                  <div className="text-[12px] font-semibold text-[#333]">
                     Cam kết trước khi thanh toán
                   </div>
                   <label
-                    className={`flex items-start gap-3 rounded-xl border-2 p-3 text-[13px] leading-relaxed transition-colors ${
+                    className={`flex items-start gap-3 rounded-lg border p-3 text-[12px] leading-relaxed transition-colors ${
                       agreementErrors.noScamElsewhere
-                        ? "border-amber-600 bg-amber-100 text-amber-950"
-                        : "border-amber-300 bg-amber-50 text-amber-950"
+                        ? "border-amber-400 bg-amber-50 text-amber-950"
+                        : "border-amber-200 bg-amber-50/60 text-amber-950"
                     }`}
                   >
                     <input
@@ -2596,7 +2338,7 @@ export default function QuickBookModal({
                       theo Điều 174 BLHS (tội Lừa đảo chiếm đoạt tài sản).
                     </span>
                   </label>
-                  <label className="flex items-start gap-3 rounded-xl border border-stone-100 bg-stone-50/80 p-3 text-[13px] leading-relaxed text-stone-700 cursor-pointer hover:border-[#FF9FCA]/70 transition-colors">
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[#f0f0f0] bg-[#fafafa] p-3 text-[12px] leading-relaxed text-[#555] transition-colors hover:border-[#E85C9C]/30">
                     <input
                       type="checkbox"
                       checked={agreeDepositAndPolicies}
@@ -2635,8 +2377,7 @@ export default function QuickBookModal({
                           setAgreeCccdPerDevice(checked);
                           setAgreementErrors((prev) => ({
                             ...prev,
-                            cccdPerDevice:
-                              !checked && prev.cccdPerDevice,
+                            cccdPerDevice: !checked && prev.cccdPerDevice,
                           }));
                         }}
                         className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
@@ -2690,89 +2431,106 @@ export default function QuickBookModal({
             )}
           </div>
 
-          {/* Footer */}
-          <div className="shrink-0 p-3 sm:p-4 border-t border-[#FFE4F0] bg-white">
-            <div
-              className={`grid gap-3 ${
-                step > 1 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
-              }`}
-            >
-              {step > 1 && (
-                <button
-                  onClick={() => setStep(step - 1)}
-                  className="min-w-0 py-3 rounded-xl border-2 border-[#222] text-[#222] text-sm sm:text-base font-black uppercase tracking-wider hover:bg-[#f5f5f5] transition-colors order-2 sm:order-1"
-                >
-                  Quay lại
-                </button>
-              )}
-              {step < 3 ? (
-                <button
-                  onClick={async () => {
-                    if (step === 2 && isCustomerValid) {
-                      const snap = buildCustomerInfoSnapshot(
-                        customer,
-                        effectiveSocialPlatform,
-                      );
-                      if (isCustomerInfoSnapshotDifferent(loadCustomerInfo(), snap)) {
-                        saveCustomerInfo(snap);
-                      }
-                      try {
-                        await syncCustomerProfileToServer(
-                          checkoutMode,
-                          hasGoogleSession,
-                          snap,
+          {/* Footer — Shopee/TikTok sticky checkout bar */}
+          <div className="shrink-0 border-t border-[#f0f0f0] bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-medium text-[#999]">
+                  {step === 3 ? "Thanh toán" : "Tạm tính"}
+                </div>
+                <div className="text-[18px] font-bold tabular-nums leading-tight text-[#E85C9C]">
+                  {payableTotal.toLocaleString("vi-VN")}đ
+                </div>
+                {totalSavingsAmount > 0 && step < 3 && (
+                  <div className="text-[10px] font-medium text-[#E85C9C]/80">
+                    Tiết kiệm {totalSavingsAmount.toLocaleString("vi-VN")}đ
+                  </div>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {step > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setStep(step - 1)}
+                    className="min-h-[44px] rounded-lg border border-[#ddd] px-4 text-[13px] font-semibold text-[#555] transition-colors hover:bg-[#fafafa] active:scale-[0.98]"
+                  >
+                    Quay lại
+                  </button>
+                )}
+                {step < 3 ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (step === 2 && isCustomerValid) {
+                        const snap = buildCustomerInfoSnapshot(
+                          customer,
+                          effectiveSocialPlatform,
                         );
-                      } catch (e) {
-                        console.warn(
-                          "Không thể đồng bộ hồ sơ lên server.",
-                          e,
-                        );
+                        if (
+                          isCustomerInfoSnapshotDifferent(
+                            loadCustomerInfo(),
+                            snap,
+                          )
+                        ) {
+                          saveCustomerInfo(snap);
+                        }
+                        try {
+                          await syncCustomerProfileToServer(
+                            checkoutMode,
+                            hasGoogleSession,
+                            snap,
+                          );
+                        } catch (e) {
+                          console.warn(
+                            "Không thể đồng bộ hồ sơ lên server.",
+                            e,
+                          );
+                        }
                       }
+                      setStep(step + 1);
+                    }}
+                    disabled={
+                      (step === 1 &&
+                        (!isAvailable ||
+                          isCheckingAvailability ||
+                          !!timeSelectionError ||
+                          !sameModelAvailabilityReady)) ||
+                      (step === 2 &&
+                        (!isCustomerValid ||
+                          !isAvailable ||
+                          isCheckingAvailability)) ||
+                      (step === 3 &&
+                        (!isAvailable || isCheckingAvailability))
                     }
-                    setStep(step + 1);
-                  }}
-                  disabled={
-                    (step === 1 &&
-                      (!isAvailable ||
-                        isCheckingAvailability ||
-                        !!timeSelectionError ||
-                        !sameModelAvailabilityReady)) ||
-                    (step === 2 &&
-                      (!isCustomerValid ||
-                        !isAvailable ||
-                        isCheckingAvailability)) ||
-                    (step === 3 &&
-                      (!isAvailable || isCheckingAvailability))
-                  }
-                  className="min-w-0 py-3 rounded-xl bg-[#222] text-[#FF9FCA] text-sm sm:text-base font-black uppercase tracking-wider hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999] order-1 sm:order-2"
-                >
-                  {step === 2
-                    ? `Tiếp tục • còn ${Math.round(payableTotal / 1000)}k`
-                    : "Tiếp tục"}
-                </button>
-              ) : (
-                <button
-                  onClick={handleSubmit}
-                  disabled={
-                    !isCustomerValid ||
-                    isSubmitting ||
-                    !isAvailable ||
-                    isCheckingAvailability
-                  }
-                  className="min-w-0 py-3 rounded-xl bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white text-sm sm:text-base font-black uppercase tracking-wider hover:opacity-90 transition-opacity disabled:bg-none disabled:bg-[#cfcfcf] disabled:text-[#6b6b6b] disabled:cursor-not-allowed flex items-center justify-center gap-2 order-1 sm:order-2"
-                >
-                  {isSubmitting ? (
-                    "Đang xử lý..."
-                  ) : isCheckingAvailability ? (
-                    "Đang kiểm tra lịch…"
-                  ) : (
-                    <>
-                      Thanh toán •{" "}
-                      {payableTotal.toLocaleString("vi-VN")}đ
-                    </>
-                  )}
-                </button>
-              )}
+                    className="min-h-[44px] min-w-[120px] rounded-lg bg-[#E85C9C] px-5 text-[14px] font-bold text-white shadow-sm transition-all hover:bg-[#d94d8a] active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#ddd] disabled:text-[#999] disabled:shadow-none"
+                  >
+                    {step === 1 ? "Tiếp tục" : "Xác nhận"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={
+                      !isCustomerValid ||
+                      isSubmitting ||
+                      !isAvailable ||
+                      isCheckingAvailability
+                    }
+                    className="flex min-h-[44px] min-w-[140px] items-center justify-center gap-2 rounded-lg bg-[#E85C9C] px-5 text-[14px] font-bold text-white shadow-sm transition-all hover:bg-[#d94d8a] active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#ddd] disabled:text-[#999]"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Đang xử lý
+                      </>
+                    ) : isCheckingAvailability ? (
+                      "Đang kiểm tra"
+                    ) : (
+                      "Thanh toán"
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </motion.div>
@@ -2799,12 +2557,12 @@ export default function QuickBookModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
             transition={{ type: "spring", damping: 26, stiffness: 320 }}
-            className="fixed left-3 right-3 top-1/2 z-[126] mx-auto max-w-md -translate-y-1/2 rounded-2xl border-2 border-[#FAD6E8] bg-[#FFFBF5] p-5 shadow-2xl"
+            className="fixed left-3 right-3 top-1/2 z-[126] mx-auto max-w-md -translate-y-1/2 rounded-2xl border border-[#f0f0f0] bg-white p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3
               id="cccd-confirm-title"
-              className="text-base font-black uppercase tracking-tight text-[#222] mb-2"
+              className="text-base font-bold text-[#222] mb-2"
             >
               Xác nhận CCCD / giấy tờ
             </h3>
@@ -2819,7 +2577,7 @@ export default function QuickBookModal({
                 cần cung cấp số lượng CCCD (căn cước công dân) tương ứng với số
                 máy thuê
               </strong>
-              — mỗi máy một giấy tờ chính chủ (hoặc VNeID định danh mức 2 theo
+              . Mỗi máy một giấy tờ chính chủ (hoặc VNeID định danh mức 2 theo
               quy định cửa hàng). Bạn xác nhận đã hiểu và đồng ý tiếp tục thanh
               toán?
             </p>
@@ -2827,7 +2585,7 @@ export default function QuickBookModal({
               <button
                 type="button"
                 onClick={() => setShowCccdConfirmDialog(false)}
-                className="flex-1 min-h-[44px] rounded-xl border-2 border-[#222] text-[#222] text-sm font-black uppercase tracking-wider hover:bg-[#f5f5f5] transition-colors"
+                className="flex-1 min-h-[44px] rounded-lg border border-[#ddd] text-[13px] font-semibold text-[#555] transition-colors hover:bg-[#fafafa]"
               >
                 Quay lại
               </button>
@@ -2835,7 +2593,7 @@ export default function QuickBookModal({
                 type="button"
                 onClick={handleCccdDialogConfirm}
                 disabled={isSubmitting}
-                className="flex-1 min-h-[44px] rounded-xl bg-gradient-to-r from-[#E85C9C] to-[#FF9FCA] text-white text-sm font-black uppercase tracking-wider hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="flex-1 min-h-[44px] rounded-lg bg-[#E85C9C] text-[13px] font-bold text-white transition-all hover:bg-[#d94d8a] disabled:opacity-50"
               >
                 Đồng ý & thanh toán
               </button>

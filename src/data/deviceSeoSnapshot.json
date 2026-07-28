@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-06-15T20:05:18.912Z",
+  "fetchedAt": "2026-07-28T16:58:52.259Z",
   "source": "api",
   "apiUrl": "https://api.faodigital.vn/api",
   "models": [
@@ -393,7 +393,7 @@
       "priceThreeDay": 400000,
       "priceNextDay": 90000,
       "deposit": 1000000,
-      "unitCount": 8,
+      "unitCount": 7,
       "branches": [
         "PHU_NHUAN",
         "Q9"
@@ -1032,7 +1032,7 @@
       "priceTwoDay": 660000,
       "priceThreeDay": 930000,
       "priceNextDay": 300000,
-      "deposit": 5000000,
+      "deposit": 3000000,
       "unitCount": 1,
       "branches": [
         "PHU_NHUAN"
@@ -1197,7 +1197,7 @@
       "priceThreeDay": 630000,
       "priceNextDay": 200000,
       "deposit": 2000000,
-      "unitCount": 1,
+      "unitCount": 3,
       "branches": [
         "PHU_NHUAN"
       ],
@@ -1226,7 +1226,7 @@
       "priceThreeDay": 500000,
       "priceNextDay": 140000,
       "deposit": 2000000,
-      "unitCount": 8,
+      "unitCount": 9,
       "branches": [
         "PHU_NHUAN",
         "Q9"
@@ -1310,10 +1310,10 @@
       "itemOrder": 0,
       "slug": "thue-may-anh-insta360-go-ultra",
       "priceSixHours": 100000,
-      "priceOneDay": 100000,
-      "priceTwoDay": 180000,
-      "priceThreeDay": 260000,
-      "priceNextDay": 90000,
+      "priceOneDay": 120000,
+      "priceTwoDay": 260000,
+      "priceThreeDay": 360000,
+      "priceNextDay": 100000,
       "deposit": 1000000,
       "unitCount": 1,
       "branches": [

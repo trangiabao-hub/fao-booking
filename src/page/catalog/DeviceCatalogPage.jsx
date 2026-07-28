@@ -2176,6 +2176,18 @@ export default function DeviceCatalogPage() {
           </button>
         </div>
 
+        <div className="mb-4 flex flex-wrap items-center gap-1.5 rounded-xl border border-pink-200/70 bg-[#fff7fb] px-3 py-2.5">
+          <span className="rounded-full bg-[#E85C9C] px-2 py-0.5 text-[11px] font-black text-white">
+            Giảm 20% T2–T6
+          </span>
+          <span className="rounded-full border border-[#E85C9C]/30 bg-white px-2 py-0.5 text-[11px] font-black text-[#E85C9C]">
+            Cọc 0đ cho HSSV
+          </span>
+          <span className="text-[11.5px] text-[#8a8a8a]">
+            Tự áp dụng, không cần nhập mã.
+          </span>
+        </div>
+
         {showCuratedCustomerBanner && (
             <CatalogCuratedScheduleBanner
               pickupReturnSummary={catalogPickupReturnSummaryVi}
