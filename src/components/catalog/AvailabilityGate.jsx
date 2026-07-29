@@ -82,18 +82,18 @@ export default function AvailabilityGate({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           onClick={handleBackdropClick}
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-3 sm:px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 sm:p-6"
         >
           <MotionDiv
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
+            initial={{ opacity: 0, scale: 0.96, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 16 }}
             transition={{ type: "spring", damping: 28, stiffness: 400 }}
             onClick={(e) => e.stopPropagation()}
-            className="mb-20 flex max-h-[calc(100dvh-6rem)] w-full min-w-0 max-w-md flex-col overflow-hidden rounded-3xl bg-[#FFFBF5] md:mb-28 md:max-h-[85vh]"
+            className="flex w-full min-w-0 max-w-md max-h-[min(740px,calc(100dvh-2rem))] flex-col overflow-hidden rounded-3xl bg-[#FFFBF5] shadow-[0_24px_64px_rgba(0,0,0,0.22)]"
           >
-            <div className="px-5 pt-5 pb-4 border-b border-[#FFE4F0] bg-[#FFFBF5]">
-              <h3 className="text-lg font-black text-[#222] uppercase tracking-wide sm:text-xl">
+            <div className="border-b border-[#FFE4F0] bg-[#FFFBF5] px-5 pb-4 pt-5 text-center">
+              <h3 className="text-lg font-black uppercase tracking-wide text-[#222] sm:text-xl">
                 Chọn ngày & khung giờ
               </h3>
             </div>
