@@ -148,7 +148,7 @@ export default function CatalogStaffShareActions({
       {shortening ? (
         <p className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-[#aaa]">
           <Loader2 size={11} className="animate-spin" />
-          Đang rút gọn link…
+          Đang tạo link ngắn…
         </p>
       ) : null}
 

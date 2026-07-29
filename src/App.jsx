@@ -12,6 +12,7 @@ import AlbumOrderRedirect from "./ptb/pages/AlbumOrderRedirect";
 import FeedbackPage from "./page/feedback";
 import RentalContractSamplePage from "./page/rental-contract-sample";
 import PrivacyPolicyPage from "./page/privacy-policy";
+import ShortLinkRedirect from "./page/short-link";
 import SeoMeta from "./components/SeoMeta";
 import AnalyticsShell from "./components/AnalyticsShell";
 
@@ -41,6 +42,19 @@ const App = () => {
           path="/catalog"
         >
           <DeviceCatalogPage />
+        </SeoMeta>
+      ),
+    },
+    {
+      path: "/l/:code",
+      element: (
+        <SeoMeta
+          title="Đang mở link…"
+          description="Chuyển tới catalog FAO Camera."
+          path="/l"
+          noindex
+        >
+          <ShortLinkRedirect />
         </SeoMeta>
       ),
     },
