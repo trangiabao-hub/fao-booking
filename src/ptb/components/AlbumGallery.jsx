@@ -54,10 +54,7 @@ export default function AlbumGallery({ images = [], printRequests = [] }) {
               </div>
               <p className={cn(ptb.textBody, "mt-2 text-[12px]")}>
                 {req.freeCount} miễn phí
-                {req.paidCount > 0 ? ` · ${req.paidCount} trả phí` : ""}
-                {req.subtotalVnd > 0
-                  ? ` · ${req.subtotalVnd.toLocaleString("vi-VN")}đ`
-                  : ""}
+                {req.paidCount > 0 ? ` · ${req.paidCount} in thêm` : ""}
                 {req.note ? ` · ${req.note}` : ""}
               </p>
             </li>

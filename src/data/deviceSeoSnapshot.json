@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-08-04T10:01:20.649Z",
+  "fetchedAt": "2026-08-15T14:00:08.839Z",
   "source": "api",
   "apiUrl": "https://api.faodigital.vn/api",
   "models": [
@@ -17,7 +17,7 @@
       "priceThreeDay": 590000,
       "priceNextDay": 160000,
       "deposit": 2000000,
-      "unitCount": 45,
+      "unitCount": 47,
       "branches": [
         "PHU_NHUAN",
         "Q9"
@@ -392,7 +392,7 @@
       "priceTwoDay": 260000,
       "priceThreeDay": 400000,
       "priceNextDay": 90000,
-      "deposit": 1500000,
+      "deposit": 1000000,
       "unitCount": 7,
       "branches": [
         "PHU_NHUAN",
@@ -1197,7 +1197,7 @@
       "priceThreeDay": 630000,
       "priceNextDay": 200000,
       "deposit": 2000000,
-      "unitCount": 3,
+      "unitCount": 4,
       "branches": [
         "PHU_NHUAN"
       ],
@@ -1297,35 +1297,6 @@
       "feedbackPath": "/feedback?modelKey=RS4M&model=Gimbal+DJI+RS+4+Mini&from=%2Fthue-may-anh-dji-rs4m",
       "kitLabel": "Gimbal DJI RS 4 Mini",
       "useCase": "Thuê Gimbal DJI RS 4 Mini tại FAO Camera TP.HCM",
-      "pros": [],
-      "comboNote": "Giá thuê theo combo trên catalog (thường gồm pin, sạc, thẻ nhớ, túi — tùy máy).",
-      "feedbackRaw": null
-    },
-    {
-      "modelKey": "GU",
-      "displayName": "Insta360 GO Ultra",
-      "categoryName": "Insta 360",
-      "brandLabel": "Insta 360",
-      "categoryOrder": 5,
-      "itemOrder": 0,
-      "slug": "thue-may-anh-insta360-go-ultra",
-      "priceSixHours": 100000,
-      "priceOneDay": 120000,
-      "priceTwoDay": 260000,
-      "priceThreeDay": 360000,
-      "priceNextDay": 100000,
-      "deposit": 1000000,
-      "unitCount": 1,
-      "branches": [
-        "PHU_NHUAN"
-      ],
-      "defaultBranchId": "PHU_NHUAN",
-      "image": "https://api.faodigital.vn/uploads/devices/59/ea163561-253f-43c5-91de-a9841cc25358.webp",
-      "catalogQuery": "/catalog?q=GU",
-      "bookPath": "/catalog?modelKey=GU&q=GU&focusModel=insta360goultra&book=1&branchId=PHU_NHUAN",
-      "feedbackPath": "/feedback?modelKey=GU&model=Insta360+GO+Ultra&from=%2Fthue-may-anh-insta360-go-ultra",
-      "kitLabel": "Insta360 GO Ultra",
-      "useCase": "Thuê Insta360 GO Ultra tại FAO Camera TP.HCM",
       "pros": [],
       "comboNote": "Giá thuê theo combo trên catalog (thường gồm pin, sạc, thẻ nhớ, túi — tùy máy).",
       "feedbackRaw": null

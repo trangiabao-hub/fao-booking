@@ -11,9 +11,6 @@ export const mmToPx = (mm) => mm * (300 / 25.4) * EXPORT_DPI;
 export const DEFAULT_SLOT_GAP_MM = 1.2;
 
 export const FREE_PRINT_QUOTA = 2;
-export const PAID_PRINT_PRICE_VND = 10_000;
-export const DUPLICATE_COPY_PRICE_VND = 5_000;
-export const LAMINATION_PRICE_VND = 5_000;
 
 export const PHOTO_THEMES = {
   none: {

@@ -85,20 +85,26 @@ const MAIN_TABS = [
   },
 ];
 
+const NEWEST_SORT = { id: "newest", label: "Mới nhất" };
+
 const TAB_SORT_OPTIONS = {
   pickup: [
+    NEWEST_SORT,
     { id: "from_asc", label: "Gần ngày nhận máy" },
     { id: "from_desc", label: "Ngày nhận sau hơn" },
   ],
   return: [
+    NEWEST_SORT,
     { id: "to_asc", label: "Gần ngày trả máy" },
     { id: "to_desc", label: "Ngày trả sau hơn" },
   ],
   completed: [
+    NEWEST_SORT,
     { id: "ended_desc", label: "Kết thúc gần đây" },
     { id: "ended_asc", label: "Kết thúc lâu hơn" },
   ],
   cancelled: [
+    NEWEST_SORT,
     { id: "ended_desc", label: "Mới cập nhật" },
     { id: "ended_asc", label: "Cũ hơn" },
   ],
@@ -113,11 +119,22 @@ function bookingMatchesMainTab(booking, tabId) {
   return false;
 }
 
+function bookingCreatedTime(booking) {
+  const created = booking?.created;
+  if (created) {
+    const ts = new Date(created).getTime();
+    if (!Number.isNaN(ts)) return ts;
+  }
+  return Number(booking?.id) || 0;
+}
+
 function sortBookingsForTab(list, sortId) {
   const arr = [...list];
   const from = (b) => new Date(b?.bookingFrom || 0).getTime();
   const to = (b) => new Date(b?.bookingTo || 0).getTime();
   switch (sortId) {
+    case "newest":
+      return arr.sort((a, b) => bookingCreatedTime(b) - bookingCreatedTime(a));
     case "from_asc":
       return arr.sort((a, b) => from(a) - from(b));
     case "from_desc":
@@ -131,7 +148,7 @@ function sortBookingsForTab(list, sortId) {
     case "ended_asc":
       return arr.sort((a, b) => to(a) - to(b));
     default:
-      return arr;
+      return arr.sort((a, b) => bookingCreatedTime(b) - bookingCreatedTime(a));
   }
 }
 
@@ -169,7 +186,7 @@ export default function AccountBookingsPage() {
   const [error, setError] = useState("");
   const [pendingOrder, setPendingOrder] = useState(() => loadRecentOrder());
   const [mainTab, setMainTab] = useState("pickup");
-  const [sortBy, setSortBy] = useState("from_asc");
+  const [sortBy, setSortBy] = useState("newest");
   const [searchQuery, setSearchQuery] = useState("");
 
   const hasSession = !!loadCustomerSession()?.token;
@@ -428,7 +445,7 @@ export default function AccountBookingsPage() {
                       onClick={() => {
                         setMainTab(tab.id);
                         const first =
-                          TAB_SORT_OPTIONS[tab.id]?.[0]?.id ?? "from_asc";
+                          TAB_SORT_OPTIONS[tab.id]?.[0]?.id ?? "newest";
                         setSortBy(first);
                       }}
                       title={tab.hint}

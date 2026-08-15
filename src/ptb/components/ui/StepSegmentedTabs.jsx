@@ -30,6 +30,16 @@ export default function StepSegmentedTabs({ tabs, activeId, onChange, className 
             )}
           >
             {tab.label}
+            {tab.badge ? (
+              <span
+                className={cn(
+                  "ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-bold",
+                  active ? "bg-white/25 text-white" : "bg-[#FCE7F3] text-[#E6007E]",
+                )}
+              >
+                {tab.badge}
+              </span>
+            ) : null}
           </button>
         );
       })}

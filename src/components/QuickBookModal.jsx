@@ -105,14 +105,63 @@ function buildQuickBookNoteVoucher({
 
 const AFTERNOON_PICKUP_TIME = "15:00";
 
-/** Tạm thời tắt Instagram trong quick book — chỉ nhận link Facebook. */
-const QUICK_BOOK_IG_TEMPORARILY_DISABLED = true;
-
 function pickStoredSocialLink(source) {
   const ig = (source?.ig || "").trim();
   const fb = (source?.fb || "").trim();
-  if (QUICK_BOOK_IG_TEMPORARILY_DISABLED) return fb;
+  if (isUrlForPlatform(ig, "instagram")) return ig;
+  if (isUrlForPlatform(fb, "facebook")) return fb;
+  if (isUrlForPlatform(ig, "facebook")) return ig;
+  if (isUrlForPlatform(fb, "instagram")) return fb;
   return ig || fb;
+}
+
+function isFilledName(name) {
+  return (name || "").trim().length >= 2;
+}
+
+function isFilledPhone(phone) {
+  return /^0\d{9}$/.test(normalizePhone(phone));
+}
+
+function isFilledSocial(link) {
+  return (
+    isUrlForPlatform(link, "instagram") || isUrlForPlatform(link, "facebook")
+  );
+}
+
+/** Chỉ lấp ô trống / sai — không đè thông tin khách đang nhập. */
+function mergeCustomerFromAccount(current, account = {}, saved = {}) {
+  const next = {
+    fullName: isFilledName(current.fullName)
+      ? current.fullName
+      : account.fullName || saved.fullName || current.fullName || "",
+    phone: isFilledPhone(current.phone)
+      ? current.phone
+      : normalizeValidPhoneOrEmpty(account.phone) ||
+        normalizeValidPhoneOrEmpty(saved.phone) ||
+        current.phone ||
+        "",
+    gmail: isValidEmail(current.gmail)
+      ? current.gmail
+      : account.email || saved.gmail || current.gmail || "",
+    ig: isFilledSocial(current.ig)
+      ? current.ig
+      : pickStoredSocialLink({
+          ig: account.ig || saved.ig,
+          fb: account.fb || saved.fb,
+        }) ||
+        current.ig ||
+        "",
+  };
+  if (
+    next.fullName === (current.fullName || "") &&
+    next.phone === (current.phone || "") &&
+    next.gmail === (current.gmail || "") &&
+    next.ig === (current.ig || "")
+  ) {
+    return current;
+  }
+  return { ...current, ...next };
 }
 
 /** Giống catalog: local datetime không hậu tố Z — backend parse LocalDateTime. */
@@ -161,12 +210,7 @@ function detectSocialPlatformFromLink(link) {
 }
 
 function isSavedSocialValid(saved) {
-  const ig = (saved?.ig || "").trim();
-  const fb = (saved?.fb || "").trim();
-  if (!ig && !fb) return false;
-  if (ig && isUrlForPlatform(ig, "instagram")) return true;
-  if (fb && isUrlForPlatform(fb, "facebook")) return true;
-  return false;
+  return isFilledSocial(pickStoredSocialLink(saved));
 }
 
 function buildCustomerInfoSnapshot(customer, socialPlatform) {
@@ -628,19 +672,17 @@ export default function QuickBookModal({
     };
   });
   const [socialPlatform, setSocialPlatform] = useState(() => {
-    if (QUICK_BOOK_IG_TEMPORARILY_DISABLED) return "facebook";
     const saved = loadCustomerInfo();
-    const link = (saved?.ig || saved?.fb || "").trim();
-    const detected = detectSocialPlatformFromLink(link);
+    const detected = detectSocialPlatformFromLink(pickStoredSocialLink(saved));
     if (detected) return detected;
     const hasFb = !!(saved?.fb || "").trim();
     const hasIg = !!(saved?.ig || "").trim();
     if (hasFb && !hasIg) return "facebook";
     return "instagram";
   });
-  const effectiveSocialPlatform = QUICK_BOOK_IG_TEMPORARILY_DISABLED
-    ? "facebook"
-    : socialPlatform;
+  const [savedCustomer, setSavedCustomer] = useState(() => loadCustomerInfo());
+  const memberHydratedRef = useRef(false);
+  const effectiveSocialPlatform = socialPlatform;
   const [checkoutMode, setCheckoutMode] = useState("GOOGLE");
   const [hasGoogleSession, setHasGoogleSession] = useState(
     () => !!loadCustomerSession()?.token,
@@ -1129,8 +1171,41 @@ export default function QuickBookModal({
     step1AvailabilityMessage,
   ]);
 
+  const persistMergedCustomer = useCallback((next, fallbackPlatform) => {
+    const detected = detectSocialPlatformFromLink(next.ig);
+    const snap = buildCustomerInfoSnapshot(
+      next,
+      detected || fallbackPlatform || "instagram",
+    );
+    saveCustomerInfo(snap);
+    setSavedCustomer(snap);
+    return snap;
+  }, []);
+
+  const applyAccountToForm = useCallback(
+    (account, extraSaved) => {
+      const saved = extraSaved || loadCustomerInfo() || {};
+      setCustomer((c) => {
+        const next = mergeCustomerFromAccount(c, account, saved);
+        if (next !== c) persistMergedCustomer(next);
+        return next;
+      });
+      setMemberPoint(Math.max(0, Number(account.point) || 0));
+    },
+    [persistMergedCustomer],
+  );
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      memberHydratedRef.current = false;
+      return;
+    }
+    const saved = loadCustomerInfo() || {};
+    setSavedCustomer(saved);
+    setCustomer((c) => mergeCustomerFromAccount(c, {}, saved));
+    const detected = detectSocialPlatformFromLink(pickStoredSocialLink(saved));
+    if (detected) setSocialPlatform(detected);
+
     const session = loadCustomerSession();
     if (!session?.token) {
       setHasGoogleSession(false);
@@ -1139,36 +1214,27 @@ export default function QuickBookModal({
       setIsMemberDataLoading(false);
       return;
     }
+    if (memberHydratedRef.current) return;
+
     let mounted = true;
-    setIsMemberDataLoading(true);
+    const hasLocalProfile =
+      isFilledName(saved.fullName) && isFilledPhone(saved.phone);
+    if (!hasLocalProfile) setIsMemberDataLoading(true);
     Promise.all([api.get("/account"), api.get("/v1/bookings/me")])
       .then(([accountRes, bookingsRes]) => {
         if (!mounted) return;
         const account = accountRes?.data || {};
-        const saved = loadCustomerInfo() || {};
         const bookings = Array.isArray(bookingsRes?.data)
           ? bookingsRes.data
           : [];
         setCheckoutMode("GOOGLE");
         setHasGoogleSession(true);
         setMemberTotalSpent(computeTotalSpentFromBookings(bookings));
-        setMemberPoint(Math.max(0, Number(account.point) || 0));
-        const nextCustomer = {
-          fullName: account.fullName || saved.fullName || "",
-          phone:
-            normalizeValidPhoneOrEmpty(account.phone) ||
-            normalizeValidPhoneOrEmpty(saved.phone) ||
-            "",
-          gmail: account.email || saved.gmail || "",
-          ig: pickStoredSocialLink({
-            ig: account.ig || saved.ig,
-            fb: account.fb || saved.fb,
-          }),
-        };
-        setCustomer((c) => ({ ...c, ...nextCustomer }));
-        saveCustomerInfo(nextCustomer);
+        applyAccountToForm(account, saved);
+        memberHydratedRef.current = true;
       })
       .catch(() => {
+        if (!mounted) return;
         clearCustomerSession();
         setHasGoogleSession(false);
         setMemberTotalSpent(0);
@@ -1180,35 +1246,7 @@ export default function QuickBookModal({
     return () => {
       mounted = false;
     };
-  }, [isOpen]);
-
-  // Refresh member points / tier when user reaches step 2/3
-  useEffect(() => {
-    if (!isOpen || !hasGoogleSession || (step !== 2 && step !== 3)) return;
-    let mounted = true;
-    setIsMemberDataLoading(true);
-    Promise.all([api.get("/account"), api.get("/v1/bookings/me")])
-      .then(([accountRes, bookingsRes]) => {
-        if (!mounted) return;
-        const account = accountRes?.data || {};
-        const bookings = Array.isArray(bookingsRes?.data)
-          ? bookingsRes.data
-          : [];
-        setMemberTotalSpent(computeTotalSpentFromBookings(bookings));
-        setMemberPoint(Math.max(0, Number(account.point) || 0));
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setIsMemberDataLoading(false);
-      })
-      .finally(() => {
-        if (mounted) setIsMemberDataLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [isOpen, hasGoogleSession, step]);
+  }, [isOpen, applyAccountToForm]);
 
   useEffect(() => {
     if (hasGoogleSession && checkoutMode !== "GOOGLE") {
@@ -1217,10 +1255,6 @@ export default function QuickBookModal({
   }, [hasGoogleSession, checkoutMode]);
 
   useLayoutEffect(() => {
-    if (QUICK_BOOK_IG_TEMPORARILY_DISABLED) {
-      setSocialPlatform("facebook");
-      return;
-    }
     const detected = detectSocialPlatformFromLink(customer.ig);
     if (detected) setSocialPlatform(detected);
   }, [customer.ig]);
@@ -1331,17 +1365,13 @@ export default function QuickBookModal({
   const isLoggedInUser = hasGoogleSession;
   const shouldShowContactForm =
     checkoutMode === "GUEST" || (checkoutMode === "GOOGLE" && hasGoogleSession);
-  const savedCustomer = useMemo(() => loadCustomerInfo(), []);
   const canUseSavedCustomer = useMemo(() => {
     const phone = normalizePhone(savedCustomer?.phone || "");
     return (
       !!savedCustomer?.fullName &&
       /^0\d{9}$/.test(phone) &&
       isValidEmail(savedCustomer?.gmail || "") &&
-      (QUICK_BOOK_IG_TEMPORARILY_DISABLED
-        ? !!(savedCustomer?.fb || "").trim() &&
-          isUrlForPlatform(savedCustomer.fb, "facebook")
-        : isSavedSocialValid(savedCustomer))
+      isSavedSocialValid(savedCustomer)
     );
   }, [savedCustomer]);
 
@@ -1412,6 +1442,7 @@ export default function QuickBookModal({
         fb: effectiveSocialPlatform === "facebook" ? socialLink : "",
       };
       saveCustomerInfo(normalizedCustomer);
+      setSavedCustomer(normalizedCustomer);
 
       const phone = normalizedCustomer.phone;
       let customerId = null;
@@ -1599,8 +1630,6 @@ export default function QuickBookModal({
       const data = res?.data || {};
       if (!data?.token) throw new Error("Đăng nhập Google thất bại");
       saveCustomerSession({ token: data.token });
-      setCheckoutMode("GOOGLE");
-      setHasGoogleSession(true);
       const [accountRes, bookingsRes] = await Promise.all([
         api.get("/account"),
         api.get("/v1/bookings/me"),
@@ -1608,17 +1637,17 @@ export default function QuickBookModal({
       const account = accountRes?.data || {};
       const bookings = Array.isArray(bookingsRes?.data) ? bookingsRes.data : [];
       setMemberTotalSpent(computeTotalSpentFromBookings(bookings));
-      setMemberPoint(Math.max(0, Number(account.point) || 0));
-      setCustomer((c) => ({
-        ...c,
-        fullName: account.fullName || data.fullName || c.fullName,
-        phone: normalizeValidPhoneOrEmpty(account.phone) || c.phone,
-        gmail: account.email || data.email || c.gmail,
-        ig: pickStoredSocialLink({
-          ig: account.ig || c.ig,
-          fb: account.fb,
-        }),
-      }));
+      applyAccountToForm(
+        {
+          ...account,
+          fullName: account.fullName || data.fullName,
+          email: account.email || data.email,
+        },
+        loadCustomerInfo() || {},
+      );
+      memberHydratedRef.current = true;
+      setCheckoutMode("GOOGLE");
+      setHasGoogleSession(true);
     } catch (err) {
       setError(
         resolveGoogleSignInError(err, "Không thể đăng nhập Google"),
@@ -1755,7 +1784,7 @@ export default function QuickBookModal({
                   <Gift size={16} className="mt-0.5 shrink-0 text-[#E85C9C]" />
                   <p className="text-[12px] leading-relaxed text-[#555]">
                     <strong className="font-semibold text-[#333]">Tặng 2 ảnh photobooth</strong>{" "}
-                    khi trả máy. In thêm 10.000đ/strip.
+                    khi trả máy.
                   </p>
                 </div>
 
@@ -1813,17 +1842,20 @@ export default function QuickBookModal({
                   !isLoggedInUser && (
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
+                        const latest = loadCustomerInfo() || savedCustomer;
+                        const link = pickStoredSocialLink(latest);
+                        const detected = detectSocialPlatformFromLink(link);
                         setCustomer((c) => ({
                           ...c,
-                          fullName: savedCustomer.fullName || "",
-                          phone: normalizeValidPhoneOrEmpty(
-                            savedCustomer.phone,
-                          ),
-                          gmail: savedCustomer.gmail || "",
-                          ig: pickStoredSocialLink(savedCustomer),
-                        }))
-                      }
+                          fullName: latest.fullName || "",
+                          phone: normalizeValidPhoneOrEmpty(latest.phone),
+                          gmail: latest.gmail || "",
+                          ig: link,
+                        }));
+                        if (detected) setSocialPlatform(detected);
+                        setSavedCustomer(latest);
+                      }}
                       className="w-full rounded-lg border border-dashed border-[#E85C9C]/40 bg-[#fff8fb] px-3 py-2.5 text-[12px] font-semibold text-[#E85C9C] transition-colors hover:bg-[#fff0f6] active:scale-[0.99]"
                     >
                       Dùng thông tin đã lưu
@@ -1938,40 +1970,31 @@ export default function QuickBookModal({
 
                       <div>
                         <label className="mb-1.5 block px-0.5 text-[11px] font-semibold text-[#666]">
-                          {QUICK_BOOK_IG_TEMPORARILY_DISABLED
-                            ? "Facebook"
-                            : "Instagram / Facebook"}
+                          Instagram / Facebook
                           <span className="ml-1 font-normal text-red-500">*</span>
                         </label>
-                        {QUICK_BOOK_IG_TEMPORARILY_DISABLED ? (
-                          <p className="mb-2 px-1 text-[11px] text-[#888] font-medium">
-                            Instagram tạm thời không khả dụng. Vui lòng nhập
-                            link Facebook.
-                          </p>
-                        ) : (
-                          <div className="flex flex-wrap gap-4 mb-2 px-1">
-                            <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[#444]">
-                              <input
-                                type="radio"
-                                name="socialPlatform"
-                                checked={socialPlatform === "instagram"}
-                                onChange={() => setSocialPlatform("instagram")}
-                                className="h-4 w-4 accent-[#E85C9C] shrink-0"
-                              />
-                              Instagram
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[#444]">
-                              <input
-                                type="radio"
-                                name="socialPlatform"
-                                checked={socialPlatform === "facebook"}
-                                onChange={() => setSocialPlatform("facebook")}
-                                className="h-4 w-4 accent-[#E85C9C] shrink-0"
-                              />
-                              Facebook
-                            </label>
-                          </div>
-                        )}
+                        <div className="flex flex-wrap gap-4 mb-2 px-1">
+                          <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[#444]">
+                            <input
+                              type="radio"
+                              name="socialPlatform"
+                              checked={socialPlatform === "instagram"}
+                              onChange={() => setSocialPlatform("instagram")}
+                              className="h-4 w-4 accent-[#E85C9C] shrink-0"
+                            />
+                            Instagram
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[#444]">
+                            <input
+                              type="radio"
+                              name="socialPlatform"
+                              checked={socialPlatform === "facebook"}
+                              onChange={() => setSocialPlatform("facebook")}
+                              className="h-4 w-4 accent-[#E85C9C] shrink-0"
+                            />
+                            Facebook
+                          </label>
+                        </div>
                         <label className="mb-1 block px-0.5 text-[10px] font-medium text-[#999]">
                           Link profile
                         </label>
@@ -1980,7 +2003,11 @@ export default function QuickBookModal({
                           onChange={(e) =>
                             setCustomer((c) => ({ ...c, ig: e.target.value }))
                           }
-                          placeholder="https://facebook.com/username"
+                          placeholder={
+                            socialPlatform === "instagram"
+                              ? "https://instagram.com/username"
+                              : "https://facebook.com/username"
+                          }
                           className={`w-full rounded-lg border bg-white px-3 py-2.5 text-[13px] font-medium text-[#333] focus:outline-none ${
                             socialLinkError
                               ? "border-red-300 focus:border-red-400"
@@ -1994,9 +2021,7 @@ export default function QuickBookModal({
                         )}
                         {!socialLinkError && (
                           <p className="mt-1 text-[11px] text-[#999] px-1">
-                            {QUICK_BOOK_IG_TEMPORARILY_DISABLED
-                              ? "Dán link Facebook đầy đủ (https://...)."
-                              : "Dán link đầy đủ (https://...) đúng với nền tảng đã chọn."}
+                            Chọn 1 nền tảng rồi dán link đầy đủ (https://...).
                           </p>
                         )}
                       </div>
@@ -2255,7 +2280,7 @@ export default function QuickBookModal({
 
                 <div className="rounded-lg border border-[#f0f0f0] bg-[#fafafa] px-3.5 py-2.5">
                   <div className="text-[12px] text-[#666] leading-relaxed">
-                    Cọc xử lý <strong className="text-[#333]">tại cửa hàng</strong> theo bốn điều cam kết bên dưới.
+                    Cọc xử lý <strong className="text-[#333]">tại cửa hàng</strong> — chọn 1 trong 3 hình thức bên dưới.
                   </div>
                 </div>
                 <div
@@ -2352,11 +2377,11 @@ export default function QuickBookModal({
                         className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
                       />
                       <span>
-                        Tôi sẽ cung cấp{" "}
+                        Thuê 2 máy trở lên: tôi sẽ đem{" "}
                         <strong className="text-stone-900">
-                          {effectiveDevices.length} CCCD
+                          {Math.max(2, effectiveDevices.length)} CCCD
                         </strong>{" "}
-                        cho shop (mỗi máy tương đương 1 CCCD).
+                        và đến shop xác thực.
                       </span>
                     </label>
                   )}
@@ -2442,6 +2467,7 @@ export default function QuickBookModal({
                           )
                         ) {
                           saveCustomerInfo(snap);
+                          setSavedCustomer(snap);
                         }
                         try {
                           await syncCustomerProfileToServer(

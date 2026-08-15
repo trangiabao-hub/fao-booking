@@ -97,12 +97,3 @@ export async function fetchFrames() {
   const res = await api.get("/v1/photo-booth-frames");
   return Array.isArray(res.data) ? res.data : [];
 }
-
-export async function createPrintPaymentLink(printRequestId, { amount, returnSuccessUrl, returnFailUrl }) {
-  const res = await api.post(`/v1/ptb/trip/print-requests/${printRequestId}/pay`, {
-    amount,
-    returnSuccessUrl,
-    returnFailUrl,
-  });
-  return res.data;
-}

@@ -19,13 +19,18 @@ export default function AlbumPageLayout({ children, className }) {
 
 export function FrameEditorWorkspace({ children, className }) {
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-6",
-        className,
-      )}
-    >
-      {children}
-    </div>
+    <div className={cn("flex flex-col gap-3 sm:gap-4", className)}>{children}</div>
+  );
+}
+
+/**
+ * Preview + chọn khung luôn nằm cạnh nhau ở MỌI breakpoint.
+ * Strip 1×4 vốn hẹp (tỉ lệ 1:3) nên xếp khung bên cạnh sẽ thấy được cả hai
+ * cùng lúc — không cần chặn chiều cao preview hay cuộn xuống mới thấy khung.
+ * `items-stretch` (mặc định) cho cột khung tự cao bằng preview.
+ */
+export function FrameEditorRow({ children, className }) {
+  return (
+    <div className={cn("flex gap-2 sm:gap-4 lg:gap-6", className)}>{children}</div>
   );
 }

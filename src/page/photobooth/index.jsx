@@ -4,11 +4,10 @@ import {
   CameraIcon,
   GiftIcon,
   PhotoIcon,
-  SparklesIcon,
 } from "@heroicons/react/24/solid";
 import SlideNav from "../../components/SlideNav";
 import { loadRecentOrder } from "../../utils/storage";
-import { FREE_PRINT_QUOTA, PAID_PRINT_PRICE_VND } from "../../ptb/lib/constants";
+import { FREE_PRINT_QUOTA } from "../../ptb/lib/constants";
 
 export default function PhotoBoothPage() {
   const recent = loadRecentOrder();
@@ -49,15 +48,6 @@ export default function PhotoBoothPage() {
               <p className="font-bold text-slate-800">Ghép online trên điện thoại</p>
               <p className="mt-1 text-sm text-slate-600">
                 Chọn khung, thêm ảnh từ chuyến đi, đặt in trước khi đến shop trả máy.
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-3 rounded-2xl border border-pink-100 bg-white p-4 shadow-sm">
-            <SparklesIcon className="h-6 w-6 shrink-0 text-violet-600" />
-            <div>
-              <p className="font-bold text-slate-800">In thêm nếu thích</p>
-              <p className="mt-1 text-sm text-slate-600">
-                Strip thêm chỉ {PAID_PRINT_PRICE_VND.toLocaleString("vi-VN")}đ — cán bóng / bản sao có sẵn.
               </p>
             </div>
           </div>

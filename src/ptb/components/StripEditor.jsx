@@ -4,7 +4,8 @@ import { applyFrameToStrip } from "../lib/frameUtils";
 import { canvasToBlob, renderStripCanvas } from "../lib/renderStrip";
 import { createEmptyStrip } from "../lib/utils";
 import { usePtbFrames } from "../hooks/usePtbFrames";
-import { FrameEditorWorkspace } from "./ui/AlbumPageLayout";
+import { FrameEditorRow, FrameEditorWorkspace } from "./ui/AlbumPageLayout";
+import ComposerActions from "./ui/ComposerActions";
 import FrameGalleryPanel from "./ui/FrameGalleryPanel";
 import StripPreviewPanel from "./ui/StripPreviewPanel";
 
@@ -17,19 +18,15 @@ export default function StripEditor({ disabled, onSave, saving, onError }) {
 
   const displayFrames = frames;
 
-  const selectedFrame = useMemo(
-    () => displayFrames.find((f) => f.id === selectedFrameId) ?? null,
-    [displayFrames, selectedFrameId],
-  );
-
   const filledCount = useMemo(
     () => strip.images.filter(Boolean).length,
     [strip.images],
   );
   const slotCount = strip.imageCount ?? 4;
   const hasFrame = Boolean(strip.frameOverlaySrc);
-  const canSave =
-    hasFrame && filledCount >= Math.min(2, slotCount) && !disabled;
+  const minRequired = Math.min(2, slotCount);
+  const missingCount = Math.max(0, minRequired - filledCount);
+  const canSave = hasFrame && missingCount === 0 && !disabled;
 
   useEffect(() => {
     if (!displayFrames.length || selectedFrameId) return;
@@ -45,13 +42,31 @@ export default function StripEditor({ disabled, onSave, saving, onError }) {
     setStrip((prev) => applyFrameToStrip(prev, frame));
   };
 
-  const handleSlotUpload = (slotIndex, file) => {
-    const url = URL.createObjectURL(file);
+  /**
+   * Ảnh đầu tiên vào đúng ô vừa chạm, phần còn lại lấp tiếp vào các ô trống
+   * phía sau — chọn 4 ảnh chỉ cần mở trình chọn ảnh một lần.
+   */
+  const handleSlotUpload = (slotIndex, fileList) => {
+    const files = Array.from(fileList ?? []);
+    if (!files.length) return;
     setStrip((prev) => {
+      const total = prev.imageCount ?? 4;
       const images = [...prev.images];
       const positions = [...(prev.imagePositions ?? [])];
-      images[slotIndex] = url;
-      positions[slotIndex] = positions[slotIndex] ?? { x: 50, y: 50, zoom: 1 };
+
+      if (images[slotIndex]?.startsWith?.("blob:")) {
+        URL.revokeObjectURL(images[slotIndex]);
+      }
+      images[slotIndex] = URL.createObjectURL(files[0]);
+      positions[slotIndex] = { x: 50, y: 50, zoom: 1 };
+
+      let cursor = 1;
+      for (let i = slotIndex + 1; i < total && cursor < files.length; i++) {
+        if (images[i]) continue;
+        images[i] = URL.createObjectURL(files[cursor]);
+        positions[i] = positions[i] ?? { x: 50, y: 50, zoom: 1 };
+        cursor += 1;
+      }
       return { ...prev, images, imagePositions: positions };
     });
   };
@@ -160,32 +175,35 @@ export default function StripEditor({ disabled, onSave, saving, onError }) {
 
   return (
     <FrameEditorWorkspace>
-      <StripPreviewPanel
-        strip={strip}
-        selectedFrame={selectedFrame}
-        filledCount={filledCount}
-        slotCount={slotCount}
-        canSave={canSave}
-        saving={saving}
-        hasFrame={hasFrame}
-        onSave={handleSaveClick}
-        onSlotUpload={handleSlotUpload}
-        onSlotRemove={handleSlotRemove}
-        onDragStart={handleDragStart}
-        onDragMove={handleDragMove}
-        onDragEnd={handleDragEnd}
-        onPinchZoom={handlePinchZoom}
-        dragState={dragState}
-      />
+      <FrameEditorRow>
+        <StripPreviewPanel
+          strip={strip}
+          filledCount={filledCount}
+          onSlotUpload={handleSlotUpload}
+          onSlotRemove={handleSlotRemove}
+          onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
+          onDragEnd={handleDragEnd}
+          onPinchZoom={handlePinchZoom}
+          dragState={dragState}
+        />
 
-      <div className="min-h-0 min-w-0 flex-1">
         <FrameGalleryPanel
           frames={displayFrames}
           selectedFrameId={selectedFrameId}
           onSelect={handleSelectFrame}
           loading={framesLoading}
         />
-      </div>
+      </FrameEditorRow>
+
+      <ComposerActions
+        hasFrame={hasFrame}
+        missingCount={missingCount}
+        canSave={canSave}
+        saving={saving}
+        readOnly={disabled}
+        onSave={handleSaveClick}
+      />
     </FrameEditorWorkspace>
   );
 }

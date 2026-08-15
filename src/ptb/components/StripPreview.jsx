@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { CameraIcon } from "@heroicons/react/24/outline";
 import { PHOTO_THEMES } from "../lib/constants";
 import {
@@ -23,6 +23,9 @@ export default function StripPreview({
 }) {
   const fileInputRefs = useRef({});
   const pinchRef = useRef(null);
+  const tapRef = useRef(null);
+  const containerRef = useRef(null);
+  const wheelStateRef = useRef({ images: [], positions: [], onPinchZoom, readOnly });
   const layout = getLayoutDef(strip.layoutType);
   const slotCount = getSlotCount(strip);
   const frameOptions = strip.frameLayoutOptions ?? null;
@@ -32,6 +35,35 @@ export default function StripPreview({
   const frameAspectRatio = frameOptions?.frameAspectRatio ?? 1;
   const activeTheme = theme ?? PHOTO_THEMES.none;
   const imagePositions = strip.imagePositions ?? [];
+
+  wheelStateRef.current = {
+    images: strip.images ?? [],
+    positions: imagePositions,
+    onPinchZoom,
+    readOnly,
+  };
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return undefined;
+
+    const handleWheel = (e) => {
+      const { images, positions, onPinchZoom: zoomFn, readOnly: locked } =
+        wheelStateRef.current;
+      if (locked || !zoomFn) return;
+      const slotEl = e.target.closest?.("[data-slot-index]");
+      if (!slotEl || !el.contains(slotEl)) return;
+      const slotIndex = Number(slotEl.dataset.slotIndex);
+      if (!images[slotIndex]) return;
+      e.preventDefault();
+      const currentZoom = positions[slotIndex]?.zoom ?? 1;
+      const delta = e.deltaY < 0 ? 0.08 : -0.08;
+      zoomFn(slotIndex, currentZoom + delta);
+    };
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, []);
 
   const innerStyle = hasCustomLayout
     ? {
@@ -55,7 +87,7 @@ export default function StripPreview({
 
   return (
     <div className="mx-auto" style={{ width: previewWidth }}>
-      <div style={innerStyle}>
+      <div ref={containerRef} style={innerStyle}>
         {Array.from({ length: slotCount }).map((_, slotIndex) => {
           const imageSrc = strip.images?.[slotIndex];
           const rawPosition = imagePositions[slotIndex];
@@ -83,6 +115,7 @@ export default function StripPreview({
           return (
             <div
               key={slotIndex}
+              data-slot-index={slotIndex}
               style={slotStyle}
               className={`overflow-hidden bg-white/90 ${
                 imageSrc ? "ring-1 ring-[#FCE7F3]" : ""
@@ -91,17 +124,37 @@ export default function StripPreview({
                 if (readOnly || !imageSrc) return;
                 if (e.target.closest?.("[data-slot-action]")) return;
                 e.currentTarget.setPointerCapture?.(e.pointerId);
+                tapRef.current = { x: e.clientX, y: e.clientY, moved: false };
                 onDragStart?.(slotIndex, e.clientX, e.clientY);
               }}
               onPointerMove={(e) => {
                 if (!isDragging) return;
+                const tap = tapRef.current;
+                if (
+                  tap &&
+                  Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 6
+                ) {
+                  tap.moved = true;
+                }
                 onDragMove?.(slotIndex, e.clientX, e.clientY);
               }}
-              onPointerUp={() => onDragEnd?.()}
-              onPointerCancel={() => onDragEnd?.()}
+              onPointerUp={() => {
+                const tap = tapRef.current;
+                tapRef.current = null;
+                onDragEnd?.();
+                // Chạm (không kéo) vào ảnh đã có → mở picker để thay ảnh.
+                if (tap && !tap.moved && imageSrc && !readOnly) {
+                  fileInputRefs.current[slotIndex]?.click();
+                }
+              }}
+              onPointerCancel={() => {
+                tapRef.current = null;
+                onDragEnd?.();
+              }}
               onTouchStart={(e) => {
                 if (readOnly) return;
                 if (e.touches.length === 2) {
+                  tapRef.current = null; // chụm 2 ngón không phải là tap
                   pinchRef.current = {
                     slotIndex,
                     distance: pinchDistance(e.touches),
@@ -128,10 +181,14 @@ export default function StripPreview({
                   }}
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) onSlotUpload?.(slotIndex, file);
+                    // Chọn nhiều ảnh một lượt: ảnh đầu vào đúng ô vừa chạm,
+                    // các ảnh còn lại lấp tiếp vào những ô trống phía sau.
+                    if (e.target.files?.length) {
+                      onSlotUpload?.(slotIndex, e.target.files);
+                    }
                     e.target.value = "";
                   }}
                 />

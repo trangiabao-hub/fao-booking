@@ -39,29 +39,30 @@ export function formatDepositVndVi(amount) {
 }
 
 /**
- * Copy checkbox “Cam kết trước khi thanh toán” — không có cọc ⇒ bỏ dòng 🔒.
+ * Cam kết cọc trên web — khớp copy summary đơn staff.
  * @param {Array<object>|null|undefined} devices
  */
 export function buildBookingDepositCommitmentLines(devices) {
   const list = Array.isArray(devices) ? devices.filter(Boolean) : [];
   const totalVnd = list.length > 0 ? resolveDevicesLegDepositTotalVnd(list) : null;
+  const amountNote =
+    totalVnd != null && totalVnd > 0
+      ? list.length > 1
+        ? ` (tổng ${list.length} máy: ${formatDepositVndVi(totalVnd)}đ)`
+        : ` (máy này: ${formatDepositVndVi(totalVnd)}đ)`
+      : "";
 
-  const lines = [
-    "🎁 Đặc biệt: Chương trình CỌC 0Đ — áp dụng cho HSSV đang còn lịch học tại TP.HCM.",
+  return [
+    "*CHỌN 1 TRONG 3 HÌNH THỨC, ĐỌC KĨ LƯU Ý BÊN DƯỚI",
+    "- Hình thức 1: cọc 0đ áp dụng cho hssv còn đi học (đem theo thẻ hssv và lịch học, có thể dùng trên web) + cccd bản gốc hoặc vneid định danh mức 2.",
+    `- Hình thức 2: cọc tiền của mỗi máy (note trên bảng giá, dao động từ 2-5 triệu)${amountNote} + cccd bản gốc hoặc vneid định danh mức 2.`,
+    "- Hình thức 3: cọc bằng tài sản tương đương (laptop, ipad, điện thoại) + cccd bản gốc hoặc vneid định danh mức 2.",
+    "*LƯU Ý:",
+    "- Nếu là acc clone (Facebook/Zalo/Instagram), cọc 10.000.000đ.",
+    "- Thuê 2 máy trở lên, cần 2 cccd và đến shop xác thực.",
+    "- Khi nhận máy cần kí hợp đồng và lăn tay, thông tin của người kí hợp đồng phải chính chủ với cccd và hssv của người đến nhận.",
+    "- Khách hàng dưới 16 tuổi cần có sự cho phép của phụ huynh.",
+    "- Cccd VÀ VNEID chỉ chụp lại không giữ.",
+    "- Đọc kĩ quy trình - quy định ghim đầu trang.",
   ];
-  if (totalVnd != null && totalVnd > 0) {
-    const formatted = formatDepositVndVi(totalVnd);
-    lines.push(
-      list.length > 1
-        ? `🔒 Hoặc cọc thế chân ${formatted}đ (tổng ${list.length} máy)`
-        : `🔒 Hoặc cọc thế chân ${formatted}đ`,
-    );
-  }
-  lines.push(
-    "💻 Có nhận cọc tài sản tương ứng (Laptop, iPad, ...).",
-    "📱 Nếu là acc clone (Facebook/Zalo/Instagram), tôi sẽ cọc 10.000.000đ.",
-    "🪪 CCCD/VNeID mức 2 (+ chứng nhận lịch học nếu thuộc diện CỌC 0Đ).",
-    "Lưu ý khách hàng dưới 16 tuổi cần có sự cho phép của phụ huynh",
-  );
-  return lines;
 }
