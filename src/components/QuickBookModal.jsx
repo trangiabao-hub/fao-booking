@@ -645,7 +645,6 @@ export default function QuickBookModal({
   const [hasGoogleSession, setHasGoogleSession] = useState(
     () => !!loadCustomerSession()?.token,
   );
-  const [_memberBookingsCount, setMemberBookingsCount] = useState(0);
   const [memberTotalSpent, setMemberTotalSpent] = useState(0);
   const [memberPoint, setMemberPoint] = useState(0);
   const [pointToUse, setPointToUse] = useState(0);
@@ -1135,7 +1134,6 @@ export default function QuickBookModal({
     const session = loadCustomerSession();
     if (!session?.token) {
       setHasGoogleSession(false);
-      setMemberBookingsCount(0);
       setMemberTotalSpent(0);
       setMemberPoint(0);
       setIsMemberDataLoading(false);
@@ -1153,7 +1151,6 @@ export default function QuickBookModal({
           : [];
         setCheckoutMode("GOOGLE");
         setHasGoogleSession(true);
-        setMemberBookingsCount(bookings.length);
         setMemberTotalSpent(computeTotalSpentFromBookings(bookings));
         setMemberPoint(Math.max(0, Number(account.point) || 0));
         const nextCustomer = {
@@ -1174,7 +1171,6 @@ export default function QuickBookModal({
       .catch(() => {
         clearCustomerSession();
         setHasGoogleSession(false);
-        setMemberBookingsCount(0);
         setMemberTotalSpent(0);
         setMemberPoint(0);
       })
@@ -1186,7 +1182,7 @@ export default function QuickBookModal({
     };
   }, [isOpen]);
 
-  // Refresh voucher eligibility when user reaches step 2/3
+  // Refresh member points / tier when user reaches step 2/3
   useEffect(() => {
     if (!isOpen || !hasGoogleSession || (step !== 2 && step !== 3)) return;
     let mounted = true;
@@ -1198,7 +1194,6 @@ export default function QuickBookModal({
         const bookings = Array.isArray(bookingsRes?.data)
           ? bookingsRes.data
           : [];
-        setMemberBookingsCount(bookings.length);
         setMemberTotalSpent(computeTotalSpentFromBookings(bookings));
         setMemberPoint(Math.max(0, Number(account.point) || 0));
       })
@@ -1267,35 +1262,14 @@ export default function QuickBookModal({
       !socialLinkError
     );
   }, [fullNameError, phoneError, gmailError, socialLinkError]);
-  const firstOrderDiscount = useMemo(() => {
-    return 0;
-  }, []);
   const basePromotionDiscount = useMemo(
     () => Math.max(0, Math.round((price || 0) - (discountedTotal || 0))),
     [price, discountedTotal],
   );
-  const isFirstOrderVoucherSelected = useMemo(
-    () => firstOrderDiscount > basePromotionDiscount,
-    [firstOrderDiscount, basePromotionDiscount],
+  const payableBeforePoint = useMemo(
+    () => Math.max(0, Math.round((price || 0) - basePromotionDiscount)),
+    [price, basePromotionDiscount],
   );
-  const firstOrderAdditionalDiscount = useMemo(
-    () =>
-      isFirstOrderVoucherSelected
-        ? Math.max(0, firstOrderDiscount - basePromotionDiscount)
-        : 0,
-    [isFirstOrderVoucherSelected, firstOrderDiscount, basePromotionDiscount],
-  );
-  const payableBeforePoint = useMemo(() => {
-    const totalAfterSingleDiscount = isFirstOrderVoucherSelected
-      ? (price || 0) - firstOrderDiscount
-      : (price || 0) - basePromotionDiscount;
-    return Math.max(0, Math.round(totalAfterSingleDiscount));
-  }, [
-    isFirstOrderVoucherSelected,
-    price,
-    firstOrderDiscount,
-    basePromotionDiscount,
-  ]);
   const maxPointToUse = useMemo(() => {
     if (!hasGoogleSession) return 0;
     return Math.max(
@@ -1505,12 +1479,7 @@ export default function QuickBookModal({
             );
         const distributedVoucher = q9MayPromo
           ? allocateDiscountByRatio(rawAmounts, totalQ9Off)
-          : isFirstOrderVoucherSelected
-            ? allocateDiscountByRatio(
-                perDeviceAmounts,
-                firstOrderAdditionalDiscount,
-              )
-            : perDeviceAmounts.map(() => 0);
+          : perDeviceAmounts.map(() => 0);
         const perDeviceAfterVoucher = perDeviceAmounts.map((baseAmount, idx) =>
           Math.max(0, baseAmount - (distributedVoucher[idx] || 0)),
         );
@@ -1638,7 +1607,7 @@ export default function QuickBookModal({
       ]);
       const account = accountRes?.data || {};
       const bookings = Array.isArray(bookingsRes?.data) ? bookingsRes.data : [];
-      setMemberBookingsCount(bookings.length);
+      setMemberTotalSpent(computeTotalSpentFromBookings(bookings));
       setMemberPoint(Math.max(0, Number(account.point) || 0));
       setCustomer((c) => ({
         ...c,

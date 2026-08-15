@@ -58,6 +58,8 @@ export function buildBookingDepositCommitmentLines(devices) {
     );
   }
   lines.push(
+    "💻 Có nhận cọc tài sản tương ứng (Laptop, iPad, ...).",
+    "📱 Nếu là acc clone (Facebook/Zalo/Instagram), tôi sẽ cọc 10.000.000đ.",
     "🪪 CCCD/VNeID mức 2 (+ chứng nhận lịch học nếu thuộc diện CỌC 0Đ).",
     "Lưu ý khách hàng dưới 16 tuổi cần có sự cho phép của phụ huynh",
   );

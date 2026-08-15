@@ -57,8 +57,13 @@ export default function StripPreview({
     <div className="mx-auto" style={{ width: previewWidth }}>
       <div style={innerStyle}>
         {Array.from({ length: slotCount }).map((_, slotIndex) => {
-          const imageSrc = strip.images[slotIndex];
-          const position = imagePositions[slotIndex] ?? { x: 50, y: 50, zoom: 1 };
+          const imageSrc = strip.images?.[slotIndex];
+          const rawPosition = imagePositions[slotIndex];
+          const position = {
+            x: Number.isFinite(rawPosition?.x) ? rawPosition.x : 50,
+            y: Number.isFinite(rawPosition?.y) ? rawPosition.y : 50,
+            zoom: Number.isFinite(rawPosition?.zoom) ? rawPosition.zoom : 1,
+          };
           const rect = hasCustomLayout
             ? slotRects[Math.min(slotIndex, slotRects.length - 1)]
             : null;
@@ -84,6 +89,7 @@ export default function StripPreview({
               }`}
               onPointerDown={(e) => {
                 if (readOnly || !imageSrc) return;
+                if (e.target.closest?.("[data-slot-action]")) return;
                 e.currentTarget.setPointerCapture?.(e.pointerId);
                 onDragStart?.(slotIndex, e.clientX, e.clientY);
               }}
@@ -147,11 +153,17 @@ export default function StripPreview({
                   {!readOnly ? (
                     <button
                       type="button"
+                      data-slot-action="remove"
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
+                        e.preventDefault();
                         onSlotRemove?.(slotIndex);
                       }}
-                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-xs text-white backdrop-blur-sm"
+                      className="absolute right-1 top-1 z-[30] flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm font-bold leading-none text-white shadow-sm backdrop-blur-sm"
                       aria-label={`Xóa ảnh ${slotIndex + 1}`}
                     >
                       ×
@@ -179,7 +191,7 @@ export default function StripPreview({
           <img
             src={strip.frameOverlaySrc}
             alt=""
-            className="pointer-events-none absolute inset-0 h-full w-full object-fill"
+            className="pointer-events-none absolute inset-0 z-[5] h-full w-full object-fill"
             draggable={false}
           />
         ) : null}

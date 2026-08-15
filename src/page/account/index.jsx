@@ -400,17 +400,8 @@ export default function AccountPage() {
 
           <div className="mt-4 space-y-3 text-sm leading-6 text-[#5f5f66]">
             <div className="rounded-2xl border border-[#f6dbe8] bg-[#fff7fb] p-4">
-              <div className="font-bold text-[#c74886]">1) Voucher đơn đầu</div>
-              <p>
-                Thành viên được giảm trực tiếp <b>30%</b> trên đơn đặt đầu tiên
-                tại FAO Booking, tối đa <b>200.000đ</b>. Voucher được áp dụng tự
-                động tại bước thanh toán.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-[#f6dbe8] bg-[#fff7fb] p-4">
               <div className="font-bold text-[#c74886]">
-                2) Phân hạng theo tổng chi tiêu
+                1) Phân hạng theo tổng chi tiêu
               </div>
               <p>
                 Dưới <b>1.000.000đ</b>: <b>Thành viên</b>.<br />
@@ -422,7 +413,7 @@ export default function AccountPage() {
 
             <div className="rounded-2xl border border-[#f6dbe8] bg-[#fff7fb] p-4">
               <div className="font-bold text-[#c74886]">
-                3) Cơ chế tích điểm theo cấp bậc hiện tại
+                2) Cơ chế tích điểm theo cấp bậc hiện tại
               </div>
               <p>
                 Thành viên: <b>50.000đ = 3 điểm</b>.<br />
@@ -439,7 +430,7 @@ export default function AccountPage() {
 
             <div className="rounded-2xl border border-[#f6dbe8] bg-[#fff7fb] p-4">
               <div className="font-bold text-[#c74886]">
-                4) Dùng điểm để thanh toán
+                3) Dùng điểm để thanh toán
               </div>
               <p>
                 <b>1 điểm = 1.000đ</b>, có thể trừ trực tiếp vào tổng tiền đơn

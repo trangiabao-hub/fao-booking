@@ -57,6 +57,10 @@ export default function StripEditor({ disabled, onSave, saving, onError }) {
   };
 
   const handleSlotRemove = (slotIndex) => {
+    if (dragOrigin.current?.slotIndex === slotIndex) {
+      dragOrigin.current = null;
+      setDragState(null);
+    }
     setStrip((prev) => {
       const images = [...prev.images];
       const positions = [...(prev.imagePositions ?? [])];
@@ -71,21 +75,35 @@ export default function StripEditor({ disabled, onSave, saving, onError }) {
 
   const handleDragStart = (slotIndex, clientX, clientY) => {
     const pos = strip.imagePositions?.[slotIndex] ?? { x: 50, y: 50, zoom: 1 };
-    dragOrigin.current = { slotIndex, clientX, clientY, ...pos };
+    dragOrigin.current = {
+      slotIndex,
+      clientX,
+      clientY,
+      x: Number.isFinite(pos.x) ? pos.x : 50,
+      y: Number.isFinite(pos.y) ? pos.y : 50,
+      zoom: pos.zoom ?? 1,
+    };
     setDragState({ slotIndex, active: true });
   };
 
   const handleDragMove = (slotIndex, clientX, clientY) => {
-    if (!dragOrigin.current || dragOrigin.current.slotIndex !== slotIndex) return;
-    const dx = clientX - dragOrigin.current.clientX;
-    const dy = clientY - dragOrigin.current.clientY;
+    const origin = dragOrigin.current;
+    if (!origin || origin.slotIndex !== slotIndex) return;
+    const originX = Number.isFinite(origin.x) ? origin.x : 50;
+    const originY = Number.isFinite(origin.y) ? origin.y : 50;
+    const dx = clientX - origin.clientX;
+    const dy = clientY - origin.clientY;
     setStrip((prev) => {
+      if (!dragOrigin.current || dragOrigin.current.slotIndex !== slotIndex) {
+        return prev;
+      }
       const positions = [...(prev.imagePositions ?? [])];
+      const prevPos = positions[slotIndex] ?? { x: 50, y: 50, zoom: 1 };
       positions[slotIndex] = {
-        ...positions[slotIndex],
-        x: Math.max(0, Math.min(100, dragOrigin.current.x - dx * 0.15)),
-        y: Math.max(0, Math.min(100, dragOrigin.current.y - dy * 0.15)),
-        zoom: positions[slotIndex]?.zoom ?? 1,
+        ...prevPos,
+        x: Math.max(0, Math.min(100, originX - dx * 0.15)),
+        y: Math.max(0, Math.min(100, originY - dy * 0.15)),
+        zoom: prevPos.zoom ?? 1,
       };
       return { ...prev, imagePositions: positions };
     });
