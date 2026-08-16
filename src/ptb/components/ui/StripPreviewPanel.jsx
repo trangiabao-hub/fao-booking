@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Download, Images, Settings2, X } from "lucide-react";
+import { Download, Images, Printer, Settings2, X } from "lucide-react";
 import StripPreview from "../StripPreview";
 import {
   PHOTO_THEMES,
@@ -253,6 +253,27 @@ function SaveButton({ canSave, saving, onSave, className }) {
   );
 }
 
+function PrintNowButton({ canSave, printing, onInstantPrint, className }) {
+  if (!onInstantPrint) return null;
+  return (
+    <button
+      type="button"
+      disabled={!canSave || printing}
+      onClick={onInstantPrint}
+      className={cn(
+        "inline-flex w-full shrink-0 items-center justify-center gap-2 py-2.5 text-[13px] font-bold transition-colors",
+        canSave && !printing
+          ? "bg-[#E6007E] text-white hover:bg-[#C4006A]"
+          : "cursor-not-allowed bg-[#F2F4F7] text-[#98A2B3]",
+        className,
+      )}
+    >
+      <Printer size={16} aria-hidden />
+      {printing ? "Đang gửi in…" : "In ngay"}
+    </button>
+  );
+}
+
 export default function StripPreviewPanel({
   strip,
   onSlotUpload,
@@ -273,6 +294,9 @@ export default function StripPreviewPanel({
   canSave = false,
   saving = false,
   onSave,
+  instantPrint = false,
+  printing = false,
+  onInstantPrint,
   printBw = false,
   printNoCrop = false,
   onPrintBwChange,
@@ -476,7 +500,15 @@ export default function StripPreviewPanel({
         {!isMobile ? (
           <div className="mt-2 flex shrink-0 flex-col gap-2.5 border-t border-[#F1E4EC] bg-white pt-2.5">
             <ConfigFields {...configProps} />
-            <SaveButton canSave={canSave} saving={saving} onSave={onSave} />
+            {instantPrint ? (
+              <PrintNowButton
+                canSave={canSave}
+                printing={printing}
+                onInstantPrint={onInstantPrint}
+              />
+            ) : (
+              <SaveButton canSave={canSave} saving={saving} onSave={onSave} />
+            )}
           </div>
         ) : (
           <div className="mt-1.5 flex shrink-0 flex-col gap-1.5">
@@ -494,12 +526,21 @@ export default function StripPreviewPanel({
                   </span>
                 ) : null}
               </button>
-              <SaveButton
-                canSave={canSave}
-                saving={saving}
-                onSave={onSave}
-                className="h-11 py-0"
-              />
+              {instantPrint ? (
+                <PrintNowButton
+                  canSave={canSave}
+                  printing={printing}
+                  onInstantPrint={onInstantPrint}
+                  className="h-11 py-0"
+                />
+              ) : (
+                <SaveButton
+                  canSave={canSave}
+                  saving={saving}
+                  onSave={onSave}
+                  className="h-11 py-0"
+                />
+              )}
             </div>
 
             {onOpenFrames ? (

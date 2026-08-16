@@ -88,6 +88,16 @@ export async function submitPrintRequest(shareToken, sessionToken, body) {
   return res.data;
 }
 
+/** Link tạm: in ngay như quầy (CONFIRMED). FormData: files, layoutTypes, note */
+export async function submitGuestPrintNow(shareToken, formData) {
+  const res = await api.post(
+    `/v1/ptb/trip/token/${encodeURIComponent(shareToken)}/print-now`,
+    formData,
+    { timeout: 120000 },
+  );
+  return res.data;
+}
+
 export async function listPrintRequests(shareToken) {
   const res = await api.get(`/v1/ptb/trip/token/${encodeURIComponent(shareToken)}/print`);
   return res.data;

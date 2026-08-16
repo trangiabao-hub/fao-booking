@@ -24,6 +24,9 @@ export default function StripEditor({
   freeRemaining = 0,
   printSubmitting = false,
   onSubmitPrint,
+  instantPrint = false,
+  printing = false,
+  onInstantPrint,
   galleryTab,
   onGalleryTabChange,
   openFrameDrawer: openFrameDrawerProp,
@@ -297,6 +300,63 @@ export default function StripEditor({
     });
   };
 
+  const handleInstantPrintClick = () => {
+    if (!onInstantPrint || printing || disabled) return;
+    (async () => {
+      if (!plainMode && !strip.frameOverlaySrc) {
+        throw new Error("Vui lòng chọn khung ảnh trước khi in");
+      }
+      if (missingCount > 0) {
+        throw new Error(`Cần thêm ${missingCount} ảnh trước khi in`);
+      }
+      const layoutOptions = strip.frameLayoutOptions ?? {};
+      const exportTheme = {
+        ...PHOTO_THEMES.none,
+        headerMm: 0,
+        footerMm: 0,
+        footerPatternText: "",
+        footerSubText: "",
+      };
+      const { canvas } = await renderStripCanvas(
+        strip,
+        STRIP_WIDTH_MM,
+        exportTheme,
+        strip.frameOverlaySrc,
+        layoutOptions,
+      );
+      let out = canvas;
+      if (printBw) {
+        const g = document.createElement("canvas");
+        g.width = canvas.width;
+        g.height = canvas.height;
+        const ctx = g.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(canvas, 0, 0);
+          const imageData = ctx.getImageData(0, 0, g.width, g.height);
+          const { data } = imageData;
+          for (let i = 0; i < data.length; i += 4) {
+            const y =
+              (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
+            data[i] = y;
+            data[i + 1] = y;
+            data[i + 2] = y;
+          }
+          ctx.putImageData(imageData, 0, 0);
+          out = g;
+        }
+      }
+      const blob = await canvasToBlob(out, { type: "image/jpeg", quality: 0.92 });
+      await onInstantPrint(blob, {
+        layoutType: strip.layoutType || "1x4",
+        printBw,
+        printNoCrop,
+      });
+    })().catch((err) => {
+      console.error(err);
+      onError?.(err?.message || "Không in được — thử lại");
+    });
+  };
+
   const gallery = (embedded = false) => (
     <FrameGalleryPanel
       frames={displayFrames}
@@ -360,7 +420,10 @@ export default function StripEditor({
           dualPreview={dualPreview}
           canSave={canSave}
           saving={saving}
-          onSave={handleSaveClick}
+          onSave={instantPrint ? undefined : handleSaveClick}
+          instantPrint={instantPrint}
+          printing={printing}
+          onInstantPrint={instantPrint ? handleInstantPrintClick : undefined}
           printBw={printBw}
           printNoCrop={printNoCrop}
           onPrintBwChange={onPrintBwChange}

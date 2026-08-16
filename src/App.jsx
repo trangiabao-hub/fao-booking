@@ -8,6 +8,7 @@ import AccountPage from "./page/account";
 import Menu from "./page/menu";
 import PhotoBoothPage from "./page/photobooth";
 import TripAlbumPage from "./ptb/pages/TripAlbumPage";
+import GuestFramePage from "./ptb/pages/GuestFramePage";
 import AlbumOrderRedirect from "./ptb/pages/AlbumOrderRedirect";
 import FeedbackPage from "./page/feedback";
 import RentalContractSamplePage from "./page/rental-contract-sample";
@@ -178,6 +179,19 @@ const App = () => {
           noindex
         >
           <TripAlbumPage />
+        </SeoMeta>
+      ),
+    },
+    {
+      path: "/frame/:shareToken",
+      element: (
+        <SeoMeta
+          title="Ghép frame · in ngay"
+          description="Link tạm ghép frame và in photobooth tại FAO."
+          path="/frame"
+          noindex
+        >
+          <GuestFramePage />
         </SeoMeta>
       ),
     },
