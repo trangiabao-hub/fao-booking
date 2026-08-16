@@ -1,12 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import SlideNav from "../../components/SlideNav";
-import AlbumGallery from "../components/AlbumGallery";
 import AlbumHeaderCard from "../components/ui/AlbumHeaderCard";
 import PrintCheckout from "../components/PrintCheckout";
 import StripEditor from "../components/StripEditor";
 import AlbumPageLayout from "../components/ui/AlbumPageLayout";
-import StepSegmentedTabs from "../components/ui/StepSegmentedTabs";
 import SaveSuccessCard from "../components/ui/SaveSuccessCard";
 import PtbToast from "../components/ui/PtbToast";
 import { usePtbAlbum } from "../hooks/usePtbAlbum";
@@ -14,12 +12,14 @@ import { cn, ptb } from "../lib/theme";
 
 export default function TripAlbumPage() {
   const { shareToken } = useParams();
-  const [tab, setTab] = useState("create");
+  const [view, setView] = useState("create"); // create | print
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
   const [justSaved, setJustSaved] = useState(false);
   const [editorKey, setEditorKey] = useState(0);
+  const [galleryTab, setGalleryTab] = useState("frames");
+  const [frameDrawerOpen, setFrameDrawerOpen] = useState(false);
 
   const {
     album,
@@ -32,24 +32,8 @@ export default function TripAlbumPage() {
     freeRemaining,
   } = usePtbAlbum(shareToken);
 
-  const albumCount = album?.images?.length ?? 0;
-
-  const tabs = useMemo(
-    () => [
-      { id: "create", label: "Ghép ảnh" },
-      { id: "gallery", label: "Album", badge: albumCount > 0 ? albumCount : undefined },
-      { id: "print", label: "Đặt in" },
-    ],
-    [albumCount],
-  );
-
   const showToast = (message, type = "success") => {
     setToast({ message, type });
-  };
-
-  const handleTabChange = (id) => {
-    if (id !== "create") setJustSaved(false);
-    setTab(id);
   };
 
   const handleSaveStrip = async (blob, meta) => {
@@ -76,10 +60,36 @@ export default function TripAlbumPage() {
   const handleSubmitPrint = async (body) => {
     setSubmitting(true);
     try {
-      return await submitPrint(body);
+      const result = await submitPrint(body);
+      showToast("Đã gửi yêu cầu in. Shop sẽ in và giao khi bạn trả máy.");
+      return result;
+    } catch (err) {
+      showToast(
+        err?.response?.data?.message || err?.message || "Không gửi được yêu cầu in",
+        "error",
+      );
+      throw err;
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const openAlbumTab = () => {
+    setJustSaved(false);
+    setView("create");
+    setGalleryTab("album");
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 1023px)").matches
+    ) {
+      setFrameDrawerOpen(true);
+    }
+  };
+
+  const openPrint = () => {
+    setJustSaved(false);
+    setFrameDrawerOpen(false);
+    setView("print");
   };
 
   if (loading) {
@@ -118,55 +128,57 @@ export default function TripAlbumPage() {
 
       <AlbumHeaderCard album={album} isReadonly={isReadonly} />
 
-      <div className="sticky top-0 z-10 -mx-1 bg-[linear-gradient(180deg,#FFF7FB_85%,transparent)] px-1 pb-2 pt-1 lg:static lg:bg-transparent lg:p-0">
-        <StepSegmentedTabs tabs={tabs} activeId={tab} onChange={handleTabChange} />
-      </div>
-
-      <div className={cn(tab === "create" ? "" : cn(ptb.card, "p-4 sm:p-5 lg:p-6"))}>
-        {tab === "create" ? (
-          justSaved ? (
-            <SaveSuccessCard
+      {view === "print" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className={cn(ptb.card, "p-4 sm:p-5 lg:p-6")}>
+            <button
+              type="button"
+              onClick={() => setView("create")}
+              className="mb-4 text-[13px] font-bold text-[#E6007E] hover:underline"
+            >
+              ← Về ghép ảnh
+            </button>
+            <PrintCheckout
+              images={album?.images ?? []}
               freeRemaining={freeRemaining}
-              onContinue={() => {
-                setJustSaved(false);
-                setEditorKey((k) => k + 1);
-              }}
-              onViewAlbum={() => {
-                setJustSaved(false);
-                setTab("gallery");
-              }}
-              onGoPrint={() => {
-                setJustSaved(false);
-                setTab("print");
-              }}
-            />
-          ) : (
-            <StripEditor
-              key={editorKey}
               disabled={isReadonly}
-              onSave={handleSaveStrip}
-              saving={saving}
-              onError={(msg) => showToast(msg, "error")}
+              onSubmit={handleSubmitPrint}
+              submitting={submitting}
+              onToast={showToast}
             />
-          )
-        ) : null}
-        {tab === "print" ? (
-          <PrintCheckout
-            images={album?.images ?? []}
+          </div>
+        </div>
+      ) : justSaved ? (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <SaveSuccessCard
             freeRemaining={freeRemaining}
-            disabled={isReadonly}
-            onSubmit={handleSubmitPrint}
-            submitting={submitting}
-            onToast={showToast}
+            onContinue={() => {
+              setJustSaved(false);
+              setEditorKey((k) => k + 1);
+              setGalleryTab("frames");
+            }}
+            onViewAlbum={openAlbumTab}
+            onGoPrint={openPrint}
           />
-        ) : null}
-        {tab === "gallery" ? (
-          <AlbumGallery
-            images={album?.images ?? []}
-            printRequests={printRequests}
-          />
-        ) : null}
-      </div>
+        </div>
+      ) : (
+        <StripEditor
+          key={editorKey}
+          disabled={isReadonly}
+          onSave={handleSaveStrip}
+          saving={saving}
+          onError={(msg) => showToast(msg, "error")}
+          albumImages={album?.images ?? []}
+          printRequests={printRequests}
+          freeRemaining={freeRemaining}
+          printSubmitting={submitting}
+          onSubmitPrint={handleSubmitPrint}
+          galleryTab={galleryTab}
+          onGalleryTabChange={setGalleryTab}
+          openFrameDrawer={frameDrawerOpen}
+          onFrameDrawerOpenChange={setFrameDrawerOpen}
+        />
+      )}
 
       {error ? (
         <p className="text-center text-[13px] font-medium text-red-600">{error}</p>

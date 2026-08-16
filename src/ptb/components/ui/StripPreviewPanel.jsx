@@ -1,17 +1,25 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
+import { Download, Images } from "lucide-react";
 import StripPreview from "../StripPreview";
-import { PHOTO_THEMES } from "../../lib/constants";
-import { cn, ptb } from "../../lib/theme";
+import {
+  PHOTO_THEMES,
+  PLAIN_COLOR_PRESETS,
+  PLAIN_FRAME_ASPECT,
+} from "../../lib/constants";
+import { isPlainFrame } from "../../lib/utils";
+import { cn } from "../../lib/theme";
 
-const EDIT_HINT_SEEN_KEY = "ptb_edit_hint_seen";
+const LAYOUT_SIZES = ["1x4", "2x2", "1x1"];
 
 function getFrameHeightRatio(strip) {
+  if (isPlainFrame(strip) && !strip?.frameOverlaySrc) {
+    return PLAIN_FRAME_ASPECT[strip.layoutType] ?? PLAIN_FRAME_ASPECT["1x4"];
+  }
   return strip.frameLayoutOptions?.frameAspectRatio ?? 3;
 }
 
 export default function StripPreviewPanel({
   strip,
-  filledCount,
   onSlotUpload,
   onSlotRemove,
   onDragStart,
@@ -19,98 +27,322 @@ export default function StripPreviewPanel({
   onDragEnd,
   onPinchZoom,
   dragState,
+  isMobile = false,
+  selectedFrame = null,
+  onOpenFrames,
+  onLayoutChange,
+  onUpdateStrip,
+  onClearFrame,
+  dualPreview = false,
+  canSave = false,
+  saving = false,
+  onSave,
 }) {
   const [previewWidth, setPreviewWidth] = useState(140);
-  const [hintSeen, setHintSeen] = useState(() => {
-    try {
-      return localStorage.getItem(EDIT_HINT_SEEN_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
   const panelRef = useRef(null);
   const boxRef = useRef(null);
   const frameRatio = getFrameHeightRatio(strip);
+  const previewAspect = dualPreview ? frameRatio / 2 : frameRatio;
+  const hasOverlay = Boolean(strip.frameOverlaySrc);
+  const plainMode = isPlainFrame(strip) && !hasOverlay;
+  const dualSame = strip.dualSame !== false;
+  const activeLayout = strip.layoutType ?? "1x4";
 
   useLayoutEffect(() => {
-    if (!dragState?.active || hintSeen) return;
-    setHintSeen(true);
-    try {
-      localStorage.setItem(EDIT_HINT_SEEN_KEY, "1");
-    } catch {
-      /* ignore storage errors */
-    }
-  }, [dragState, hintSeen]);
-
-  useLayoutEffect(() => {
-    const panel = panelRef.current;
     const box = boxRef.current;
-    if (!panel || !box) return undefined;
+    if (!box) return undefined;
 
     const measure = () => {
-      // Bề ngang cột quyết định kích thước strip (chiều cao suy ra từ tỉ lệ),
-      // chỉ chặn thêm theo viewport để không tràn màn hình thấp / xoay ngang.
-      const boxWidth = box.clientWidth - 8;
+      const pad = isMobile ? 4 : 12;
+      const boxWidth = Math.max(0, box.clientWidth - pad);
+      const boxHeight = Math.max(0, box.clientHeight - pad);
       const vh = window.innerHeight;
-      const heightBudget = window.innerWidth >= 1024 ? vh - 200 : vh * 0.6;
-      setPreviewWidth(
-        Math.max(88, Math.min(boxWidth, Math.floor(heightBudget / frameRatio))),
+      const heightBudget = isMobile
+        ? boxHeight > 0
+          ? boxHeight
+          : vh * 0.42
+        : window.innerWidth >= 1024
+          ? vh - 200
+          : vh * 0.6;
+      if (heightBudget <= 0 || !(previewAspect > 0)) return;
+      const fromHeight = Math.floor(heightBudget / Math.max(previewAspect, 0.5));
+      const fromWidth = Math.floor(boxWidth);
+      const minTotal = dualPreview
+        ? isMobile
+          ? 260
+          : 160
+        : isMobile
+          ? 168
+          : 88;
+      const totalW = Math.max(
+        minTotal,
+        Math.min(fromHeight, fromWidth || fromHeight),
       );
+      const stripW = dualPreview
+        ? Math.max(isMobile ? 120 : 72, Math.floor(totalW / 2))
+        : totalW;
+      setPreviewWidth(stripW);
     };
 
     measure();
     window.addEventListener("resize", measure);
     window.addEventListener("orientationchange", measure);
     const ro = new ResizeObserver(measure);
-    ro.observe(panel);
+    ro.observe(box);
+    if (panelRef.current) ro.observe(panelRef.current);
 
     return () => {
       window.removeEventListener("resize", measure);
       window.removeEventListener("orientationchange", measure);
       ro.disconnect();
     };
-  }, [frameRatio]);
+  }, [previewAspect, dualPreview, isMobile]);
+
+  const previewProps = {
+    strip,
+    previewWidth,
+    theme: PHOTO_THEMES.none,
+    onSlotUpload,
+    onSlotRemove,
+    onDragStart,
+    onDragMove,
+    onDragEnd,
+    onPinchZoom,
+    dragState,
+  };
 
   return (
-    <aside className="w-[40%] shrink-0 sm:w-[34%] lg:w-[26%] lg:max-w-[340px] xl:w-[22%]">
+    <aside
+      className={cn(
+        isMobile
+          ? "flex w-full min-h-0 flex-1 flex-col"
+          : "w-[48%] shrink-0 sm:w-[42%] lg:w-[34%] lg:max-w-[380px] xl:w-[30%]",
+      )}
+    >
       <div
         ref={panelRef}
-        className={cn(ptb.card, "flex h-full flex-col p-2 sm:p-3 lg:p-4")}
+        className={cn(
+          "flex flex-col border border-[#F1E4EC] bg-white shadow-[0_12px_32px_rgba(16,24,40,0.06)]",
+          isMobile
+            ? "min-h-0 flex-1 overflow-hidden rounded-[16px] p-1.5"
+            : "h-full rounded-[20px] p-3 lg:p-4",
+        )}
       >
-        <p className={cn(ptb.textCaption, "hidden shrink-0 lg:block")}>
-          Strip của bạn
-        </p>
+        {!hasOverlay ? (
+          <div className="mb-1.5 flex shrink-0 justify-center gap-1.5">
+            {LAYOUT_SIZES.map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onLayoutChange?.(id)}
+                className={cn(
+                  "border px-2.5 py-1 text-[12px] font-bold transition-colors",
+                  activeLayout === id
+                    ? "border-[#E6007E] bg-[#FCE7F3] text-[#E6007E]"
+                    : "border-[#F1E4EC] bg-white text-[#667085] hover:border-[#F3D4E4] hover:text-[#E6007E]",
+                )}
+              >
+                {id}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <div
           ref={boxRef}
-          className="flex min-h-0 flex-1 items-center justify-center rounded-lg bg-[#FFF9FC] p-1 lg:mt-3 lg:rounded-2xl lg:border lg:border-[#F1E4EC] lg:p-2"
-        >
-          <StripPreview
-            strip={strip}
-            previewWidth={previewWidth}
-            theme={PHOTO_THEMES.none}
-            onSlotUpload={onSlotUpload}
-            onSlotRemove={onSlotRemove}
-            onDragStart={onDragStart}
-            onDragMove={onDragMove}
-            onDragEnd={onDragEnd}
-            onPinchZoom={onPinchZoom}
-            dragState={dragState}
-          />
-        </div>
-
-        <p
           className={cn(
-            ptb.textBody,
-            "mt-2 hidden shrink-0 text-center text-[12px] text-[#98A2B3] lg:block",
+            "flex w-full min-h-0 flex-1 items-center justify-center overflow-hidden bg-transparent p-0",
+            isMobile && "min-h-[140px]",
           )}
         >
-          Kéo ảnh để chỉnh vị trí · Scroll để zoom
-        </p>
-        {!hintSeen && filledCount > 0 ? (
-          <p className="mt-1.5 shrink-0 text-center text-[10px] font-medium leading-tight text-[#98A2B3] lg:hidden">
-            Chạm để thay · Kéo để chỉnh
-          </p>
+          <div
+            className={cn(
+              "flex max-h-full items-stretch justify-center",
+              dualPreview && "shadow-[0_2px_10px_rgba(16,24,40,0.08)]",
+            )}
+          >
+            <StripPreview {...previewProps} showShadow={!dualPreview} />
+            {dualPreview && dualSame ? (
+              <div className="pointer-events-none select-none" aria-hidden="true">
+                <StripPreview
+                  {...previewProps}
+                  dragState={null}
+                  onSlotUpload={() => {}}
+                  onSlotRemove={() => {}}
+                  onDragStart={() => {}}
+                  onDragMove={() => {}}
+                  onDragEnd={() => {}}
+                  onPinchZoom={() => {}}
+                  showShadow={false}
+                />
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {dualPreview ? (
+          <label className="mt-1.5 flex shrink-0 items-center justify-center gap-2 text-[12px] font-semibold text-[#344054]">
+            <input
+              type="checkbox"
+              className="accent-[#E6007E]"
+              checked={dualSame}
+              onChange={(e) =>
+                onUpdateStrip?.({ dualSame: e.target.checked })
+              }
+            />
+            2 frame giống nhau
+          </label>
+        ) : null}
+
+        {plainMode ? (
+          <div className="mt-1.5 flex shrink-0 flex-col gap-1.5">
+            <div className="flex flex-wrap justify-center gap-1">
+              {PLAIN_COLOR_PRESETS.map((preset) => {
+                const active =
+                  (strip.frameColor || "").toLowerCase() ===
+                  preset.color.toLowerCase();
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={cn(
+                      "inline-flex items-center gap-1.5 border px-2 py-1 text-[11px] font-bold sm:px-2.5 sm:py-1.5 sm:text-[12px]",
+                      active
+                        ? "border-[#E6007E] bg-[#FCE7F3] text-[#E6007E]"
+                        : "border-[#F1E4EC] bg-white text-[#344054]",
+                    )}
+                    onClick={() =>
+                      onUpdateStrip?.({
+                        frameColor: preset.color,
+                        brandColor: preset.brand,
+                      })
+                    }
+                  >
+                    <span
+                      className="h-3.5 w-3.5 border border-[#D0D5DD]"
+                      style={{ background: preset.color }}
+                      aria-hidden
+                    />
+                    {preset.label}
+                  </button>
+                );
+              })}
+              <label
+                className={cn(
+                  "relative inline-flex cursor-pointer items-center gap-1.5 overflow-hidden border px-2 py-1 text-[11px] font-bold sm:px-2.5 sm:py-1.5 sm:text-[12px]",
+                  !PLAIN_COLOR_PRESETS.some(
+                    (p) =>
+                      p.color.toLowerCase() ===
+                      (strip.frameColor || "").toLowerCase(),
+                  )
+                    ? "border-[#E6007E] bg-[#FCE7F3] text-[#E6007E]"
+                    : "border-[#F1E4EC] bg-white text-[#344054]",
+                )}
+              >
+                <span
+                  className="h-3.5 w-3.5 border border-[#D0D5DD]"
+                  style={{ background: strip.frameColor || "#ffffff" }}
+                  aria-hidden
+                />
+                Tùy chọn
+                <input
+                  type="color"
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  value={strip.frameColor || "#ffffff"}
+                  onChange={(e) =>
+                    onUpdateStrip?.({ frameColor: e.target.value })
+                  }
+                  aria-label="Chọn màu tùy chọn"
+                />
+              </label>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                className="h-8 min-w-0 flex-1 border border-[#F1E4EC] px-2 text-[12px] font-semibold text-[#172033]"
+                value={strip.brandScript ?? ""}
+                placeholder="Faobooth"
+                onChange={(e) =>
+                  onUpdateStrip?.({ brandScript: e.target.value })
+                }
+                aria-label="Chữ frame"
+              />
+              <label className="relative inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 overflow-hidden border border-[#F1E4EC] bg-white px-2.5 text-[12px] font-bold text-[#344054]">
+                <span
+                  className="h-3.5 w-3.5 border border-[#D0D5DD]"
+                  style={{ background: strip.brandColor || "#1a1a1a" }}
+                  aria-hidden
+                />
+                Màu chữ
+                <input
+                  type="color"
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  value={strip.brandColor || "#1a1a1a"}
+                  onChange={(e) =>
+                    onUpdateStrip?.({ brandColor: e.target.value })
+                  }
+                  aria-label="Chọn màu chữ"
+                />
+              </label>
+            </div>
+          </div>
+        ) : null}
+
+        {hasOverlay ? (
+          <button
+            type="button"
+            className="mt-1.5 w-full border border-[#FED7AA] bg-white py-1.5 text-[12px] font-bold text-[#C2410C]"
+            onClick={() => onClearFrame?.()}
+          >
+            Về frame trơn
+          </button>
+        ) : null}
+
+        {onSave ? (
+          <button
+            type="button"
+            disabled={!canSave || saving}
+            onClick={onSave}
+            className={cn(
+              "mt-1.5 inline-flex w-full shrink-0 items-center justify-center gap-2 py-2 text-[13px] font-bold transition-colors",
+              canSave && !saving
+                ? "bg-[#E6007E] text-white shadow-[0_8px_24px_rgba(230,0,126,0.22)] hover:bg-[#C4006A]"
+                : "cursor-not-allowed bg-[#F2F4F7] text-[#98A2B3]",
+            )}
+          >
+            <Download size={16} aria-hidden />
+            {saving ? "Đang lưu…" : "Lưu vào Album"}
+          </button>
+        ) : null}
+
+        {isMobile && onOpenFrames ? (
+          <button
+            type="button"
+            onClick={onOpenFrames}
+            className="mt-1.5 flex w-full shrink-0 items-center gap-2 border border-[#F1E4EC] bg-[#FFF7FB] px-2 py-1.5 text-left shadow-[0_4px_12px_rgba(16,24,40,0.04)]"
+          >
+            {selectedFrame?.src ? (
+              <img
+                src={selectedFrame.src}
+                alt=""
+                className="h-9 w-9 shrink-0 border border-[#F1E4EC] bg-white object-contain"
+              />
+            ) : (
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-[#F1E4EC] bg-white text-[#E6007E]">
+                <Images size={16} />
+              </span>
+            )}
+            <span className="min-w-0 flex-1">
+              <strong className="block text-[13px] font-bold leading-snug text-[#172033]">
+                Đổi frame hoặc xem lại ảnh của bạn
+              </strong>
+              {selectedFrame?.label ? (
+                <small className="block text-[11px] font-medium text-[#98A2B3]">
+                  Đang dùng: {selectedFrame.label}
+                </small>
+              ) : null}
+            </span>
+          </button>
         ) : null}
       </div>
     </aside>

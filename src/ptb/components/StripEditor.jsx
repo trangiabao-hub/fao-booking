@@ -1,57 +1,127 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { PHOTO_THEMES, STRIP_WIDTH_MM } from "../lib/constants";
-import { applyFrameToStrip } from "../lib/frameUtils";
+import {
+  applyFrameToStrip,
+  applyPlainToStrip,
+  groupFramesBySize,
+} from "../lib/frameUtils";
 import { canvasToBlob, renderStripCanvas } from "../lib/renderStrip";
-import { createEmptyStrip } from "../lib/utils";
+import { createEmptyStrip, getLayoutDef, isPlainFrame } from "../lib/utils";
 import { usePtbFrames } from "../hooks/usePtbFrames";
 import { FrameEditorRow, FrameEditorWorkspace } from "./ui/AlbumPageLayout";
-import ComposerActions from "./ui/ComposerActions";
 import FrameGalleryPanel from "./ui/FrameGalleryPanel";
 import StripPreviewPanel from "./ui/StripPreviewPanel";
 
-export default function StripEditor({ disabled, onSave, saving, onError }) {
+export default function StripEditor({
+  disabled,
+  onSave,
+  saving,
+  onError,
+  albumImages = [],
+  printRequests = [],
+  freeRemaining = 0,
+  printSubmitting = false,
+  onSubmitPrint,
+  galleryTab,
+  onGalleryTabChange,
+  openFrameDrawer: openFrameDrawerProp,
+  onFrameDrawerOpenChange,
+}) {
   const { frames, loading: framesLoading } = usePtbFrames();
   const [strip, setStrip] = useState(() => createEmptyStrip());
   const [selectedFrameId, setSelectedFrameId] = useState(null);
   const [dragState, setDragState] = useState(null);
+  const [frameDrawerOpenInternal, setFrameDrawerOpenInternal] = useState(false);
+  const frameDrawerOpen = openFrameDrawerProp ?? frameDrawerOpenInternal;
+  const setFrameDrawerOpen = (open) => {
+    if (openFrameDrawerProp === undefined) setFrameDrawerOpenInternal(open);
+    onFrameDrawerOpenChange?.(open);
+  };
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia("(max-width: 1023px)").matches
+      : false,
+  );
   const dragOrigin = useRef(null);
 
   const displayFrames = frames;
+  const groups = useMemo(() => groupFramesBySize(displayFrames), [displayFrames]);
 
   const filledCount = useMemo(
-    () => strip.images.filter(Boolean).length,
+    () => (strip.images ?? []).filter(Boolean).length,
     [strip.images],
   );
-  const slotCount = strip.imageCount ?? 4;
-  const hasFrame = Boolean(strip.frameOverlaySrc);
+  const slotCount = strip.imageCount ?? getLayoutDef(strip.layoutType).slots;
+  const hasOverlay = Boolean(strip.frameOverlaySrc);
+  const plainMode = isPlainFrame(strip) && !hasOverlay;
   const minRequired = Math.min(2, slotCount);
   const missingCount = Math.max(0, minRequired - filledCount);
-  const canSave = hasFrame && missingCount === 0 && !disabled;
+  const canSave = (plainMode || hasOverlay) && missingCount === 0 && !disabled;
+  const dualPreview = (strip.layoutType || "1x4") === "1x4";
+
+  const selectedFrame = useMemo(
+    () => displayFrames.find((f) => f.id === selectedFrameId) ?? null,
+    [displayFrames, selectedFrameId],
+  );
 
   useEffect(() => {
-    if (!displayFrames.length || selectedFrameId) return;
-    const first =
-      displayFrames.find((f) => f.sizeType === "1x4" || f.layoutType === "1x4") ??
-      displayFrames[0];
-    setSelectedFrameId(first.id);
-    setStrip((prev) => applyFrameToStrip(prev, first));
-  }, [displayFrames, selectedFrameId]);
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const onChange = () => {
+      const mobile = mq.matches;
+      setIsMobile(mobile);
+      if (!mobile) setFrameDrawerOpen(false);
+    };
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!frameDrawerOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") setFrameDrawerOpen(false);
+    };
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [frameDrawerOpen]);
 
   const handleSelectFrame = (frame) => {
     setSelectedFrameId(frame.id);
     setStrip((prev) => applyFrameToStrip(prev, frame));
+    setFrameDrawerOpen(false);
   };
 
-  /**
-   * Ảnh đầu tiên vào đúng ô vừa chạm, phần còn lại lấp tiếp vào các ô trống
-   * phía sau — chọn 4 ảnh chỉ cần mở trình chọn ảnh một lần.
-   */
+  const handleClearFrame = () => {
+    setSelectedFrameId(null);
+    setStrip((prev) => applyPlainToStrip(prev, prev.layoutType || "1x4"));
+  };
+
+  const handleLayoutChange = (layoutId) => {
+    if (hasOverlay) {
+      const group = groups.find((g) => g.size === layoutId);
+      const next = group?.frames?.[0];
+      if (next) handleSelectFrame(next);
+      return;
+    }
+    setStrip((prev) => applyPlainToStrip(prev, layoutId));
+  };
+
+  const handleUpdateStrip = (patch) => {
+    setStrip((prev) => ({ ...prev, ...patch }));
+  };
+
   const handleSlotUpload = (slotIndex, fileList) => {
     const files = Array.from(fileList ?? []);
     if (!files.length) return;
     setStrip((prev) => {
       const total = prev.imageCount ?? 4;
-      const images = [...prev.images];
+      const images = [...(prev.images ?? [])];
       const positions = [...(prev.imagePositions ?? [])];
 
       if (images[slotIndex]?.startsWith?.("blob:")) {
@@ -77,7 +147,7 @@ export default function StripEditor({ disabled, onSave, saving, onError }) {
       setDragState(null);
     }
     setStrip((prev) => {
-      const images = [...prev.images];
+      const images = [...(prev.images ?? [])];
       const positions = [...(prev.imagePositions ?? [])];
       if (images[slotIndex]?.startsWith?.("blob:")) {
         URL.revokeObjectURL(images[slotIndex]);
@@ -141,7 +211,7 @@ export default function StripEditor({ disabled, onSave, saving, onError }) {
   };
 
   const handleSave = useCallback(async () => {
-    if (!strip.frameOverlaySrc) {
+    if (!plainMode && !strip.frameOverlaySrc) {
       throw new Error("Vui lòng chọn khung ảnh trước khi lưu");
     }
     const layoutOptions = strip.frameLayoutOptions ?? {};
@@ -164,7 +234,7 @@ export default function StripEditor({ disabled, onSave, saving, onError }) {
       frameId: strip.frameId,
       layoutType: strip.layoutType,
     });
-  }, [strip, onSave]);
+  }, [strip, onSave, plainMode]);
 
   const handleSaveClick = () => {
     handleSave().catch((err) => {
@@ -173,12 +243,42 @@ export default function StripEditor({ disabled, onSave, saving, onError }) {
     });
   };
 
+  const gallery = (embedded = false) => (
+    <FrameGalleryPanel
+      frames={displayFrames}
+      selectedFrameId={selectedFrameId}
+      onSelect={handleSelectFrame}
+      loading={framesLoading}
+      embedded={embedded}
+      albumImages={albumImages}
+      printRequests={printRequests}
+      freeRemaining={freeRemaining}
+      printDisabled={disabled}
+      printSubmitting={printSubmitting}
+      onSubmitPrint={
+        onSubmitPrint
+          ? async (body) => {
+              await onSubmitPrint(body);
+              if (embedded) setFrameDrawerOpen(false);
+            }
+          : undefined
+      }
+      galleryTab={galleryTab}
+      onGalleryTabChange={onGalleryTabChange}
+    />
+  );
+
   return (
-    <FrameEditorWorkspace>
-      <FrameEditorRow>
+    <FrameEditorWorkspace
+      className={
+        isMobile ? "min-h-0 flex-1 overflow-hidden" : undefined
+      }
+    >
+      <FrameEditorRow
+        className={isMobile ? "min-h-0 flex-1 flex-col overflow-hidden" : undefined}
+      >
         <StripPreviewPanel
           strip={strip}
-          filledCount={filledCount}
           onSlotUpload={handleSlotUpload}
           onSlotRemove={handleSlotRemove}
           onDragStart={handleDragStart}
@@ -186,24 +286,58 @@ export default function StripEditor({ disabled, onSave, saving, onError }) {
           onDragEnd={handleDragEnd}
           onPinchZoom={handlePinchZoom}
           dragState={dragState}
+          isMobile={isMobile}
+          selectedFrame={selectedFrame}
+          onOpenFrames={() => setFrameDrawerOpen(true)}
+          onLayoutChange={handleLayoutChange}
+          onUpdateStrip={handleUpdateStrip}
+          onClearFrame={handleClearFrame}
+          dualPreview={dualPreview}
+          canSave={canSave}
+          saving={saving}
+          onSave={handleSaveClick}
         />
 
-        <FrameGalleryPanel
-          frames={displayFrames}
-          selectedFrameId={selectedFrameId}
-          onSelect={handleSelectFrame}
-          loading={framesLoading}
-        />
+        {!isMobile ? gallery(false) : null}
       </FrameEditorRow>
 
-      <ComposerActions
-        hasFrame={hasFrame}
-        missingCount={missingCount}
-        canSave={canSave}
-        saving={saving}
-        readOnly={disabled}
-        onSave={handleSaveClick}
-      />
+      {isMobile && frameDrawerOpen ? (
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Chọn frame"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 border-0 bg-[rgba(15,23,42,0.45)]"
+            aria-label="Đóng"
+            onClick={() => setFrameDrawerOpen(false)}
+          />
+          <div className="relative z-10 flex max-h-[min(78dvh,640px)] w-full flex-col bg-white shadow-[0_-16px_40px_rgba(16,24,40,0.16)] animate-[ptb-drawer-up_0.22s_ease-out]">
+            <div
+              className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[#E4E7EC]"
+              aria-hidden="true"
+            />
+            <div className="flex shrink-0 items-center justify-between px-3.5 pb-2 pt-2.5">
+              <h2 className="m-0 text-[15px] font-bold text-[#172033]">
+                {galleryTab === "album" ? "Ảnh của bạn" : "Chọn frame"}
+              </h2>
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 items-center justify-center border border-[#F1E4EC] bg-white text-[#667085]"
+                aria-label="Đóng"
+                onClick={() => setFrameDrawerOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
+              {gallery(true)}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </FrameEditorWorkspace>
   );
 }

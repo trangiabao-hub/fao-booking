@@ -19,7 +19,7 @@ export default function SaveToAlbumButton({
     (saving
       ? "Đang lưu…"
       : !hasFrame
-        ? "Chọn khung trước"
+        ? "Chọn khung hoặc frame trơn"
         : missingCount > 0
           ? `Thêm ${missingCount} ảnh nữa`
           : "Lưu vào Album");

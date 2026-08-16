@@ -3,11 +3,20 @@ import { cn, ptb } from "../../lib/theme";
 
 export default function AlbumPageLayout({ children, className }) {
   return (
-    <div className={cn(ptb.pageBg, ptb.contentPb)}>
+    <div
+      className={cn(
+        ptb.pageBg,
+        // Mobile: khóa viewport trên SlideNav — tránh scroll cắt nút Chọn frame
+        "max-lg:h-dvh max-lg:overflow-hidden max-lg:pb-[calc(5.25rem+env(safe-area-inset-bottom))]",
+        "lg:pb-10",
+      )}
+    >
       <div
         className={cn(
           ptb.container,
-          "max-w-[1240px] space-y-4 pt-4 sm:space-y-5 sm:pt-5",
+          "max-w-[1240px] pt-3 sm:pt-5",
+          "max-lg:flex max-lg:h-full max-lg:min-h-0 max-lg:flex-col max-lg:gap-2.5",
+          "lg:space-y-5",
           className,
         )}
       >
@@ -19,18 +28,22 @@ export default function AlbumPageLayout({ children, className }) {
 
 export function FrameEditorWorkspace({ children, className }) {
   return (
-    <div className={cn("flex flex-col gap-3 sm:gap-4", className)}>{children}</div>
+    <div className={cn("flex min-h-0 flex-col gap-3 sm:gap-4", className)}>
+      {children}
+    </div>
   );
 }
 
 /**
- * Preview + chọn khung luôn nằm cạnh nhau ở MỌI breakpoint.
- * Strip 1×4 vốn hẹp (tỉ lệ 1:3) nên xếp khung bên cạnh sẽ thấy được cả hai
- * cùng lúc — không cần chặn chiều cao preview hay cuộn xuống mới thấy khung.
- * `items-stretch` (mặc định) cho cột khung tự cao bằng preview.
+ * Desktop: preview + gallery cạnh nhau.
+ * Mobile: chỉ preview (gallery mở bằng bottom drawer trong StripEditor).
  */
 export function FrameEditorRow({ children, className }) {
   return (
-    <div className={cn("flex gap-2 sm:gap-4 lg:gap-6", className)}>{children}</div>
+    <div
+      className={cn("flex min-h-0 gap-2 sm:gap-4 lg:gap-6", className)}
+    >
+      {children}
+    </div>
   );
 }

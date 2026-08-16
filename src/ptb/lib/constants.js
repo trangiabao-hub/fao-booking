@@ -12,6 +12,32 @@ export const DEFAULT_SLOT_GAP_MM = 1.2;
 
 export const FREE_PRINT_QUOTA = 2;
 
+/** Tỉ lệ demo-frame (height / width). 1×4 = 2×6", còn lại = 4×6". */
+export const PLAIN_FRAME_ASPECT = {
+  "1x4": 6 / 2,
+  "1x3": 6 / 2,
+  "2x2": 6 / 4,
+  "1x1": 6 / 4,
+};
+
+/** Brand band 1 dòng script ≈ 6% chiều cao frame. */
+export const PLAIN_BRAND_RATIO = 0.06;
+export const PLAIN_PAD_RATIO = 0.029;
+export const PLAIN_GAP_RATIO = 0.011;
+
+export const PLAIN_FRAME_DEFAULTS = {
+  frameSource: "plain",
+  frameColor: "#ffffff",
+  brandScript: "Faobooth",
+  brandColor: "#1a1a1a",
+};
+
+export const PLAIN_COLOR_PRESETS = [
+  { id: "white", label: "Trắng", color: "#ffffff", brand: "#1a1a1a" },
+  { id: "black", label: "Đen", color: "#0d0d0d", brand: "#f5f5f5" },
+  { id: "moss", label: "Xanh rêu", color: "#4d613b", brand: "#f3f0e6" },
+];
+
 export const PHOTO_THEMES = {
   none: {
     id: "none",

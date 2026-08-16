@@ -5,10 +5,20 @@ import {
   buildSlotRects,
   getLayoutDef,
   getSlotCount,
+  isPlainFrame,
   pinchDistance,
 } from "../lib/utils";
+import PlainStripPreview from "./PlainStripPreview";
 
-export default function StripPreview({
+export default function StripPreview(props) {
+  const { strip } = props;
+  if (isPlainFrame(strip) && !strip?.frameOverlaySrc) {
+    return <PlainStripPreview {...props} />;
+  }
+  return <OverlayStripPreview {...props} />;
+}
+
+function OverlayStripPreview({
   strip,
   previewWidth = 220,
   theme,
@@ -20,6 +30,7 @@ export default function StripPreview({
   onPinchZoom,
   dragState,
   readOnly = false,
+  showShadow = true,
 }) {
   const fileInputRefs = useRef({});
   const pinchRef = useRef(null);
@@ -86,7 +97,13 @@ export default function StripPreview({
       };
 
   return (
-    <div className="mx-auto" style={{ width: previewWidth }}>
+    <div
+      className="mx-auto"
+      style={{
+        width: previewWidth,
+        boxShadow: showShadow ? "0 2px 10px rgba(16, 24, 40, 0.08)" : "none",
+      }}
+    >
       <div ref={containerRef} style={innerStyle}>
         {Array.from({ length: slotCount }).map((_, slotIndex) => {
           const imageSrc = strip.images?.[slotIndex];
@@ -142,7 +159,6 @@ export default function StripPreview({
                 const tap = tapRef.current;
                 tapRef.current = null;
                 onDragEnd?.();
-                // Chạm (không kéo) vào ảnh đã có → mở picker để thay ảnh.
                 if (tap && !tap.moved && imageSrc && !readOnly) {
                   fileInputRefs.current[slotIndex]?.click();
                 }
@@ -154,7 +170,7 @@ export default function StripPreview({
               onTouchStart={(e) => {
                 if (readOnly) return;
                 if (e.touches.length === 2) {
-                  tapRef.current = null; // chụm 2 ngón không phải là tap
+                  tapRef.current = null;
                   pinchRef.current = {
                     slotIndex,
                     distance: pinchDistance(e.touches),
@@ -164,7 +180,10 @@ export default function StripPreview({
               }}
               onTouchMove={(e) => {
                 if (readOnly) return;
-                if (e.touches.length === 2 && pinchRef.current?.slotIndex === slotIndex) {
+                if (
+                  e.touches.length === 2 &&
+                  pinchRef.current?.slotIndex === slotIndex
+                ) {
                   const dist = pinchDistance(e.touches);
                   const ratio = dist / (pinchRef.current.distance || 1);
                   onPinchZoom?.(slotIndex, pinchRef.current.zoom * ratio);
@@ -184,8 +203,6 @@ export default function StripPreview({
                   multiple
                   className="hidden"
                   onChange={(e) => {
-                    // Chọn nhiều ảnh một lượt: ảnh đầu vào đúng ô vừa chạm,
-                    // các ảnh còn lại lấp tiếp vào những ô trống phía sau.
                     if (e.target.files?.length) {
                       onSlotUpload?.(slotIndex, e.target.files);
                     }
@@ -199,7 +216,7 @@ export default function StripPreview({
                   <img
                     src={imageSrc}
                     alt=""
-                    className="h-full w-full object-cover pointer-events-none select-none"
+                    className="pointer-events-none h-full w-full select-none object-cover"
                     style={{
                       objectPosition: `${position.x}% ${position.y}%`,
                       transform: `scale(${position.zoom ?? 1})`,
@@ -220,7 +237,7 @@ export default function StripPreview({
                         e.preventDefault();
                         onSlotRemove?.(slotIndex);
                       }}
-                      className="absolute right-1 top-1 z-[30] flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm font-bold leading-none text-white shadow-sm backdrop-blur-sm"
+                      className="absolute right-1 top-1 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm font-bold leading-none text-white shadow-sm backdrop-blur-sm"
                       aria-label={`Xóa ảnh ${slotIndex + 1}`}
                     >
                       ×
@@ -233,11 +250,13 @@ export default function StripPreview({
                 <button
                   type="button"
                   onClick={() => fileInputRefs.current[slotIndex]?.click()}
-                  className="flex h-full w-full min-h-[44px] flex-col items-center justify-center gap-1 bg-[#FFF9FC] text-[#667085] transition-colors hover:bg-[#FCE7F3]/50 hover:text-[#E6007E]"
+                  className="flex h-full min-h-[44px] w-full flex-col items-center justify-center gap-1 bg-[#FFF9FC] text-[#667085] transition-colors hover:bg-[#FCE7F3]/50 hover:text-[#E6007E]"
                   aria-label={`Thêm ảnh ${slotIndex + 1}`}
                 >
                   <CameraIcon className="h-5 w-5" strokeWidth={1.5} />
-                  <span className="text-[11px] font-semibold">Ảnh {slotIndex + 1}</span>
+                  <span className="text-[11px] font-semibold">
+                    Ảnh {slotIndex + 1}
+                  </span>
                 </button>
               )}
             </div>

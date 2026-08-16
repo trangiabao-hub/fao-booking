@@ -1,6 +1,10 @@
 import {
   LAYOUT_DEFS,
-  PHOTO_THEMES,
+  PLAIN_BRAND_RATIO,
+  PLAIN_FRAME_ASPECT,
+  PLAIN_FRAME_DEFAULTS,
+  PLAIN_GAP_RATIO,
+  PLAIN_PAD_RATIO,
 } from "./constants";
 import { resolveMediaUrl } from "./frameUtils";
 
@@ -13,6 +17,68 @@ export function pinchDistance(touches) {
   const dx = touches[0].clientX - touches[1].clientX;
   const dy = touches[0].clientY - touches[1].clientY;
   return Math.hypot(dx, dy);
+}
+
+export function isPlainFrame(strip) {
+  return (
+    strip?.frameSource === "plain" ||
+    (!strip?.frameOverlaySrc &&
+      (strip?.frameSource === "none" || strip?.frameSource == null))
+  );
+}
+
+export function getPlainAspect(layoutType) {
+  return PLAIN_FRAME_ASPECT[layoutType] ?? PLAIN_FRAME_ASPECT["1x4"];
+}
+
+export function getPlainFrameMetrics(layoutType, frameWidthPx = 200) {
+  const type = layoutType ?? "1x4";
+  const frameAspect = getPlainAspect(type);
+  const widthPx = Math.max(1, frameWidthPx);
+  const heightPx = widthPx * frameAspect;
+  const brandPx = Math.max(18, Math.round(heightPx * PLAIN_BRAND_RATIO));
+  const padPx = Math.max(6, Math.round(heightPx * PLAIN_PAD_RATIO));
+  const padY = padPx + 2;
+  const footerPx = brandPx + padY;
+  const gapPx = Math.max(4, Math.round(heightPx * PLAIN_GAP_RATIO));
+  const is1x1 = type === "1x1";
+  const is2x2 = type === "2x2";
+  const slotCount = getLayoutDef(type).slots;
+
+  let boxesW;
+  let boxesH;
+  if (is1x1) {
+    boxesW = Math.max(1, widthPx - footerPx - padPx);
+    boxesH = Math.max(1, heightPx - padY * 2);
+  } else {
+    boxesW = Math.max(1, widthPx - padPx * 2);
+    boxesH = Math.max(1, heightPx - footerPx - padY);
+  }
+
+  const rows = is2x2 ? 2 : slotCount;
+  const slotW = is2x2 ? (boxesW - gapPx) / 2 : boxesW;
+  const slotH = is2x2
+    ? (boxesH - gapPx) / 2
+    : (boxesH - gapPx * Math.max(0, rows - 1)) / Math.max(1, rows);
+
+  return {
+    frameAspect,
+    widthPx,
+    heightPx,
+    brandPx,
+    padPx,
+    padY,
+    footerPx,
+    gapPx,
+    boxesW,
+    boxesH,
+    slotW: Math.max(1, slotW),
+    slotH: Math.max(1, slotH),
+    slotAspect: Math.max(1, slotW) / Math.max(1, slotH),
+    is1x1,
+    is2x2,
+    slotCount,
+  };
 }
 
 export function buildSlotRects(slotLayout, slotCount) {
@@ -40,7 +106,8 @@ export function buildSlotRects(slotLayout, slotCount) {
     return Array.from({ length: slotCount }, (_, index) => ({
       leftRatio: slotLayout.leftRatio,
       topRatio:
-        slotLayout.topRatio + index * (slotLayout.heightRatio + slotLayout.gapRatio),
+        slotLayout.topRatio +
+        index * (slotLayout.heightRatio + slotLayout.gapRatio),
       widthRatio: slotLayout.widthRatio,
       heightRatio: slotLayout.heightRatio,
     }));
@@ -54,7 +121,14 @@ export function getLayoutDef(layoutType) {
 }
 
 export function getSlotCount(strip) {
-  if (strip?.frameSource && strip.frameSource !== "none") {
+  if (isPlainFrame(strip) && !strip?.frameOverlaySrc) {
+    return getLayoutDef(strip?.layoutType).slots;
+  }
+  if (
+    strip?.frameSource &&
+    strip.frameSource !== "none" &&
+    strip.frameSource !== "plain"
+  ) {
     return Math.max(1, Number(strip?.imageCount ?? 4));
   }
   return getLayoutDef(strip?.layoutType).slots;
@@ -101,16 +175,23 @@ export async function loadImage(src) {
 }
 
 export function createEmptyStrip() {
+  const layoutType = "1x4";
+  const slots = getLayoutDef(layoutType).slots;
   return {
     id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    images: [],
+    images: Array.from({ length: slots }, () => null),
     fileList: [],
-    imagePositions: [],
-    imageCount: 4,
-    layoutType: "1x4",
-    footerPatternText: PHOTO_THEMES.none.footerPatternText ?? "",
-    footerSubText: PHOTO_THEMES.none.footerSubText ?? "",
-    frameSource: "none",
+    imagePositions: Array.from({ length: slots }, () => ({
+      x: 50,
+      y: 50,
+      zoom: 1,
+    })),
+    imageCount: slots,
+    layoutType,
+    footerPatternText: "",
+    footerSubText: "",
+    dualSame: true,
+    ...PLAIN_FRAME_DEFAULTS,
     frameOverlaySrc: null,
     frameLayoutOptions: null,
     frameId: null,

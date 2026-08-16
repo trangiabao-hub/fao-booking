@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+@import url("https://fonts.googleapis.com/css2?family=Pinyon+Script&display=swap");
+
+@keyframes ptb-drawer-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.ptb-plain-brand {
+  font-family: "Pinyon Script", "Great Vibes", cursive !important;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
 /* Chữ script: Great Vibes + Playwrite VN (fallback dấu tiếng Việt) */
 .font-feedback-display {
   font-family: "Great Vibes", "Playwrite VN", cursive, system-ui, sans-serif;

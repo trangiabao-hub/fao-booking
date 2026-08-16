@@ -26,7 +26,7 @@ export default function AlbumGallery({ images = [], printRequests = [] }) {
     return (
       <EmptyState
         title="Album trống"
-        description="Hãy tạo strip đầu tiên từ tab Ghép ảnh."
+        description="Hãy tạo strip đầu tiên từ tab Danh sách frame."
       />
     );
   }

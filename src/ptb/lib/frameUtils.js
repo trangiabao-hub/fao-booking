@@ -171,5 +171,34 @@ export function applyFrameToStrip(strip, frame) {
     frameLayoutOptions: frame.frameLayoutOptions ?? null,
     footerPatternText: "",
     footerSubText: "",
+    dualSame:
+      (frame.layoutType ?? frame.sizeType ?? "1x4") === "1x4"
+        ? strip.dualSame !== false
+        : true,
+  };
+}
+
+export function applyPlainToStrip(strip, layoutType = "1x4") {
+  const type = layoutType || "1x4";
+  const slotCount = FRAME_SIZE_TEMPLATES[type]?.slots ?? 4;
+  return {
+    ...strip,
+    layoutType: type,
+    imageCount: slotCount,
+    images: Array.from({ length: slotCount }, (_, i) => strip.images?.[i] ?? null),
+    imagePositions: Array.from(
+      { length: slotCount },
+      (_, i) => strip.imagePositions?.[i] ?? { x: 50, y: 50, zoom: 1 },
+    ),
+    frameSource: "plain",
+    frameOverlaySrc: null,
+    frameId: null,
+    frameLayoutOptions: null,
+    footerPatternText: "",
+    footerSubText: "",
+    frameColor: strip.frameColor || "#ffffff",
+    brandScript: strip.brandScript ?? "Faobooth",
+    brandColor: strip.brandColor || "#1a1a1a",
+    dualSame: type === "1x4" ? strip.dualSame !== false : true,
   };
 }
