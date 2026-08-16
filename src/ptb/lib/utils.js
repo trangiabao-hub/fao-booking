@@ -31,18 +31,31 @@ export function getPlainAspect(layoutType) {
   return PLAIN_FRAME_ASPECT[layoutType] ?? PLAIN_FRAME_ASPECT["1x4"];
 }
 
-export function getPlainFrameMetrics(layoutType, frameWidthPx = 200) {
+export function getPlainFrameMetrics(layoutType, frameWidthPx = 200, opts = {}) {
   const type = layoutType ?? "1x4";
+  const showBrand = opts.showBrand !== false;
   const frameAspect = getPlainAspect(type);
   const widthPx = Math.max(1, frameWidthPx);
   const heightPx = widthPx * frameAspect;
   const brandPx = Math.max(18, Math.round(heightPx * PLAIN_BRAND_RATIO));
-  const padPx = Math.max(6, Math.round(heightPx * PLAIN_PAD_RATIO));
-  const padY = padPx + 2;
-  const footerPx = brandPx + padY;
-  const gapPx = Math.max(4, Math.round(heightPx * PLAIN_GAP_RATIO));
   const is1x1 = type === "1x1";
   const is2x2 = type === "2x2";
+  const is3x3 = type === "3x3";
+  // 3×3: gap 4px, viền ngoài 16px; có chữ → footer 46px (chữ giữa).
+  // Ẩn chữ: viền dưới = viền ngoài (đều 4 cạnh).
+  const padPx = is3x3
+    ? 16
+    : Math.max(6, Math.round(heightPx * PLAIN_PAD_RATIO));
+  const padY = is3x3 ? 16 : padPx + 2;
+  const footerPx = showBrand
+    ? is3x3
+      ? 46
+      : brandPx + padY
+    : 0;
+  const padBottom = showBrand ? 0 : is3x3 ? padPx : padY;
+  const gapPx = is3x3
+    ? 4
+    : Math.max(4, Math.round(heightPx * PLAIN_GAP_RATIO));
   const slotCount = getLayoutDef(type).slots;
 
   let boxesW;
@@ -50,15 +63,22 @@ export function getPlainFrameMetrics(layoutType, frameWidthPx = 200) {
   if (is1x1) {
     boxesW = Math.max(1, widthPx - footerPx - padPx);
     boxesH = Math.max(1, heightPx - padY * 2);
+  } else if (is3x3) {
+    boxesW = Math.max(1, widthPx - padPx * 2);
+    boxesH = Math.max(1, heightPx - footerPx - padY - padBottom);
   } else {
     boxesW = Math.max(1, widthPx - padPx * 2);
-    boxesH = Math.max(1, heightPx - footerPx - padY);
+    boxesH = Math.max(1, heightPx - footerPx - padY - padBottom);
   }
 
-  const rows = is2x2 ? 2 : slotCount;
-  const slotW = is2x2 ? (boxesW - gapPx) / 2 : boxesW;
-  const slotH = is2x2
-    ? (boxesH - gapPx) / 2
+  const cols = is3x3 ? 3 : is2x2 ? 2 : 1;
+  const rows = is3x3 ? 3 : is2x2 ? 2 : slotCount;
+  const isGrid = is2x2 || is3x3;
+  const slotW = isGrid
+    ? (boxesW - gapPx * (cols - 1)) / cols
+    : boxesW;
+  const slotH = isGrid
+    ? (boxesH - gapPx * (rows - 1)) / rows
     : (boxesH - gapPx * Math.max(0, rows - 1)) / Math.max(1, rows);
 
   return {
@@ -68,6 +88,7 @@ export function getPlainFrameMetrics(layoutType, frameWidthPx = 200) {
     brandPx,
     padPx,
     padY,
+    padBottom,
     footerPx,
     gapPx,
     boxesW,
@@ -77,7 +98,11 @@ export function getPlainFrameMetrics(layoutType, frameWidthPx = 200) {
     slotAspect: Math.max(1, slotW) / Math.max(1, slotH),
     is1x1,
     is2x2,
+    is3x3,
+    cols,
+    rows,
     slotCount,
+    showBrand,
   };
 }
 

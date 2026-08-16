@@ -63,7 +63,9 @@ export function drawCover(ctx, img, x, y, w, h, position, zoom = 1, rotateDeg = 
 async function renderPlainStripCanvas(strip, widthMm) {
   const layoutType = strip.layoutType ?? "1x4";
   const approxPreviewW = Math.max(120, Math.round((widthMm / 50.8) * 200));
-  const metrics = getPlainFrameMetrics(layoutType, approxPreviewW);
+  const metrics = getPlainFrameMetrics(layoutType, approxPreviewW, {
+    showBrand: strip.showBrand !== false,
+  });
   const heightMm = widthMm * metrics.frameAspect;
   const canvasW = mmToPx(widthMm);
   const canvasH = mmToPx(heightMm);
@@ -71,6 +73,7 @@ async function renderPlainStripCanvas(strip, widthMm) {
   const brandH = metrics.brandPx * scale;
   const pad = metrics.padPx * scale;
   const padY = metrics.padY * scale;
+  const padBottom = (metrics.padBottom ?? metrics.padY) * scale;
   const footerH = metrics.footerPx * scale;
   const gap = metrics.gapPx * scale;
   const frameColor = strip.frameColor || PLAIN_FRAME_DEFAULTS.frameColor;
@@ -79,7 +82,7 @@ async function renderPlainStripCanvas(strip, widthMm) {
     PLAIN_FRAME_DEFAULTS.brandScript;
   const brandColor = strip.brandColor || PLAIN_FRAME_DEFAULTS.brandColor;
   const slotCount = metrics.slotCount;
-  const { is1x1, is2x2 } = metrics;
+  const { is1x1, is2x2, is3x3, cols, rows, showBrand } = metrics;
 
   const canvas = document.createElement("canvas");
   canvas.width = canvasW;
@@ -99,18 +102,32 @@ async function renderPlainStripCanvas(strip, widthMm) {
     boxesY = padY;
     boxesW = canvasW - footerH - pad;
     boxesH = canvasH - padY * 2;
+  } else if (is3x3) {
+    boxesX = pad;
+    boxesY = padY;
+    boxesW = canvasW - pad * 2;
+    boxesH = canvasH - footerH - padY - padBottom;
   } else {
     boxesX = pad;
     boxesY = padY;
     boxesW = canvasW - pad * 2;
-    boxesH = canvasH - footerH - padY;
+    boxesH = canvasH - footerH - padY - padBottom;
   }
 
-  const rows = is2x2 ? 2 : slotCount;
-  const cellW = is2x2 ? (boxesW - gap) / 2 : boxesW;
-  const cellH = is2x2
-    ? (boxesH - gap) / 2
-    : (boxesH - gap * Math.max(0, rows - 1)) / Math.max(1, rows);
+  if (is3x3) {
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, canvasW, canvasH);
+  }
+
+  const isGrid = is2x2 || is3x3;
+  const gridCols = cols || (is3x3 ? 3 : is2x2 ? 2 : 1);
+  const gridRows = rows || (is3x3 ? 3 : is2x2 ? 2 : slotCount);
+  const cellW = isGrid
+    ? (boxesW - gap * (gridCols - 1)) / gridCols
+    : boxesW;
+  const cellH = isGrid
+    ? (boxesH - gap * (gridRows - 1)) / gridRows
+    : (boxesH - gap * Math.max(0, gridRows - 1)) / Math.max(1, gridRows);
 
   try {
     if (document?.fonts?.ready) await document.fonts.ready;
@@ -119,8 +136,8 @@ async function renderPlainStripCanvas(strip, widthMm) {
   }
 
   for (let slotIndex = 0; slotIndex < slotCount; slotIndex++) {
-    const col = is2x2 ? slotIndex % 2 : 0;
-    const row = is2x2 ? Math.floor(slotIndex / 2) : slotIndex;
+    const col = isGrid ? slotIndex % gridCols : 0;
+    const row = isGrid ? Math.floor(slotIndex / gridCols) : slotIndex;
     const slotX = boxesX + col * (cellW + gap);
     const slotY = boxesY + row * (cellH + gap);
     const imageSrc = strip.images?.[slotIndex];
@@ -154,20 +171,22 @@ async function renderPlainStripCanvas(strip, widthMm) {
     }
   }
 
-  ctx.save();
-  ctx.fillStyle = brandColor;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const fontPx = Math.max(mmToPx(3.2), Math.round(brandH * 0.72));
-  ctx.font = `${fontPx}px "Pinyon Script", "Great Vibes", cursive`;
-  if (is1x1) {
-    ctx.translate(canvasW - footerH / 2, canvasH / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText(brandScript, 0, 0);
-  } else {
-    ctx.fillText(brandScript, canvasW / 2, canvasH - footerH / 2);
+  if (showBrand) {
+    ctx.save();
+    ctx.fillStyle = brandColor;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const fontPx = Math.max(mmToPx(3.2), Math.round(brandH * 0.72));
+    ctx.font = `${fontPx}px "Pinyon Script", "Great Vibes", cursive`;
+    if (is1x1) {
+      ctx.translate(canvasW - footerH / 2, canvasH / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(brandScript, 0, 0);
+    } else {
+      ctx.fillText(brandScript, canvasW / 2, canvasH - footerH / 2);
+    }
+    ctx.restore();
   }
-  ctx.restore();
 
   return { canvas, hMm: heightMm };
 }

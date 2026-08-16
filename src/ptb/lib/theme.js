@@ -9,9 +9,9 @@ export const ptb = {
   container: "mx-auto w-full max-w-[1240px] px-4 sm:px-5",
   contentPb: "pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:pb-10",
 
-  card: "rounded-[20px] border border-[#F1E4EC] bg-white shadow-[0_12px_32px_rgba(16,24,40,0.06)]",
+  card: "border border-[#F1E4EC] bg-white shadow-[0_12px_32px_rgba(16,24,40,0.06)]",
   cardSm:
-    "rounded-2xl border border-[#EEF2F6] bg-white shadow-[0_4px_16px_rgba(16,24,40,0.04)]",
+    "border border-[#EEF2F6] bg-white shadow-[0_4px_16px_rgba(16,24,40,0.04)]",
 
   textTitle: "text-[#172033] text-lg sm:text-xl font-bold tracking-tight",
   textSection: "text-[#172033] text-[15px] sm:text-base font-bold",

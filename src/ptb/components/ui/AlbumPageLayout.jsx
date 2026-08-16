@@ -8,15 +8,15 @@ export default function AlbumPageLayout({ children, className }) {
         ptb.pageBg,
         // Mobile: khóa viewport trên SlideNav — tránh scroll cắt nút Chọn frame
         "max-lg:h-dvh max-lg:overflow-hidden max-lg:pb-[calc(5.25rem+env(safe-area-inset-bottom))]",
-        "lg:pb-10",
+        // Desktop: fill viewport như staff free-device
+        "lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden lg:pb-0",
       )}
     >
       <div
         className={cn(
-          ptb.container,
-          "max-w-[1240px] pt-3 sm:pt-5",
-          "max-lg:flex max-lg:h-full max-lg:min-h-0 max-lg:flex-col max-lg:gap-2.5",
-          "lg:space-y-5",
+          // Full-bleed — không max-width container (giống staff)
+          "flex w-full min-h-0 flex-1 flex-col px-2.5 pt-2 sm:px-4 sm:pt-3 lg:gap-2 lg:px-4 lg:pb-3 lg:pt-3",
+          "max-lg:h-full max-lg:gap-2",
           className,
         )}
       >
@@ -28,20 +28,30 @@ export default function AlbumPageLayout({ children, className }) {
 
 export function FrameEditorWorkspace({ children, className }) {
   return (
-    <div className={cn("flex min-h-0 flex-col gap-3 sm:gap-4", className)}>
+    <div
+      className={cn(
+        "flex min-h-0 flex-col gap-2 sm:gap-3",
+        "lg:flex-1 lg:gap-0",
+        className,
+      )}
+    >
       {children}
     </div>
   );
 }
 
 /**
- * Desktop: preview + gallery cạnh nhau.
+ * Desktop: preview + gallery cạnh nhau, full height.
  * Mobile: chỉ preview (gallery mở bằng bottom drawer trong StripEditor).
  */
 export function FrameEditorRow({ children, className }) {
   return (
     <div
-      className={cn("flex min-h-0 gap-2 sm:gap-4 lg:gap-6", className)}
+      className={cn(
+        "flex min-h-0 gap-2 sm:gap-3 lg:gap-4",
+        "lg:flex-1 lg:items-stretch",
+        className,
+      )}
     >
       {children}
     </div>

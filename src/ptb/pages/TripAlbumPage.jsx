@@ -20,6 +20,9 @@ export default function TripAlbumPage() {
   const [editorKey, setEditorKey] = useState(0);
   const [galleryTab, setGalleryTab] = useState("frames");
   const [frameDrawerOpen, setFrameDrawerOpen] = useState(false);
+  // Giữ option in ở page — không mất khi remount StripEditor sau khi lưu
+  const [printBw, setPrintBw] = useState(false);
+  const [printNoCrop, setPrintNoCrop] = useState(false);
 
   const {
     album,
@@ -107,7 +110,7 @@ export default function TripAlbumPage() {
     return (
       <div className={cn(ptb.pageBg, ptb.contentPb)}>
         <SlideNav mobileOnly />
-        <div className={cn(ptb.container, "pt-8")}>
+        <div className="px-4 pt-8">
           <div className={cn(ptb.card, "mx-auto max-w-md p-6 text-center")}>
             <p className="text-sm font-semibold text-red-600">{error}</p>
             <Link
@@ -145,6 +148,10 @@ export default function TripAlbumPage() {
               onSubmit={handleSubmitPrint}
               submitting={submitting}
               onToast={showToast}
+              printBw={printBw}
+              printNoCrop={printNoCrop}
+              onPrintBwChange={setPrintBw}
+              onPrintNoCropChange={setPrintNoCrop}
             />
           </div>
         </div>
@@ -177,6 +184,10 @@ export default function TripAlbumPage() {
           onGalleryTabChange={setGalleryTab}
           openFrameDrawer={frameDrawerOpen}
           onFrameDrawerOpenChange={setFrameDrawerOpen}
+          printBw={printBw}
+          printNoCrop={printNoCrop}
+          onPrintBwChange={setPrintBw}
+          onPrintNoCropChange={setPrintNoCrop}
         />
       )}
 

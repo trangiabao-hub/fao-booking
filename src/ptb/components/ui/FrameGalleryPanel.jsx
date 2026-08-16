@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownTrayIcon,
   PrinterIcon,
@@ -96,15 +96,36 @@ export default function FrameGalleryPanel({
   const [downloading, setDownloading] = useState(false);
   const [printBwInternal, setPrintBwInternal] = useState(false);
   const [printNoCropInternal, setPrintNoCropInternal] = useState(false);
-  const printBw = printBwProp ?? printBwInternal;
-  const printNoCrop = printNoCropProp ?? printNoCropInternal;
+  // Optimistic local — submit ngay sau tick không bị stale prop=false
+  const [printBwLocal, setPrintBwLocal] = useState(Boolean(printBwProp));
+  const [printNoCropLocal, setPrintNoCropLocal] = useState(
+    Boolean(printNoCropProp),
+  );
+  const printBw = printBwProp !== undefined ? printBwLocal : printBwInternal;
+  const printNoCrop =
+    printNoCropProp !== undefined ? printNoCropLocal : printNoCropInternal;
+  const printOptsRef = useRef({ printBw, printNoCrop });
+  printOptsRef.current = { printBw, printNoCrop };
+
+  useEffect(() => {
+    if (printBwProp !== undefined) setPrintBwLocal(Boolean(printBwProp));
+  }, [printBwProp]);
+  useEffect(() => {
+    if (printNoCropProp !== undefined)
+      setPrintNoCropLocal(Boolean(printNoCropProp));
+  }, [printNoCropProp]);
+
   const setPrintBw = (v) => {
-    if (printBwProp === undefined) setPrintBwInternal(v);
-    onPrintBwChange?.(v);
+    const next = Boolean(v);
+    setPrintBwLocal(next);
+    if (printBwProp === undefined) setPrintBwInternal(next);
+    onPrintBwChange?.(next);
   };
   const setPrintNoCrop = (v) => {
-    if (printNoCropProp === undefined) setPrintNoCropInternal(v);
-    onPrintNoCropChange?.(v);
+    const next = Boolean(v);
+    setPrintNoCropLocal(next);
+    if (printNoCropProp === undefined) setPrintNoCropInternal(next);
+    onPrintNoCropChange?.(next);
   };
   const galleryTab = galleryTabProp ?? internalTab;
 
@@ -153,10 +174,14 @@ export default function FrameGalleryPanel({
   const handleSubmitPrint = async () => {
     if (!selectedCount || !onSubmitPrint) return;
     try {
+      const opts = printOptsRef.current;
       await onSubmitPrint({
         imageIds: [...selectedPrintIds],
         paymentMethod: split.extraCount > 0 ? "PAY_AT_STORE" : "FREE_ONLY",
-        note: buildPtbPrintNote({ printBw, printNoCrop }),
+        note: buildPtbPrintNote({
+          printBw: opts.printBw,
+          printNoCrop: opts.printNoCrop,
+        }),
       });
       setSelectedPrintIds(new Set());
     } catch {
@@ -187,7 +212,7 @@ export default function FrameGalleryPanel({
     <section
       className={cn(
         "flex min-w-0 flex-col",
-        embedded ? "min-h-0" : "min-h-0 flex-1",
+        embedded ? "min-h-0" : "h-full min-h-0 flex-1 overflow-hidden",
         className,
       )}
     >
@@ -394,10 +419,11 @@ export default function FrameGalleryPanel({
       {galleryTab === "album" && selectedCount > 0 ? (
         <div
           className={cn(
-            "border border-[#F1E4EC] bg-white/95 p-2.5 shadow-[0_8px_28px_rgba(16,24,40,0.14)] backdrop-blur-md",
+            "z-[80] border border-[#F1E4EC] bg-white/95 p-2.5 shadow-[0_8px_28px_rgba(16,24,40,0.14)] backdrop-blur-md",
+            // Luôn fixed — PC: góc phải dưới; mobile drawer: trên SlideNav
             embedded
-              ? "fixed inset-x-3 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-[80]"
-              : "mt-auto shrink-0",
+              ? "fixed inset-x-3 bottom-[calc(5.25rem+env(safe-area-inset-bottom))]"
+              : "fixed bottom-4 right-4 w-[min(380px,calc(100vw-2rem))]",
           )}
         >
           <p className="mb-2 text-center text-[12px] font-medium text-[#344054]">

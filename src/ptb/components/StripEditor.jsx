@@ -27,6 +27,10 @@ export default function StripEditor({
   onGalleryTabChange,
   openFrameDrawer: openFrameDrawerProp,
   onFrameDrawerOpenChange,
+  printBw = false,
+  printNoCrop = false,
+  onPrintBwChange,
+  onPrintNoCropChange,
 }) {
   const { frames, loading: framesLoading } = usePtbFrames();
   const [strip, setStrip] = useState(() => createEmptyStrip());
@@ -43,8 +47,6 @@ export default function StripEditor({
       ? window.matchMedia("(max-width: 1023px)").matches
       : false,
   );
-  const [printBw, setPrintBw] = useState(false);
-  const [printNoCrop, setPrintNoCrop] = useState(false);
   const dragOrigin = useRef(null);
 
   const displayFrames = frames;
@@ -112,6 +114,7 @@ export default function StripEditor({
       return;
     }
     setStrip((prev) => applyPlainToStrip(prev, layoutId));
+    if (layoutId === "3x3") setPrintBw(true);
   };
 
   const handleUpdateStrip = (patch) => {
@@ -259,8 +262,8 @@ export default function StripEditor({
       printSubmitting={printSubmitting}
       printBw={printBw}
       printNoCrop={printNoCrop}
-      onPrintBwChange={setPrintBw}
-      onPrintNoCropChange={setPrintNoCrop}
+      onPrintBwChange={onPrintBwChange}
+      onPrintNoCropChange={onPrintNoCropChange}
       onSubmitPrint={
         onSubmitPrint
           ? async (body) => {
@@ -277,11 +280,17 @@ export default function StripEditor({
   return (
     <FrameEditorWorkspace
       className={
-        isMobile ? "min-h-0 flex-1 overflow-hidden" : undefined
+        isMobile
+          ? "min-h-0 flex-1 overflow-hidden"
+          : "min-h-0 flex-1 overflow-hidden"
       }
     >
       <FrameEditorRow
-        className={isMobile ? "min-h-0 flex-1 flex-col overflow-hidden" : undefined}
+        className={
+          isMobile
+            ? "min-h-0 flex-1 flex-col overflow-hidden"
+            : "min-h-0 flex-1"
+        }
       >
         <StripPreviewPanel
           strip={strip}
@@ -304,11 +313,15 @@ export default function StripEditor({
           onSave={handleSaveClick}
           printBw={printBw}
           printNoCrop={printNoCrop}
-          onPrintBwChange={setPrintBw}
-          onPrintNoCropChange={setPrintNoCrop}
+          onPrintBwChange={onPrintBwChange}
+          onPrintNoCropChange={onPrintNoCropChange}
         />
 
-        {!isMobile ? gallery(false) : null}
+        {!isMobile ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {gallery(false)}
+          </div>
+        ) : null}
       </FrameEditorRow>
 
       {isMobile && frameDrawerOpen ? (

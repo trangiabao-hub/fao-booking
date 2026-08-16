@@ -6,8 +6,8 @@ export function buildPtbPrintNote({
   extra = "",
 } = {}) {
   const tags = [];
-  if (printBw) tags.push("In trắng đen");
-  if (printNoCrop) tags.push("In không cắt");
+  if (printBw) tags.push("In trắng đen [BW]");
+  if (printNoCrop) tags.push("In không cắt [NO_CROP]");
   const tagPart = tags.join(" · ");
   const extraPart = String(extra || "").trim();
   if (tagPart && extraPart) return `${tagPart} | ${extraPart}`;
@@ -15,12 +15,21 @@ export function buildPtbPrintNote({
 }
 
 export function parsePtbPrintOptions(note = "") {
-  const n = String(note || "")
+  const raw = String(note || "");
+  if (/\[bw\]/i.test(raw) || /\[no[_-]?crop\]/i.test(raw)) {
+    return {
+      printBw: /\[bw\]/i.test(raw),
+      printNoCrop: /\[no[_-]?crop\]/i.test(raw),
+    };
+  }
+  const n = raw
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/\u0110/g, "d");
   return {
-    printBw: /trang den|\[bw\]|\bbw\b/.test(n),
-    printNoCrop: /khong cat|\[no[_-]?crop\]|nocrop/.test(n),
+    printBw: /trang\s*den|\bbw\b/.test(n),
+    printNoCrop: /khong\s*cat|nocrop/.test(n),
   };
 }

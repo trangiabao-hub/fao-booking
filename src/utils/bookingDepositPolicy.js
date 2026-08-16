@@ -39,30 +39,45 @@ export function formatDepositVndVi(amount) {
 }
 
 /**
+ * Cụm HT2 — linh hoạt theo máy đã chọn.
+ * VD: "cọc 3.000.000đ" | "cọc M200 3tr + XT30 2tr (tổng …)" | "[giá cọc theo mỗi máy]"
+ */
+export function formatHt2DepositPhrase(devices) {
+  const list = Array.isArray(devices) ? devices.filter(Boolean) : [];
+  const entries = list
+    .map((d) => {
+      const amount = resolveDeviceLegDepositVnd(d);
+      if (amount == null || amount <= 0) return null;
+      return { name: String(d.name || "máy").trim() || "máy", amount };
+    })
+    .filter(Boolean);
+
+  if (!entries.length) return "[giá cọc theo mỗi máy]";
+
+  if (entries.length === 1) {
+    return `cọc ${formatDepositVndVi(entries[0].amount)}đ`;
+  }
+
+  const total = entries.reduce((sum, e) => sum + e.amount, 0);
+  const parts = entries
+    .map((e) => `${e.name} ${formatDepositVndVi(e.amount)}đ`)
+    .join(" + ");
+  return `cọc ${parts} (tổng ${formatDepositVndVi(total)}đ)`;
+}
+
+/**
  * Cam kết cọc trên web — khớp copy summary đơn staff.
  * @param {Array<object>|null|undefined} devices
  */
 export function buildBookingDepositCommitmentLines(devices) {
-  const list = Array.isArray(devices) ? devices.filter(Boolean) : [];
-  const totalVnd = list.length > 0 ? resolveDevicesLegDepositTotalVnd(list) : null;
-  const amountNote =
-    totalVnd != null && totalVnd > 0
-      ? list.length > 1
-        ? ` (tổng ${list.length} máy: ${formatDepositVndVi(totalVnd)}đ)`
-        : ` (máy này: ${formatDepositVndVi(totalVnd)}đ)`
-      : "";
-
   return [
-    "*CHỌN 1 TRONG 3 HÌNH THỨC, ĐỌC KĨ LƯU Ý BÊN DƯỚI",
-    "1. Hình thức 1: cọc 0đ áp dụng cho hssv còn đi học (đem theo thẻ hssv và lịch học, có thể dùng trên web) + cccd bản gốc hoặc vneid định danh mức 2.",
-    `2. Hình thức 2: cọc tiền của mỗi máy (note trên bảng giá, dao động từ 2-5 triệu)${amountNote} + cccd bản gốc hoặc vneid định danh mức 2.`,
-    "3. Hình thức 3: cọc bằng tài sản tương đương (laptop, ipad, điện thoại) + cccd bản gốc hoặc vneid định danh mức 2.",
-    "*LƯU Ý:",
+    "**CHỌN 1 TRONG 3 HÌNH THỨC, ĐỌC KĨ LƯU Ý BÊN DƯỚI**",
+    "🪪 HT1: cọc 0đ áp dụng cho hssv còn đi học (đem theo thẻ hssv và lịch học, có thể dùng trên web) + cccd bản gốc hoặc vneid định danh mức 2.",
+    `🔒 HT2: ${formatHt2DepositPhrase(devices)} + cccd bản gốc hoặc vneid định danh mức 2.`,
+    "💻 HT3: cọc bằng tài sản tương đương (laptop, ipad, điện thoại) + cccd bản gốc hoặc vneid định danh mức 2.",
+    "",
+    "**LƯU Ý**",
     "- Nếu là acc clone (Facebook/Zalo/Instagram), cọc 10.000.000đ.",
-    "- Thuê 2 máy trở lên, cần 2 cccd và đến shop xác thực.",
-    "- Khi nhận máy cần kí hợp đồng và lăn tay, thông tin của người kí hợp đồng phải chính chủ với cccd và hssv của người đến nhận.",
-    "- Khách hàng dưới 16 tuổi cần có sự cho phép của phụ huynh.",
-    "- Cccd VÀ VNEID chỉ chụp lại không giữ.",
     "- Đọc kĩ quy trình - quy định ghim đầu trang.",
   ];
 }

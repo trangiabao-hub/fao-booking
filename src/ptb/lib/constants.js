@@ -18,6 +18,8 @@ export const PLAIN_FRAME_ASPECT = {
   "1x3": 6 / 2,
   "2x2": 6 / 4,
   "1x1": 6 / 4,
+  /** 3×3 portrait cells ≈ 4×6" (H/W). */
+  "3x3": 6 / 4,
 };
 
 /** Brand band 1 dòng script ≈ 6% chiều cao frame. */
@@ -30,6 +32,7 @@ export const PLAIN_FRAME_DEFAULTS = {
   frameColor: "#ffffff",
   brandScript: "Faobooth",
   brandColor: "#1a1a1a",
+  showBrand: true,
 };
 
 export const PLAIN_COLOR_PRESETS = [
@@ -130,5 +133,14 @@ export const LAYOUT_DEFS = {
     cols: 1,
     rows: 1,
     slotAspect: { w: 3, h: 4 },
+  },
+  "3x3": {
+    id: "3x3",
+    label: "9 ô trắng đen",
+    slots: 9,
+    cols: 3,
+    rows: 3,
+    slotAspect: { w: 2, h: 3 },
+    hot: true,
   },
 };

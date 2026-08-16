@@ -18,11 +18,25 @@ export default function PrintCheckout({
   onSubmit,
   submitting,
   onToast,
+  printBw: printBwProp,
+  printNoCrop: printNoCropProp,
+  onPrintBwChange,
+  onPrintNoCropChange,
 }) {
   const [selected, setSelected] = useState(() => new Set());
   const [message, setMessage] = useState("");
-  const [printBw, setPrintBw] = useState(false);
-  const [printNoCrop, setPrintNoCrop] = useState(false);
+  const [printBwInternal, setPrintBwInternal] = useState(false);
+  const [printNoCropInternal, setPrintNoCropInternal] = useState(false);
+  const printBw = printBwProp ?? printBwInternal;
+  const printNoCrop = printNoCropProp ?? printNoCropInternal;
+  const setPrintBw = (v) => {
+    if (printBwProp === undefined) setPrintBwInternal(v);
+    onPrintBwChange?.(v);
+  };
+  const setPrintNoCrop = (v) => {
+    if (printNoCropProp === undefined) setPrintNoCropInternal(v);
+    onPrintNoCropChange?.(v);
+  };
 
   const selectedIds = useMemo(() => [...selected], [selected]);
   const split = countPrintSplit(selectedIds.length, freeRemaining);

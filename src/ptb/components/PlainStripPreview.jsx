@@ -52,16 +52,21 @@ export default function PlainStripPreview({
   const layoutType = strip.layoutType ?? "1x4";
   const slotCount = getSlotCount(strip);
   const widthPx = Math.max(1, previewWidth || 140);
-  const metrics = getPlainFrameMetrics(layoutType, widthPx);
+  const metrics = getPlainFrameMetrics(layoutType, widthPx, {
+    showBrand: strip.showBrand !== false,
+  });
   const {
     heightPx,
     brandPx,
     padPx,
     padY,
+    padBottom,
     footerPx,
     gapPx,
     is1x1,
     is2x2,
+    is3x3,
+    showBrand,
   } = metrics;
   const frameColor = strip.frameColor || PLAIN_FRAME_DEFAULTS.frameColor;
   const brandScript =
@@ -70,6 +75,7 @@ export default function PlainStripPreview({
   const brandColor = strip.brandColor || PLAIN_FRAME_DEFAULTS.brandColor;
   const imagePositions = strip.imagePositions ?? [];
   const scriptSize = Math.max(12, Math.round(brandPx * 0.72));
+  const isGrid = is2x2 || is3x3;
 
   const boxesStyle = is1x1
     ? {
@@ -90,12 +96,21 @@ export default function PlainStripPreview({
         left: 0,
         right: 0,
         bottom: footerPx,
-        display: is2x2 ? "grid" : "flex",
-        flexDirection: is2x2 ? undefined : "column",
-        gridTemplateColumns: is2x2 ? "1fr 1fr" : undefined,
-        gridTemplateRows: is2x2 ? "1fr 1fr" : undefined,
+        display: isGrid ? "grid" : "flex",
+        flexDirection: isGrid ? undefined : "column",
+        gridTemplateColumns: is3x3
+          ? "1fr 1fr 1fr"
+          : is2x2
+            ? "1fr 1fr"
+            : undefined,
+        gridTemplateRows: is3x3
+          ? "1fr 1fr 1fr"
+          : is2x2
+            ? "1fr 1fr"
+            : undefined,
         gap: gapPx,
-        padding: `${padY}px ${padPx}px 0`,
+        padding: `${padY}px ${padPx}px ${padBottom}px`,
+        background: is3x3 ? "#000000" : undefined,
         zIndex: 1,
       };
 
@@ -121,6 +136,7 @@ export default function PlainStripPreview({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        background: is3x3 ? "#000000" : undefined,
         zIndex: 2,
         pointerEvents: "none",
       };
@@ -156,7 +172,7 @@ export default function PlainStripPreview({
               data-slot-index={slotIndex}
               style={{
                 position: "relative",
-                flex: is2x2 ? undefined : 1,
+                flex: isGrid ? undefined : 1,
                 minWidth: 0,
                 minHeight: 0,
                 overflow: "hidden",
@@ -346,27 +362,29 @@ export default function PlainStripPreview({
         })}
       </div>
 
-      <div style={overlayStyle}>
-        <div
-          className="ptb-plain-brand"
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: brandColor,
-            textAlign: "center",
-            lineHeight: 1,
-            writingMode: is1x1 ? "vertical-rl" : undefined,
-            transform: is1x1 ? "rotate(180deg)" : undefined,
-            fontSize: scriptSize,
-            fontWeight: 400,
-          }}
-        >
-          {brandScript}
+      {showBrand ? (
+        <div style={overlayStyle}>
+          <div
+            className="ptb-plain-brand"
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: brandColor,
+              textAlign: "center",
+              lineHeight: 1,
+              writingMode: is1x1 ? "vertical-rl" : undefined,
+              transform: is1x1 ? "rotate(180deg)" : undefined,
+              fontSize: scriptSize,
+              fontWeight: 400,
+            }}
+          >
+            {brandScript}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

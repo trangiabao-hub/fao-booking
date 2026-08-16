@@ -1,4 +1,4 @@
-import { FRAME_SIZE_TEMPLATES } from "./constants";
+import { FRAME_SIZE_TEMPLATES, LAYOUT_DEFS } from "./constants";
 import { resolveUploadOrigin } from "../../config/apiBase";
 
 export function resolveMediaUrl(path) {
@@ -180,7 +180,9 @@ export function applyFrameToStrip(strip, frame) {
 
 export function applyPlainToStrip(strip, layoutType = "1x4") {
   const type = layoutType || "1x4";
-  const slotCount = FRAME_SIZE_TEMPLATES[type]?.slots ?? 4;
+  const slotCount =
+    LAYOUT_DEFS[type]?.slots ?? FRAME_SIZE_TEMPLATES[type]?.slots ?? 4;
+  const is3x3 = type === "3x3";
   return {
     ...strip,
     layoutType: type,
@@ -196,9 +198,10 @@ export function applyPlainToStrip(strip, layoutType = "1x4") {
     frameLayoutOptions: null,
     footerPatternText: "",
     footerSubText: "",
-    frameColor: strip.frameColor || "#ffffff",
+    frameColor: is3x3 ? "#0d0d0d" : strip.frameColor || "#ffffff",
     brandScript: strip.brandScript ?? "Faobooth",
-    brandColor: strip.brandColor || "#1a1a1a",
+    brandColor: is3x3 ? "#ffffff" : strip.brandColor || "#1a1a1a",
+    showBrand: strip.showBrand !== false,
     dualSame: type === "1x4" ? strip.dualSame !== false : true,
   };
 }
