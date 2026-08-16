@@ -152,16 +152,13 @@ export default function GuestFramePage() {
   const remain = formatRemain(album.shareExpiresAt);
 
   return (
-    <AlbumPageLayout>
-      <header className={cn(ptb.card, "shrink-0 px-3 py-2")}>
-        <p className="m-0 text-[13px] font-semibold text-[#172033]">
+    <AlbumPageLayout reserveNav={false}>
+      <header className={cn(ptb.card, "shrink-0 px-3 py-1.5")}>
+        <p className="m-0 text-[13px] font-semibold leading-snug text-[#172033]">
           Ghép frame · in ngay
           {remain ? (
-            <span className="ml-2 font-medium text-[#E6007E]">({remain})</span>
+            <span className="ml-1.5 font-medium text-[#E6007E]">({remain})</span>
           ) : null}
-        </p>
-        <p className="mt-0.5 text-[12px] font-medium text-[#667085]">
-          Chọn ảnh → tùy chỉnh → bấm In (gửi thẳng máy in như quầy)
         </p>
       </header>
 

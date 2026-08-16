@@ -318,7 +318,8 @@ export default function StripPreviewPanel({
     if (!box) return undefined;
 
     const measure = () => {
-      const pad = isMobile ? 2 : 8;
+      // Mobile: gần full box để frame to hơn; desktop giữ pad nhẹ
+      const pad = isMobile ? 0 : 8;
       const boxHeight = Math.max(0, box.clientHeight - pad);
       const boxWidth = Math.max(0, box.clientWidth - pad);
       if (boxHeight <= 0 || !(previewAspect > 0)) return;
@@ -430,12 +431,12 @@ export default function StripPreviewPanel({
         className={cn(
           "flex min-h-0 flex-1 flex-col border border-[#F1E4EC] bg-white shadow-[0_12px_32px_rgba(16,24,40,0.06)]",
           isMobile
-            ? "overflow-hidden p-1.5"
+            ? "overflow-hidden p-1"
             : "h-full overflow-hidden p-2.5 lg:p-3",
         )}
       >
         {!hasOverlay ? (
-          <div className="relative z-10 mb-1 flex shrink-0 flex-wrap justify-center gap-1 bg-white pb-0.5">
+          <div className="relative z-10 mb-0.5 flex shrink-0 flex-wrap justify-center gap-1 bg-white pb-0.5">
             {LAYOUT_SIZES.map((id) => {
               const def = LAYOUT_DEFS[id] ?? { label: id };
               return (
@@ -511,14 +512,14 @@ export default function StripPreviewPanel({
             )}
           </div>
         ) : (
-          <div className="mt-1.5 flex shrink-0 flex-col gap-1.5">
-            <div className="grid grid-cols-2 gap-1.5">
+          <div className="mt-1 flex shrink-0 flex-col gap-1">
+            <div className="grid grid-cols-2 gap-1">
               <button
                 type="button"
                 onClick={() => setConfigOpen(true)}
-                className="inline-flex h-11 items-center justify-center gap-1.5 border border-[#F1E4EC] bg-white text-[13px] font-bold text-[#172033]"
+                className="inline-flex h-10 items-center justify-center gap-1.5 border border-[#F1E4EC] bg-white text-[13px] font-bold text-[#172033]"
               >
-                <Settings2 size={16} aria-hidden />
+                <Settings2 size={15} aria-hidden />
                 Tùy chỉnh
                 {activeHints.length ? (
                   <span className="text-[10px] font-semibold text-[#E6007E]">
@@ -531,14 +532,14 @@ export default function StripPreviewPanel({
                   canSave={canSave}
                   printing={printing}
                   onInstantPrint={onInstantPrint}
-                  className="h-11 py-0"
+                  className="h-10 py-0"
                 />
               ) : (
                 <SaveButton
                   canSave={canSave}
                   saving={saving}
                   onSave={onSave}
-                  className="h-11 py-0"
+                  className="h-10 py-0"
                 />
               )}
             </div>
@@ -547,25 +548,25 @@ export default function StripPreviewPanel({
               <button
                 type="button"
                 onClick={onOpenFrames}
-                className="flex w-full shrink-0 items-center gap-2 border border-[#F1E4EC] bg-[#FFF7FB] px-2 py-1.5 text-left"
+                className="flex w-full shrink-0 items-center gap-2 border border-[#F1E4EC] bg-[#FFF7FB] px-2 py-1 text-left"
               >
                 {selectedFrame?.src ? (
                   <img
                     src={selectedFrame.src}
                     alt=""
-                    className="h-9 w-9 shrink-0 border border-[#F1E4EC] bg-white object-contain"
+                    className="h-8 w-8 shrink-0 border border-[#F1E4EC] bg-white object-contain"
                   />
                 ) : (
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-[#F1E4EC] bg-white text-[#E6007E]">
-                    <Images size={16} />
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center border border-[#F1E4EC] bg-white text-[#E6007E]">
+                    <Images size={15} />
                   </span>
                 )}
                 <span className="min-w-0 flex-1">
-                  <strong className="block text-[13px] font-bold leading-snug text-[#172033]">
-                    Đổi frame hoặc xem lại ảnh của bạn
+                  <strong className="block text-[12px] font-bold leading-snug text-[#172033]">
+                    Đổi frame hoặc xem lại ảnh
                   </strong>
                   {selectedFrame?.label ? (
-                    <small className="block text-[11px] font-medium text-[#98A2B3]">
+                    <small className="block text-[10px] font-medium text-[#98A2B3]">
                       Đang dùng: {selectedFrame.label}
                     </small>
                   ) : null}
