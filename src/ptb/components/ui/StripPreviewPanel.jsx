@@ -53,13 +53,13 @@ export default function StripPreviewPanel({
   const dualSame = strip.dualSame !== false;
   const activeLayout = strip.layoutType ?? "1x4";
 
-  // Giống staff: đo theo box thật → frame chiếm full chiều cao cột preview
+  // Giống staff: đo theo box thật — không bao giờ ép size lớn hơn ô (iPhone Safari)
   useLayoutEffect(() => {
     const box = boxRef.current;
     if (!box) return undefined;
 
     const measure = () => {
-      const pad = isMobile ? 4 : 8;
+      const pad = isMobile ? 2 : 8;
       const boxHeight = Math.max(0, box.clientHeight - pad);
       const boxWidth = Math.max(0, box.clientWidth - pad);
       if (boxHeight <= 0 || !(previewAspect > 0)) return;
@@ -67,19 +67,16 @@ export default function StripPreviewPanel({
         boxHeight / Math.max(previewAspect, 0.5),
       );
       const totalFromWidth = Math.floor(boxWidth);
-      const minTotal = dualPreview
-        ? isMobile
-          ? 200
-          : 160
-        : isMobile
-          ? 168
-          : 88;
-      const totalW = Math.max(
-        minTotal,
-        Math.min(totalFromHeight, totalFromWidth || totalFromHeight),
+      // Chỉ fit trong box — minTotal cũ (200) làm strip tràn đè chip layout trên iPhone
+      const fitted = Math.min(
+        totalFromHeight,
+        totalFromWidth > 0 ? totalFromWidth : totalFromHeight,
       );
+      // Chưa đo xong / ô quá nhỏ — giữ width cũ, không ép min làm tràn
+      if (fitted < 40) return;
+      const totalW = fitted;
       const stripW = dualPreview
-        ? Math.max(isMobile ? 96 : 72, Math.floor(totalW / 2))
+        ? Math.max(32, Math.floor(totalW / 2))
         : totalW;
       setPreviewWidth(stripW);
     };
@@ -87,6 +84,8 @@ export default function StripPreviewPanel({
     measure();
     window.addEventListener("resize", measure);
     window.addEventListener("orientationchange", measure);
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", measure);
     const ro = new ResizeObserver(measure);
     ro.observe(box);
     if (panelRef.current) ro.observe(panelRef.current);
@@ -94,6 +93,7 @@ export default function StripPreviewPanel({
     return () => {
       window.removeEventListener("resize", measure);
       window.removeEventListener("orientationchange", measure);
+      vv?.removeEventListener("resize", measure);
       ro.disconnect();
     };
   }, [
@@ -144,7 +144,7 @@ export default function StripPreviewPanel({
         )}
       >
         {!hasOverlay ? (
-          <div className="mb-1.5 flex shrink-0 flex-wrap justify-center gap-1">
+          <div className="relative z-10 mb-1 flex shrink-0 flex-wrap justify-center gap-1 bg-white pb-0.5">
             {LAYOUT_SIZES.map((id) => {
               const def = LAYOUT_DEFS[id] ?? { label: id };
               return (
@@ -174,8 +174,8 @@ export default function StripPreviewPanel({
         <div
           ref={boxRef}
           className={cn(
-            "flex w-full min-h-0 flex-1 items-center justify-center overflow-hidden bg-transparent p-0",
-            isMobile && "min-h-[160px]",
+            "relative z-0 flex w-full min-h-0 flex-1 items-center justify-center overflow-hidden bg-transparent p-0",
+            isMobile && "min-h-[120px]",
           )}
         >
           <div
@@ -204,19 +204,27 @@ export default function StripPreviewPanel({
           </div>
         </div>
 
-        <div className="mt-2 flex shrink-0 flex-col gap-2.5 border-t border-[#F1E4EC] pt-2.5">
+        <div
+          className={cn(
+            "mt-1.5 flex shrink-0 flex-col border-t border-[#F1E4EC] bg-white",
+            // Mobile Safari: config cuộn riêng — ưu tiên chiều cao preview
+            isMobile
+              ? "max-h-[min(42dvh,320px)] gap-1.5 overflow-y-auto overscroll-contain pt-1.5 [-webkit-overflow-scrolling:touch]"
+              : "gap-2.5 pt-2.5",
+          )}
+        >
           {/* Khi in — chip toggle, quét nhanh hơn checkbox dọc */}
           <div>
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[#98A2B3]">
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.06em] text-[#98A2B3]">
               Khi in
             </p>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1">
               {dualPreview ? (
                 <button
                   type="button"
                   onClick={() => onUpdateStrip?.({ dualSame: !dualSame })}
                   className={cn(
-                    "inline-flex h-8 items-center border px-2.5 text-[12px] font-semibold transition-colors",
+                    "inline-flex h-7 items-center border px-2 text-[11px] font-semibold transition-colors sm:h-8 sm:px-2.5 sm:text-[12px]",
                     dualSame
                       ? "border-[#E6007E] bg-[#FCE7F3] text-[#E6007E]"
                       : "border-[#E4E7EC] bg-white text-[#667085]",
@@ -230,7 +238,7 @@ export default function StripPreviewPanel({
                 type="button"
                 onClick={() => onPrintBwChange?.(!printBw)}
                 className={cn(
-                  "inline-flex h-8 items-center border px-2.5 text-[12px] font-semibold transition-colors",
+                  "inline-flex h-7 items-center border px-2 text-[11px] font-semibold transition-colors sm:h-8 sm:px-2.5 sm:text-[12px]",
                   printBw
                     ? "border-[#E6007E] bg-[#FCE7F3] text-[#E6007E]"
                     : "border-[#E4E7EC] bg-white text-[#667085]",
@@ -243,7 +251,7 @@ export default function StripPreviewPanel({
                 type="button"
                 onClick={() => onPrintNoCropChange?.(!printNoCrop)}
                 className={cn(
-                  "inline-flex h-8 items-center border px-2.5 text-[12px] font-semibold transition-colors",
+                  "inline-flex h-7 items-center border px-2 text-[11px] font-semibold transition-colors sm:h-8 sm:px-2.5 sm:text-[12px]",
                   printNoCrop
                     ? "border-[#E6007E] bg-[#FCE7F3] text-[#E6007E]"
                     : "border-[#E4E7EC] bg-white text-[#667085]",
@@ -258,10 +266,10 @@ export default function StripPreviewPanel({
           {plainMode ? (
             <>
               <div>
-                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[#98A2B3]">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.06em] text-[#98A2B3]">
                   Màu khung
                 </p>
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1">
                   {PLAIN_COLOR_PRESETS.map((preset) => {
                     const active =
                       (strip.frameColor || "").toLowerCase() ===
@@ -278,14 +286,14 @@ export default function StripPreviewPanel({
                           })
                         }
                         className={cn(
-                          "inline-flex h-8 items-center gap-1.5 border px-2 text-[12px] font-semibold",
+                          "inline-flex h-7 items-center gap-1 border px-1.5 text-[11px] font-semibold sm:h-8 sm:gap-1.5 sm:px-2 sm:text-[12px]",
                           active
                             ? "border-[#E6007E] bg-[#FCE7F3] text-[#E6007E]"
                             : "border-[#E4E7EC] bg-white text-[#344054]",
                         )}
                       >
                         <span
-                          className="h-4 w-4 shrink-0 border border-black/10"
+                          className="h-3.5 w-3.5 shrink-0 border border-black/10 sm:h-4 sm:w-4"
                           style={{ background: preset.color }}
                           aria-hidden
                         />
@@ -296,7 +304,7 @@ export default function StripPreviewPanel({
                   <label
                     title="Tùy chọn màu"
                     className={cn(
-                      "relative inline-flex h-8 cursor-pointer items-center gap-1.5 overflow-hidden border px-2 text-[12px] font-semibold",
+                      "relative inline-flex h-7 cursor-pointer items-center gap-1 overflow-hidden border px-1.5 text-[11px] font-semibold sm:h-8 sm:gap-1.5 sm:px-2 sm:text-[12px]",
                       !PLAIN_COLOR_PRESETS.some(
                         (p) =>
                           p.color.toLowerCase() ===
@@ -307,7 +315,7 @@ export default function StripPreviewPanel({
                     )}
                   >
                     <span
-                      className="h-4 w-4 shrink-0 border border-black/10"
+                      className="h-3.5 w-3.5 shrink-0 border border-black/10 sm:h-4 sm:w-4"
                       style={{ background: strip.frameColor || "#ffffff" }}
                       aria-hidden
                     />
@@ -326,10 +334,10 @@ export default function StripPreviewPanel({
               </div>
 
               <div>
-                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[#98A2B3]">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.06em] text-[#98A2B3]">
                   Chữ dưới frame
                 </p>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() =>
@@ -338,7 +346,7 @@ export default function StripPreviewPanel({
                       })
                     }
                     className={cn(
-                      "inline-flex h-8 shrink-0 items-center border px-2.5 text-[12px] font-semibold",
+                      "inline-flex h-7 shrink-0 items-center border px-2 text-[11px] font-semibold sm:h-8 sm:px-2.5 sm:text-[12px]",
                       strip.showBrand !== false
                         ? "border-[#E6007E] bg-[#FCE7F3] text-[#E6007E]"
                         : "border-[#E4E7EC] bg-white text-[#667085]",
@@ -349,7 +357,7 @@ export default function StripPreviewPanel({
                   </button>
                   <input
                     type="text"
-                    className="h-8 min-w-0 flex-1 border border-[#E4E7EC] bg-white px-2.5 text-[12px] font-semibold text-[#172033] outline-none focus:border-[#E6007E] disabled:cursor-not-allowed disabled:bg-[#F9FAFB] disabled:opacity-50"
+                    className="h-7 min-w-0 flex-1 border border-[#E4E7EC] bg-white px-2 text-[11px] font-semibold text-[#172033] outline-none focus:border-[#E6007E] disabled:cursor-not-allowed disabled:bg-[#F9FAFB] disabled:opacity-50 sm:h-8 sm:px-2.5 sm:text-[12px]"
                     value={strip.brandScript ?? ""}
                     placeholder="Vd: Faobooth"
                     disabled={strip.showBrand === false}
@@ -360,14 +368,14 @@ export default function StripPreviewPanel({
                   />
                   <label
                     className={cn(
-                      "relative inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center overflow-hidden border border-[#E4E7EC] bg-white",
+                      "relative inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center overflow-hidden border border-[#E4E7EC] bg-white sm:h-8 sm:w-8",
                       strip.showBrand === false &&
                         "pointer-events-none opacity-45",
                     )}
                     title="Màu chữ"
                   >
                     <span
-                      className="h-4 w-4 border border-black/10"
+                      className="h-3.5 w-3.5 border border-black/10 sm:h-4 sm:w-4"
                       style={{ background: strip.brandColor || "#1a1a1a" }}
                       aria-hidden
                     />
@@ -390,7 +398,7 @@ export default function StripPreviewPanel({
           {hasOverlay ? (
             <button
               type="button"
-              className="w-full border border-[#FED7AA] bg-white py-2 text-[12px] font-bold text-[#C2410C]"
+              className="w-full border border-[#FED7AA] bg-white py-1.5 text-[12px] font-bold text-[#C2410C] sm:py-2"
               onClick={() => onClearFrame?.()}
             >
               Về frame trơn
@@ -403,7 +411,7 @@ export default function StripPreviewPanel({
               disabled={!canSave || saving}
               onClick={onSave}
               className={cn(
-                "inline-flex w-full shrink-0 items-center justify-center gap-2 py-2.5 text-[13px] font-bold transition-colors",
+                "inline-flex w-full shrink-0 items-center justify-center gap-2 py-2 text-[13px] font-bold transition-colors sm:py-2.5",
                 canSave && !saving
                   ? "bg-[#E6007E] text-white hover:bg-[#C4006A]"
                   : "cursor-not-allowed bg-[#F2F4F7] text-[#98A2B3]",
@@ -419,7 +427,7 @@ export default function StripPreviewPanel({
           <button
             type="button"
             onClick={onOpenFrames}
-            className="mt-2 flex w-full shrink-0 items-center gap-2 border border-[#F1E4EC] bg-[#FFF7FB] px-2 py-1.5 text-left"
+            className="mt-1.5 flex w-full shrink-0 items-center gap-2 border border-[#F1E4EC] bg-[#FFF7FB] px-2 py-1.5 text-left"
           >
             {selectedFrame?.src ? (
               <img
