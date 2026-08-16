@@ -54,9 +54,9 @@ export function buildBookingDepositCommitmentLines(devices) {
 
   return [
     "*CHỌN 1 TRONG 3 HÌNH THỨC, ĐỌC KĨ LƯU Ý BÊN DƯỚI",
-    "- Hình thức 1: cọc 0đ áp dụng cho hssv còn đi học (đem theo thẻ hssv và lịch học, có thể dùng trên web) + cccd bản gốc hoặc vneid định danh mức 2.",
-    `- Hình thức 2: cọc tiền của mỗi máy (note trên bảng giá, dao động từ 2-5 triệu)${amountNote} + cccd bản gốc hoặc vneid định danh mức 2.`,
-    "- Hình thức 3: cọc bằng tài sản tương đương (laptop, ipad, điện thoại) + cccd bản gốc hoặc vneid định danh mức 2.",
+    "1. Hình thức 1: cọc 0đ áp dụng cho hssv còn đi học (đem theo thẻ hssv và lịch học, có thể dùng trên web) + cccd bản gốc hoặc vneid định danh mức 2.",
+    `2. Hình thức 2: cọc tiền của mỗi máy (note trên bảng giá, dao động từ 2-5 triệu)${amountNote} + cccd bản gốc hoặc vneid định danh mức 2.`,
+    "3. Hình thức 3: cọc bằng tài sản tương đương (laptop, ipad, điện thoại) + cccd bản gốc hoặc vneid định danh mức 2.",
     "*LƯU Ý:",
     "- Nếu là acc clone (Facebook/Zalo/Instagram), cọc 10.000.000đ.",
     "- Thuê 2 máy trở lên, cần 2 cccd và đến shop xác thực.",

@@ -1,10 +1,14 @@
 import React, { useMemo, useState } from "react";
-import { PrinterIcon } from "@heroicons/react/24/solid";
+import {
+  ArrowDownTrayIcon,
+  PrinterIcon,
+} from "@heroicons/react/24/solid";
 import FrameCard from "./FrameCard";
 import SkeletonFrameCard from "./SkeletonFrameCard";
 import EmptyState from "./EmptyState";
 import { FREE_PRINT_QUOTA } from "../../lib/constants";
 import { groupFramesBySize, resolveMediaUrl } from "../../lib/frameUtils";
+import { buildPtbPrintNote } from "../../lib/printOptions";
 import { cn, ptb } from "../../lib/theme";
 
 const SKELETON_COUNT = 12;
@@ -47,6 +51,23 @@ function countPrintSplit(selectedCount, freeRemaining) {
   return { freeUsed, extraCount: Math.max(0, selectedCount - freeUsed) };
 }
 
+async function downloadAlbumImage(img) {
+  const url = resolveMediaUrl(img.imageUrl || img.thumbUrl);
+  if (!url) throw new Error("Thiếu URL ảnh");
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Không tải được ảnh");
+  const blob = await res.blob();
+  const ext = blob.type.includes("png") ? "png" : "jpg";
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = `faobooth-${img.id}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 export default function FrameGalleryPanel({
   frames,
   selectedFrameId,
@@ -61,6 +82,10 @@ export default function FrameGalleryPanel({
   printDisabled = false,
   printSubmitting = false,
   onSubmitPrint,
+  printBw: printBwProp,
+  printNoCrop: printNoCropProp,
+  onPrintBwChange,
+  onPrintNoCropChange,
   galleryTab: galleryTabProp,
   onGalleryTabChange,
 }) {
@@ -68,6 +93,19 @@ export default function FrameGalleryPanel({
   const [sizeFilter, setSizeFilter] = useState(ALL_SIZES);
   const [internalTab, setInternalTab] = useState("frames");
   const [selectedPrintIds, setSelectedPrintIds] = useState(() => new Set());
+  const [downloading, setDownloading] = useState(false);
+  const [printBwInternal, setPrintBwInternal] = useState(false);
+  const [printNoCropInternal, setPrintNoCropInternal] = useState(false);
+  const printBw = printBwProp ?? printBwInternal;
+  const printNoCrop = printNoCropProp ?? printNoCropInternal;
+  const setPrintBw = (v) => {
+    if (printBwProp === undefined) setPrintBwInternal(v);
+    onPrintBwChange?.(v);
+  };
+  const setPrintNoCrop = (v) => {
+    if (printNoCropProp === undefined) setPrintNoCropInternal(v);
+    onPrintNoCropChange?.(v);
+  };
   const galleryTab = galleryTabProp ?? internalTab;
 
   const setGalleryTab = (id) => {
@@ -93,6 +131,13 @@ export default function FrameGalleryPanel({
   const albumCount = albumImages.length;
   const selectedCount = selectedPrintIds.size;
   const split = countPrintSplit(selectedCount, freeRemaining);
+  const selectedImages = useMemo(
+    () =>
+      sortedAlbumImages.filter((img) =>
+        selectedPrintIds.has(Number(img.id)),
+      ),
+    [sortedAlbumImages, selectedPrintIds],
+  );
 
   const togglePrintSelect = (id) => {
     if (printDisabled) return;
@@ -111,10 +156,30 @@ export default function FrameGalleryPanel({
       await onSubmitPrint({
         imageIds: [...selectedPrintIds],
         paymentMethod: split.extraCount > 0 ? "PAY_AT_STORE" : "FREE_ONLY",
+        note: buildPtbPrintNote({ printBw, printNoCrop }),
       });
       setSelectedPrintIds(new Set());
     } catch {
       /* parent toasts */
+    }
+  };
+
+  const handleDownloadSelected = async () => {
+    if (!selectedImages.length || downloading) return;
+    setDownloading(true);
+    try {
+      for (let i = 0; i < selectedImages.length; i += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await downloadAlbumImage(selectedImages[i]);
+        if (i < selectedImages.length - 1) {
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((r) => setTimeout(r, 280));
+        }
+      }
+    } catch {
+      /* browser may block multi-download; ignore per-file failures */
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -183,10 +248,10 @@ export default function FrameGalleryPanel({
               description="Ghép và lưu strip để xem tại đây."
             />
           ) : (
-            <div className="space-y-3">
+            <div className={cn("space-y-3", selectedCount > 0 && "pb-24")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className={cn(ptb.textBody, "text-[12px]")}>
-                  {albumCount} strip · chạm để chọn in
+                  {albumCount} strip · chạm để chọn
                 </p>
                 <p className="text-[11px] font-semibold text-emerald-700">
                   Còn {freeRemaining}/{FREE_PRINT_QUOTA} miễn phí
@@ -206,7 +271,7 @@ export default function FrameGalleryPanel({
                       className={cn(
                         "relative overflow-hidden border-2 bg-white p-1 text-left transition-all",
                         active
-                          ? "border-[#E6007E] shadow-[0_6px_18px_rgba(230,0,126,0.18)] ring-2 ring-[#FCE7F3]"
+                          ? "border-[#E6007E] shadow-[0_0_0_3px_rgba(230,0,126,0.28),0_8px_22px_rgba(230,0,126,0.22)] ring-2 ring-[#E6007E]/40"
                           : printed
                             ? "border-emerald-500"
                             : "border-[#EEF2F6] hover:border-[#F3D4E4]",
@@ -233,37 +298,6 @@ export default function FrameGalleryPanel({
                   );
                 })}
               </div>
-
-              {selectedCount > 0 ? (
-                <p className="text-center text-[12px] font-medium text-[#344054]">
-                  {split.freeUsed > 0 ? `${split.freeUsed} miễn phí` : null}
-                  {split.freeUsed > 0 && split.extraCount > 0 ? " · " : null}
-                  {split.extraCount > 0 ? `${split.extraCount} in thêm` : null}
-                </p>
-              ) : null}
-
-              {onSubmitPrint ? (
-                <button
-                  type="button"
-                  disabled={
-                    printDisabled || !selectedCount || printSubmitting
-                  }
-                  onClick={handleSubmitPrint}
-                  className={cn(
-                    "inline-flex w-full items-center justify-center gap-2 py-2.5 text-[13px] font-bold transition-colors",
-                    selectedCount && !printDisabled && !printSubmitting
-                      ? "bg-[#E6007E] text-white"
-                      : "cursor-not-allowed bg-[#F2F4F7] text-[#98A2B3]",
-                  )}
-                >
-                  <PrinterIcon className="h-4 w-4" aria-hidden />
-                  {printSubmitting
-                    ? "Đang gửi…"
-                    : selectedCount
-                      ? `Đặt in (${selectedCount})`
-                      : "Chọn ảnh để đặt in"}
-                </button>
-              ) : null}
             </div>
           )}
         </div>
@@ -356,6 +390,63 @@ export default function FrameGalleryPanel({
           </div>
         </>
       )}
+
+      {galleryTab === "album" && selectedCount > 0 ? (
+        <div
+          className={cn(
+            "border border-[#F1E4EC] bg-white/95 p-2.5 shadow-[0_8px_28px_rgba(16,24,40,0.14)] backdrop-blur-md",
+            embedded
+              ? "fixed inset-x-3 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-[80]"
+              : "mt-auto shrink-0",
+          )}
+        >
+          <p className="mb-2 text-center text-[12px] font-medium text-[#344054]">
+            Đã chọn {selectedCount}
+            {split.freeUsed > 0 ? ` · ${split.freeUsed} miễn phí` : ""}
+            {split.extraCount > 0 ? ` · ${split.extraCount} in thêm` : ""}
+          </p>
+          <div className="mb-2 flex flex-col gap-1">
+            <label className="flex items-center gap-2 text-[12px] font-semibold text-[#344054]">
+              <input
+                type="checkbox"
+                className="accent-[#E6007E]"
+                checked={printBw}
+                onChange={(e) => setPrintBw(e.target.checked)}
+              />
+              In ảnh trắng đen
+            </label>
+            <label className="flex items-center gap-2 text-[12px] font-semibold text-[#344054]">
+              <input
+                type="checkbox"
+                className="accent-[#E6007E]"
+                checked={printNoCrop}
+                onChange={(e) => setPrintNoCrop(e.target.checked)}
+              />
+              In không cắt
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={downloading}
+              onClick={handleDownloadSelected}
+              className="inline-flex h-12 items-center justify-center gap-1.5 border border-[#F1E4EC] bg-white text-[13px] font-bold text-[#172033] transition-colors hover:border-[#F3D4E4] disabled:opacity-60"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" aria-hidden />
+              {downloading ? "Đang lưu…" : "Lưu về máy"}
+            </button>
+            <button
+              type="button"
+              disabled={printDisabled || printSubmitting || !onSubmitPrint}
+              onClick={handleSubmitPrint}
+              className="inline-flex h-12 items-center justify-center gap-1.5 bg-[#E6007E] text-[13px] font-bold text-white transition-colors hover:bg-[#C4006A] disabled:cursor-not-allowed disabled:bg-[#F2F4F7] disabled:text-[#98A2B3]"
+            >
+              <PrinterIcon className="h-4 w-4" aria-hidden />
+              {printSubmitting ? "Đang gửi…" : "In"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

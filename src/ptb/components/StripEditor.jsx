@@ -43,6 +43,8 @@ export default function StripEditor({
       ? window.matchMedia("(max-width: 1023px)").matches
       : false,
   );
+  const [printBw, setPrintBw] = useState(false);
+  const [printNoCrop, setPrintNoCrop] = useState(false);
   const dragOrigin = useRef(null);
 
   const displayFrames = frames;
@@ -255,6 +257,10 @@ export default function StripEditor({
       freeRemaining={freeRemaining}
       printDisabled={disabled}
       printSubmitting={printSubmitting}
+      printBw={printBw}
+      printNoCrop={printNoCrop}
+      onPrintBwChange={setPrintBw}
+      onPrintNoCropChange={setPrintNoCrop}
       onSubmitPrint={
         onSubmitPrint
           ? async (body) => {
@@ -296,6 +302,10 @@ export default function StripEditor({
           canSave={canSave}
           saving={saving}
           onSave={handleSaveClick}
+          printBw={printBw}
+          printNoCrop={printNoCrop}
+          onPrintBwChange={setPrintBw}
+          onPrintNoCropChange={setPrintNoCrop}
         />
 
         {!isMobile ? gallery(false) : null}

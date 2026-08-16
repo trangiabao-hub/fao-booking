@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { PrinterIcon } from "@heroicons/react/24/solid";
 import { FREE_PRINT_QUOTA } from "../lib/constants";
 import { resolveMediaUrl } from "../lib/frameUtils";
+import { buildPtbPrintNote } from "../lib/printOptions";
 import EmptyState from "./ui/EmptyState";
 import { cn, ptb } from "../lib/theme";
 
@@ -20,6 +21,8 @@ export default function PrintCheckout({
 }) {
   const [selected, setSelected] = useState(() => new Set());
   const [message, setMessage] = useState("");
+  const [printBw, setPrintBw] = useState(false);
+  const [printNoCrop, setPrintNoCrop] = useState(false);
 
   const selectedIds = useMemo(() => [...selected], [selected]);
   const split = countPrintSplit(selectedIds.length, freeRemaining);
@@ -40,6 +43,7 @@ export default function PrintCheckout({
       await onSubmit({
         imageIds: selectedIds,
         paymentMethod: split.extraCount > 0 ? "PAY_AT_STORE" : "FREE_ONLY",
+        note: buildPtbPrintNote({ printBw, printNoCrop }),
       });
       setSelected(new Set());
       const msg = "Đã gửi yêu cầu in. Shop sẽ in và giao khi bạn trả máy.";
@@ -60,6 +64,31 @@ export default function PrintCheckout({
       />
     );
   }
+
+  const printOptions = (
+    <div className="flex flex-col gap-2 rounded-2xl border border-[#F1E4EC] bg-white px-3 py-2.5">
+      <label className="flex items-center gap-2 text-[13px] font-semibold text-[#344054]">
+        <input
+          type="checkbox"
+          className="accent-[#E6007E]"
+          checked={printBw}
+          disabled={disabled}
+          onChange={(e) => setPrintBw(e.target.checked)}
+        />
+        In ảnh trắng đen
+      </label>
+      <label className="flex items-center gap-2 text-[13px] font-semibold text-[#344054]">
+        <input
+          type="checkbox"
+          className="accent-[#E6007E]"
+          checked={printNoCrop}
+          disabled={disabled}
+          onChange={(e) => setPrintNoCrop(e.target.checked)}
+        />
+        In không cắt
+      </label>
+    </div>
+  );
 
   const checkoutSidebar = (
     <>
@@ -86,6 +115,8 @@ export default function PrintCheckout({
           Chọn ít nhất 1 strip bên trái để đặt in
         </p>
       )}
+
+      {printOptions}
 
       <div className="flex flex-col gap-3">
         <button

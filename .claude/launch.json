@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fao-booking-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--mode", "localenv"],
+      "port": 5173,
+      "autoPort": true
+    }
+  ]
+}

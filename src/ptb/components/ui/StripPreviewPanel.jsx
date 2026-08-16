@@ -37,6 +37,10 @@ export default function StripPreviewPanel({
   canSave = false,
   saving = false,
   onSave,
+  printBw = false,
+  printNoCrop = false,
+  onPrintBwChange,
+  onPrintNoCropChange,
 }) {
   const [previewWidth, setPreviewWidth] = useState(140);
   const panelRef = useRef(null);
@@ -180,19 +184,39 @@ export default function StripPreviewPanel({
           </div>
         </div>
 
-        {dualPreview ? (
-          <label className="mt-1.5 flex shrink-0 items-center justify-center gap-2 text-[12px] font-semibold text-[#344054]">
+        <div className="mt-1.5 flex shrink-0 flex-col gap-1 border border-[#F1E4EC] bg-[#FFF7FB] px-2.5 py-2">
+          {dualPreview ? (
+            <label className="flex items-center gap-2 text-[12px] font-semibold text-[#344054]">
+              <input
+                type="checkbox"
+                className="accent-[#E6007E]"
+                checked={dualSame}
+                onChange={(e) =>
+                  onUpdateStrip?.({ dualSame: e.target.checked })
+                }
+              />
+              2 frame giống nhau
+            </label>
+          ) : null}
+          <label className="flex items-center gap-2 text-[12px] font-semibold text-[#344054]">
             <input
               type="checkbox"
               className="accent-[#E6007E]"
-              checked={dualSame}
-              onChange={(e) =>
-                onUpdateStrip?.({ dualSame: e.target.checked })
-              }
+              checked={printBw}
+              onChange={(e) => onPrintBwChange?.(e.target.checked)}
             />
-            2 frame giống nhau
+            In ảnh trắng đen
           </label>
-        ) : null}
+          <label className="flex items-center gap-2 text-[12px] font-semibold text-[#344054]">
+            <input
+              type="checkbox"
+              className="accent-[#E6007E]"
+              checked={printNoCrop}
+              onChange={(e) => onPrintNoCropChange?.(e.target.checked)}
+            />
+            In không cắt
+          </label>
+        </div>
 
         {plainMode ? (
           <div className="mt-1.5 flex shrink-0 flex-col gap-1.5">
