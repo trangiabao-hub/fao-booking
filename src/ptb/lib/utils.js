@@ -159,6 +159,33 @@ export function getSlotCount(strip) {
   return getLayoutDef(strip?.layoutType).slots;
 }
 
+/** Aspect CSS (width/height) của 1 ô — khớp lỗ cắt thật (crop modal). */
+export function getSlotCssAspect(strip, slotIndex = 0, frameWidthPx = 200) {
+  if (isPlainFrame(strip) && !strip?.frameOverlaySrc) {
+    const metrics = getPlainFrameMetrics(strip?.layoutType, frameWidthPx, {
+      showBrand: strip?.showBrand !== false,
+    });
+    if (metrics.is1x1) {
+      return metrics.slotH / metrics.slotW;
+    }
+    return metrics.slotAspect;
+  }
+  const frameOptions = strip?.frameLayoutOptions;
+  const slotRects = buildSlotRects(
+    frameOptions?.slotLayout,
+    getSlotCount(strip),
+  );
+  if (slotRects.length > 0) {
+    const rect = slotRects[Math.min(slotIndex, slotRects.length - 1)];
+    const frameAspect = frameOptions?.frameAspectRatio ?? 1;
+    const ratio = rect.widthRatio / (rect.heightRatio * frameAspect);
+    return Number.isFinite(ratio) && ratio > 0 ? ratio : 4 / 3;
+  }
+  const layout = getLayoutDef(strip?.layoutType);
+  const slotAspect = layout.slotAspect ?? { w: 4, h: 3 };
+  return (slotAspect.w || 4) / (slotAspect.h || 3);
+}
+
 function loadImageElement(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();

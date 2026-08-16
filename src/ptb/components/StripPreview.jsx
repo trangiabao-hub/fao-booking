@@ -24,6 +24,7 @@ function OverlayStripPreview({
   theme,
   onSlotUpload,
   onSlotRemove,
+  onAdjustSlot,
   onDragStart,
   onDragMove,
   onDragEnd,
@@ -160,7 +161,8 @@ function OverlayStripPreview({
                 tapRef.current = null;
                 onDragEnd?.();
                 if (tap && !tap.moved && imageSrc && !readOnly) {
-                  fileInputRefs.current[slotIndex]?.click();
+                  if (onAdjustSlot) onAdjustSlot(slotIndex);
+                  else fileInputRefs.current[slotIndex]?.click();
                 }
               }}
               onPointerCancel={() => {
@@ -225,23 +227,59 @@ function OverlayStripPreview({
                     draggable={false}
                   />
                   {!readOnly ? (
-                    <button
-                      type="button"
-                      data-slot-action="remove"
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        onSlotRemove?.(slotIndex);
-                      }}
-                      className="absolute right-1 top-1 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm font-bold leading-none text-white shadow-sm backdrop-blur-sm"
-                      aria-label={`Xóa ảnh ${slotIndex + 1}`}
-                    >
-                      ×
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        data-slot-action="adjust"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          onAdjustSlot?.(slotIndex);
+                        }}
+                        className="absolute left-1 top-1 z-30 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold leading-none text-white shadow-sm backdrop-blur-sm"
+                        aria-label={`Cắt ảnh ${slotIndex + 1}`}
+                      >
+                        Cắt
+                      </button>
+                      <button
+                        type="button"
+                        data-slot-action="replace"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          fileInputRefs.current[slotIndex]?.click();
+                        }}
+                        className="absolute bottom-1 left-1 z-30 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold leading-none text-white shadow-sm backdrop-blur-sm"
+                        aria-label={`Đổi ảnh ${slotIndex + 1}`}
+                      >
+                        Đổi
+                      </button>
+                      <button
+                        type="button"
+                        data-slot-action="remove"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          onSlotRemove?.(slotIndex);
+                        }}
+                        className="absolute right-1 top-1 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm font-bold leading-none text-white shadow-sm backdrop-blur-sm"
+                        aria-label={`Xóa ảnh ${slotIndex + 1}`}
+                      >
+                        ×
+                      </button>
+                    </>
                   ) : null}
                 </div>
               ) : readOnly ? (

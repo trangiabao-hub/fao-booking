@@ -7,10 +7,11 @@ import {
   groupFramesBySize,
 } from "../lib/frameUtils";
 import { canvasToBlob, renderStripCanvas } from "../lib/renderStrip";
-import { createEmptyStrip, getLayoutDef, isPlainFrame } from "../lib/utils";
+import { createEmptyStrip, getLayoutDef, getSlotCount, getSlotCssAspect, isPlainFrame } from "../lib/utils";
 import { usePtbFrames } from "../hooks/usePtbFrames";
 import { FrameEditorRow, FrameEditorWorkspace } from "./ui/AlbumPageLayout";
 import FrameGalleryPanel from "./ui/FrameGalleryPanel";
+import PhotoAdjustModal from "./PhotoAdjustModal";
 import StripPreviewPanel from "./ui/StripPreviewPanel";
 
 export default function StripEditor({
@@ -47,7 +48,10 @@ export default function StripEditor({
       ? window.matchMedia("(max-width: 1023px)").matches
       : false,
   );
+  const [cropQueue, setCropQueue] = useState([]);
   const dragOrigin = useRef(null);
+  const stripRef = useRef(strip);
+  stripRef.current = strip;
 
   const displayFrames = frames;
   const groups = useMemo(() => groupFramesBySize(displayFrames), [displayFrames]);
@@ -114,7 +118,7 @@ export default function StripEditor({
       return;
     }
     setStrip((prev) => applyPlainToStrip(prev, layoutId));
-    if (layoutId === "3x3") setPrintBw(true);
+    if (layoutId === "3x3") onPrintBwChange?.(true);
   };
 
   const handleUpdateStrip = (patch) => {
@@ -122,29 +126,74 @@ export default function StripEditor({
   };
 
   const handleSlotUpload = (slotIndex, fileList) => {
+    if (disabled) return;
     const files = Array.from(fileList ?? []);
     if (!files.length) return;
-    setStrip((prev) => {
-      const total = prev.imageCount ?? 4;
-      const images = [...(prev.images ?? [])];
-      const positions = [...(prev.imagePositions ?? [])];
 
+    Promise.all(
+      files.map(
+        (file) =>
+          new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target?.result ?? null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+          }),
+      ),
+    ).then((dataUrls) => {
+      const current = stripRef.current;
+      const total = current.imageCount ?? getSlotCount(current);
+      const images = current.images ?? [];
+      const jobs = [];
+      let cursor = 0;
+      for (let i = slotIndex; i < total && cursor < dataUrls.length; i += 1) {
+        if (i !== slotIndex && images[i]) continue;
+        if (!dataUrls[cursor]) {
+          cursor += 1;
+          continue;
+        }
+        jobs.push({
+          slotIndex: i,
+          sourceSrc: dataUrls[cursor],
+          fileName: files[cursor]?.name,
+        });
+        cursor += 1;
+      }
+      if (jobs.length) setCropQueue(jobs);
+    });
+  };
+
+  const applyCroppedImage = useCallback((slotIndex, dataUrl) => {
+    setStrip((prev) => {
+      const total = prev.imageCount ?? getSlotCount(prev);
+      const images = Array.from(
+        { length: total },
+        (_, i) => prev.images?.[i] ?? null,
+      );
+      const positions = Array.from(
+        { length: total },
+        (_, i) => prev.imagePositions?.[i] ?? { x: 50, y: 50, zoom: 1 },
+      );
       if (images[slotIndex]?.startsWith?.("blob:")) {
         URL.revokeObjectURL(images[slotIndex]);
       }
-      images[slotIndex] = URL.createObjectURL(files[0]);
+      images[slotIndex] = dataUrl;
       positions[slotIndex] = { x: 50, y: 50, zoom: 1 };
-
-      let cursor = 1;
-      for (let i = slotIndex + 1; i < total && cursor < files.length; i++) {
-        if (images[i]) continue;
-        images[i] = URL.createObjectURL(files[cursor]);
-        positions[i] = positions[i] ?? { x: 50, y: 50, zoom: 1 };
-        cursor += 1;
-      }
       return { ...prev, images, imagePositions: positions };
     });
+  }, []);
+
+  const openAdjust = (slotIndex) => {
+    if (disabled) return;
+    const src = stripRef.current.images?.[slotIndex];
+    if (!src) return;
+    setCropQueue([{ slotIndex, sourceSrc: src }]);
   };
+
+  const cropJob = cropQueue[0] ?? null;
+  const cropAspect = cropJob
+    ? getSlotCssAspect(strip, cropJob.slotIndex, 220)
+    : 1;
 
   const handleSlotRemove = (slotIndex) => {
     if (dragOrigin.current?.slotIndex === slotIndex) {
@@ -296,6 +345,7 @@ export default function StripEditor({
           strip={strip}
           onSlotUpload={handleSlotUpload}
           onSlotRemove={handleSlotRemove}
+          onAdjustSlot={openAdjust}
           onDragStart={handleDragStart}
           onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
@@ -361,6 +411,18 @@ export default function StripEditor({
           </div>
         </div>
       ) : null}
+
+      <PhotoAdjustModal
+        open={Boolean(cropJob?.sourceSrc)}
+        imageSrc={cropJob?.sourceSrc}
+        aspectRatio={cropAspect}
+        onCancel={() => setCropQueue((prev) => prev.slice(1))}
+        onConfirm={(croppedDataUrl) => {
+          if (!cropJob) return;
+          applyCroppedImage(cropJob.slotIndex, croppedDataUrl);
+          setCropQueue((prev) => prev.slice(1));
+        }}
+      />
     </FrameEditorWorkspace>
   );
 }

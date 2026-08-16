@@ -18,6 +18,7 @@ export default function PlainStripPreview({
   dragState,
   onSlotUpload,
   onSlotRemove,
+  onAdjustSlot,
   onDragStart,
   onDragMove,
   onDragEnd,
@@ -224,7 +225,8 @@ export default function PlainStripPreview({
                       tapRef.current = null;
                       onDragEnd?.();
                       if (tap && !tap.moved) {
-                        fileInputRefs.current[slotIndex]?.click();
+                        if (onAdjustSlot) onAdjustSlot(slotIndex);
+                        else fileInputRefs.current[slotIndex]?.click();
                       }
                     }
                   : undefined
@@ -324,22 +326,56 @@ export default function PlainStripPreview({
                     }
                   />
                   {!readOnly ? (
-                    <button
-                      type="button"
-                      data-slot-action="remove"
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSlotRemove?.(slotIndex);
-                      }}
-                      className="absolute right-1 top-1 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm font-bold leading-none text-white"
-                      aria-label={`Xóa ảnh ${slotIndex + 1}`}
-                    >
-                      ×
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        data-slot-action="adjust"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAdjustSlot?.(slotIndex);
+                        }}
+                        className="absolute left-1 top-1 z-30 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold leading-none text-white"
+                        aria-label={`Cắt ảnh ${slotIndex + 1}`}
+                      >
+                        Cắt
+                      </button>
+                      <button
+                        type="button"
+                        data-slot-action="replace"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fileInputRefs.current[slotIndex]?.click();
+                        }}
+                        className="absolute bottom-1 left-1 z-30 rounded-full bg-black/60 px-2 py-1 text-[10px] font-bold leading-none text-white"
+                        aria-label={`Đổi ảnh ${slotIndex + 1}`}
+                      >
+                        Đổi
+                      </button>
+                      <button
+                        type="button"
+                        data-slot-action="remove"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSlotRemove?.(slotIndex);
+                        }}
+                        className="absolute right-1 top-1 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-sm font-bold leading-none text-white"
+                        aria-label={`Xóa ảnh ${slotIndex + 1}`}
+                      >
+                        ×
+                      </button>
+                    </>
                   ) : null}
                 </div>
               ) : readOnly ? (

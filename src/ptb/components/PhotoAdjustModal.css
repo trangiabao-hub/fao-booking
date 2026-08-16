@@ -1,0 +1,224 @@
+/* —— Photo adjust modal —— */
+.photo-adjust-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.photo-adjust-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.55);
+  cursor: pointer;
+}
+
+.photo-adjust-modal__panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: min(100%, 520px);
+  max-height: min(92dvh, 780px);
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
+}
+
+.photo-adjust-modal__panel--crop {
+  width: min(100%, 560px);
+}
+
+.photo-adjust-modal__header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+}
+
+.photo-adjust-modal__header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #172033;
+}
+
+.photo-adjust-modal__icon-btn {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #f1e4ec;
+  border-radius: 10px;
+  background: #fff;
+  color: #667085;
+  cursor: pointer;
+}
+
+.photo-adjust-modal__stage {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  background: #0f172a;
+}
+
+.photo-adjust-modal__stage--crop {
+  position: relative;
+  min-height: min(52dvh, 440px);
+  overflow: hidden;
+  padding: 12px;
+  touch-action: none;
+  user-select: none;
+}
+
+.photo-adjust-modal__crop-img {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.photo-adjust-modal__dim {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.photo-adjust-modal__crop {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  cursor: move;
+  touch-action: none;
+}
+
+.photo-adjust-modal__handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.35);
+  box-sizing: border-box;
+  z-index: 2;
+}
+
+.photo-adjust-modal__handle.is-nw {
+  left: -6px;
+  top: -6px;
+  cursor: nwse-resize;
+}
+.photo-adjust-modal__handle.is-ne {
+  right: -6px;
+  top: -6px;
+  cursor: nesw-resize;
+}
+.photo-adjust-modal__handle.is-sw {
+  left: -6px;
+  bottom: -6px;
+  cursor: nesw-resize;
+}
+.photo-adjust-modal__handle.is-se {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
+}
+.photo-adjust-modal__handle.is-n {
+  left: 50%;
+  top: -6px;
+  margin-left: -6px;
+  cursor: ns-resize;
+}
+.photo-adjust-modal__handle.is-s {
+  left: 50%;
+  bottom: -6px;
+  margin-left: -6px;
+  cursor: ns-resize;
+}
+.photo-adjust-modal__handle.is-w {
+  left: -6px;
+  top: 50%;
+  margin-top: -6px;
+  cursor: ew-resize;
+}
+.photo-adjust-modal__handle.is-e {
+  right: -6px;
+  top: 50%;
+  margin-top: -6px;
+  cursor: ew-resize;
+}
+
+.photo-adjust-modal__hint {
+  margin: 10px 16px 0;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #667085;
+}
+
+.photo-adjust-modal__actions {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 12px 16px 16px;
+}
+
+.photo-adjust-modal__cancel,
+.photo-adjust-modal__confirm {
+  height: 44px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.photo-adjust-modal__cancel {
+  border: 1px solid #f1e4ec;
+  background: #fff;
+  color: #667085;
+}
+
+.photo-adjust-modal__confirm {
+  border: 0;
+  background: linear-gradient(90deg, #e6007e, #ec4899);
+  color: #fff;
+}
+
+.photo-adjust-modal__confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1023px) {
+  .photo-adjust-modal {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .photo-adjust-modal__panel {
+    width: 100%;
+    max-height: 94dvh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .photo-adjust-modal__stage--crop {
+    min-height: 48dvh;
+  }
+}
