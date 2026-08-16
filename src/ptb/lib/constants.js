@@ -29,9 +29,9 @@ export const PLAIN_GAP_RATIO = 0.011;
 
 export const PLAIN_FRAME_DEFAULTS = {
   frameSource: "plain",
-  frameColor: "#ffffff",
+  frameColor: "#0d0d0d",
   brandScript: "Faobooth",
-  brandColor: "#1a1a1a",
+  brandColor: "#f5f5f5",
   showBrand: true,
 };
 

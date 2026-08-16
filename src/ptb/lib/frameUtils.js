@@ -198,9 +198,9 @@ export function applyPlainToStrip(strip, layoutType = "1x4") {
     frameLayoutOptions: null,
     footerPatternText: "",
     footerSubText: "",
-    frameColor: is3x3 ? "#0d0d0d" : strip.frameColor || "#ffffff",
+    frameColor: is3x3 ? "#0d0d0d" : strip.frameColor || "#0d0d0d",
     brandScript: strip.brandScript ?? "Faobooth",
-    brandColor: is3x3 ? "#ffffff" : strip.brandColor || "#1a1a1a",
+    brandColor: is3x3 ? "#ffffff" : strip.brandColor || "#f5f5f5",
     showBrand: strip.showBrand !== false,
     dualSame: type === "1x4" ? strip.dualSame !== false : true,
   };
