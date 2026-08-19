@@ -6,29 +6,26 @@ import {
   XCircleIcon,
   CalendarIcon,
   ArrowUturnLeftIcon,
-  ShareIcon,
   CameraIcon,
   ChatBubbleLeftRightIcon,
-  ClipboardDocumentIcon,
-  LinkIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/solid";
 import api from "../../config/axios";
 import { MESSENGER_LINK } from "../../data/contactConfig";
-import {
-  BRANCHES,
-  BRANCH_WORKING_HOURS_LABEL,
-} from "../../data/bookingConstants";
+import { BRANCHES } from "../../data/bookingConstants";
 import FloatingContactButton from "../../components/FloatingContactButton";
 import SlideNav from "../../components/SlideNav";
-import OrderSummaryPanel from "../../components/OrderSummaryPanel";
+import PhotoboothGiftBlock from "../../components/PhotoboothGiftBlock";
 import { saveRecentOrder, loadCustomerInfo } from "../../utils/storage";
 import { trackBookingOrderPaid } from "../../lib/bookingAnalytics";
 import {
   inferOrderBookingBranchId,
   normalizeBookingBranchId,
 } from "../../utils/deviceBranch";
+import { fetchDeviceDisplayMap } from "../../utils/deviceDisplayInfo";
 import {
   buildOrderSummaryText,
+  formatOrderDateTime,
   getBranchLabelFromId,
   parseCustomerNameFromBookingNote,
 } from "../../utils/orderSummary";
@@ -38,12 +35,65 @@ function branchMetaFromId(branchIdRaw) {
   return BRANCHES.find((b) => b.id === id) || BRANCHES[0];
 }
 
-const FALLBACK_IMG = "https://placehold.co/640x360/fdf2f8/ec4899?text=No+Image";
+/** Nền trắng, viền mảnh, bo 16 — mọi khối dùng chung một khung để trang có nhịp. */
+const CARD = "overflow-hidden rounded-2xl border border-[#efe7ea] bg-white";
+
+/** Gom thiết bị trùng tên thành một dòng kèm số lượng. */
+function groupDeviceLines(details) {
+  const list = details?.devices?.length
+    ? details.devices
+    : details?.device
+      ? [details.device]
+      : [];
+
+  const lines = new Map();
+  for (const device of list) {
+    const name = device?.name || "Thiết bị";
+    const existing = lines.get(name);
+    if (existing) existing.qty += 1;
+    else lines.set(name, { name, img: device?.img || null, qty: 1 });
+  }
+  return [...lines.values()];
+}
+
+/** Ảnh máy 48px; thiếu ảnh hoặc lỗi tải thì đổi sang ô icon thay vì ảnh vỡ. */
+function DeviceThumb({ src, alt }) {
+  const [broken, setBroken] = useState(false);
+
+  if (!src || broken) {
+    return (
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#f8f3f5] text-[#d9c2cc]">
+        <CameraIcon className="h-5 w-5" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={() => setBroken(true)}
+      className="h-12 w-12 shrink-0 rounded-lg border border-[#f4eef1] object-cover"
+    />
+  );
+}
+
+/** Hàng hoá đơn: nhãn xám bên trái, giá trị đậm căn phải. */
+function ReceiptRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start justify-between gap-4 px-4 py-2 sm:px-5">
+      <dt className="shrink-0 text-[13px] leading-5 text-[#8a7f84]">{label}</dt>
+      <dd className="text-right text-sm font-semibold leading-5 text-[#2b2226]">
+        {value}
+      </dd>
+    </div>
+  );
+}
 
 function SuccessCard({ details }) {
-  const [showShare, setShowShare] = useState(false);
   const [showMessengerToast, setShowMessengerToast] = useState(false);
-  const [showCopyOrderToast, setShowCopyOrderToast] = useState(false);
+  const [copiedRef, setCopiedRef] = useState(false);
 
   const handleAddToCalendar = () => {
     if (!details) return;
@@ -77,48 +127,6 @@ function SuccessCard({ details }) {
     window.open(url, "_blank");
   };
 
-  const handleShare = async () => {
-    const deviceLabel = details.devices?.length
-      ? details.devices.map((d) => d.name).join(", ")
-      : details.device?.name || "";
-    const orderUrl = details.orderIdNew
-      ? `${window.location.origin}/order/${details.orderIdNew}`
-      : details.orderCode
-        ? `${window.location.origin}/order/code/${details.orderCode}`
-        : window.location.origin;
-    const shareText = `Mình vừa đặt thuê ${deviceLabel} tại Fao Sài Gòn! 📸\n${orderUrl}`;
-    const shareData = {
-      title: "Thuê máy ảnh tại Fao Sài Gòn",
-      text: shareText,
-      url: orderUrl,
-    };
-
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch (err) {
-        console.log("Share cancelled");
-      }
-    } else {
-      // Fallback: copy to clipboard (text + link để dán vào Messenger/Zalo)
-      navigator.clipboard.writeText(shareText);
-      setShowShare(true);
-      setTimeout(() => setShowShare(false), 2000);
-    }
-  };
-
-  const handleCopyOrder = async () => {
-    if (!details) return;
-    const summary = buildOrderSummaryText(details);
-    try {
-      await navigator.clipboard.writeText(summary);
-      setShowCopyOrderToast(true);
-      setTimeout(() => setShowCopyOrderToast(false), 3000);
-    } catch (err) {
-      console.warn("Clipboard failed:", err);
-    }
-  };
-
   const handleMessengerClick = async () => {
     if (!details) return;
     const message = buildOrderSummaryText(details);
@@ -133,6 +141,18 @@ function SuccessCard({ details }) {
     }
   };
 
+  const handleCopyRef = async () => {
+    const ref = details?.orderIdNew || details?.orderCode;
+    if (!ref) return;
+    try {
+      await navigator.clipboard.writeText(String(ref));
+      setCopiedRef(true);
+      setTimeout(() => setCopiedRef(false), 2000);
+    } catch (err) {
+      console.warn("Clipboard failed:", err);
+    }
+  };
+
   if (!details) {
     return <LoadingState message="Đang tải chi tiết đơn hàng..." />;
   }
@@ -141,271 +161,197 @@ function SuccessCard({ details }) {
   const mapUrl = branchMeta.mapUrl;
   const pickupSpotLabel =
     branchMeta.pickupSpotLabel || branchMeta.address || "";
-  const contactPhone = branchMeta.phone || "0901355198";
-  const pickupDirectionsTail =
-    branchMeta.pickupDirectionsTail ||
-    BRANCHES[0].pickupDirectionsTail ||
-    "Khi đến shop mình mang dép đen trên kệ, lên lầu 1 quẹo phải để nhận máy ạ";
+  const branchLabel =
+    details.branchLabel || getBranchLabelFromId(details.branchId);
+  const deviceLines = groupDeviceLines(details);
+  const orderRef = details.orderIdNew || (details.orderCode ?? null);
+  const albumHref = details.orderIdNew
+    ? `/album/order/${details.orderIdNew}`
+    : details.orderCode
+      ? `/order/code/${details.orderCode}`
+      : null;
 
   return (
-    <div className="space-y-5 lg:space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: "easeOut" }}
-        className="bg-white rounded-2xl lg:rounded-3xl border border-pink-100 shadow-lg shadow-pink-500/10 overflow-hidden"
-      >
-        {/* —— Focus: thành công + lưu ý + copy / Messenger —— */}
-        <div className="p-5 sm:p-6 lg:p-8 xl:p-10 text-center border-b border-pink-100/80 bg-gradient-to-b from-white to-pink-50/40">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.1, type: "spring", stiffness: 220 }}
-          >
-            <CheckCircleIcon className="w-14 h-14 sm:w-16 sm:h-16 lg:w-[4.5rem] lg:h-[4.5rem] text-emerald-500 mx-auto" />
-          </motion.div>
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-pink-900 mt-3 lg:mt-4 tracking-tight">
-            Thanh toán thành công
-          </h1>
-          <p className="text-slate-600 text-sm lg:text-base mt-1.5 max-w-md lg:max-w-xl mx-auto leading-relaxed">
-            Shop đã nhận thanh toán. Bạn cần thêm một bước để shop xác nhận đơn.
-          </p>
-          {details.orderIdNew ? (
-            <p className="mt-3 mx-auto max-w-md text-xs sm:text-sm text-pink-800 bg-pink-50 border border-pink-100 rounded-xl px-3 py-2">
-              Sau khi chụp, mở album ghép ảnh photobooth — nhận <strong>2 strip in miễn phí</strong> khi trả máy.
-            </p>
-          ) : null}
-
-          <div className="mt-5 mx-auto max-w-lg lg:max-w-2xl">
-            <OrderSummaryPanel
-              details={details}
-              subtitle="Copy hoặc gửi kèm cho shop qua Messenger để xác nhận đơn nhanh hơn."
-            />
-            {!details.orderIdNew && details.orderCode != null && (
-              <p className="mt-2 text-xs text-slate-500 text-left px-1">
-                Mã đơn hệ thống sẽ hiển thị sau khi shop xác nhận; bạn vẫn có thể
-                tra cứu bằng mã PayOS ở trên.
-              </p>
-            )}
-          </div>
-
-          <div className="mt-5 lg:mt-8 lg:grid lg:grid-cols-2 lg:gap-6 lg:items-stretch text-left">
-            <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3.5 lg:px-5 lg:py-4 h-full flex flex-col justify-center">
-              <p className="text-[11px] font-black uppercase tracking-wider text-amber-900/80">
-                Lưu ý quan trọng
-              </p>
-              <p className="text-sm lg:text-[15px] text-amber-950 font-semibold mt-1 leading-snug">
-                Vui lòng gửi thông tin đơn hàng cho shop (Facebook / Messenger) để
-                hoàn tất và xác nhận lịch.
-              </p>
-              <p className="text-xs lg:text-sm text-amber-900/75 mt-2 leading-relaxed">
-                Copy nội dung đơn → mở chat shop → dán và gửi.
-              </p>
-            </div>
-
-            <div className="mt-4 lg:mt-0 rounded-xl border border-emerald-200/90 bg-emerald-50/90 px-4 py-3.5 lg:px-5 lg:py-4 w-full space-y-3 h-full">
-              <p className="text-sm lg:text-base font-black text-emerald-950 leading-snug">
-                Nhận và Hoàn máy trực tiếp tại:
-              </p>
-              <div className="text-sm lg:text-[15px] text-emerald-950 space-y-2 leading-relaxed">
-                <p>
-                  <span className="mr-1" aria-hidden>
-                    📍
-                  </span>
-                  {pickupSpotLabel} —{" "}
-                  <a
-                    href={mapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-semibold text-emerald-800 underline decoration-emerald-400 underline-offset-2 hover:text-emerald-900"
-                  >
-                    chỉ đường Google Maps
-                  </a>
-                </p>
-                <p>
-                  <span className="mr-1" aria-hidden>
-                    📞
-                  </span>
-                  <a
-                    href={`tel:${String(contactPhone).replace(/\s/g, "")}`}
-                    className="font-bold text-emerald-900 hover:underline"
-                  >
-                    {contactPhone}
-                  </a>
-                </p>
-                <p className="text-emerald-900/90">
-                  <span className="font-semibold">Thời gian làm việc:</span>{" "}
-                  {BRANCH_WORKING_HOURS_LABEL}
-                </p>
-              </div>
-              <p className="text-xs sm:text-sm lg:text-[15px] text-emerald-900/90 leading-relaxed pt-1 border-t border-emerald-200/70">
-                <span className="mr-1" aria-hidden>
-                  🪪
-                </span>
-                Khách iu khi đến nhận máy chuẩn bị giúp FAO{" "}
-                <strong>CCCD bản gốc</strong> hoặc{" "}
-                <strong>VNeID định danh mức 2</strong>. {pickupDirectionsTail}
-                <span aria-hidden>✨</span>
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 lg:mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg sm:max-w-none lg:max-w-3xl mx-auto lg:gap-4">
-            <button
-              type="button"
-              onClick={handleCopyOrder}
-              className="flex items-center justify-center gap-2 px-4 py-3.5 lg:py-4 rounded-xl bg-slate-800 text-white font-bold text-sm sm:text-base lg:text-lg shadow-md hover:bg-slate-900 transition-all active:scale-[0.98]"
-            >
-              <ClipboardDocumentIcon className="w-5 h-5 lg:w-6 lg:h-6 shrink-0" />
-              Copy đơn hàng
-            </button>
-            <button
-              type="button"
-              onClick={handleMessengerClick}
-              className="flex items-center justify-center gap-2 px-4 py-3.5 lg:py-4 rounded-xl bg-[#0084FF] text-white font-bold text-sm sm:text-base lg:text-lg shadow-md shadow-blue-500/25 hover:bg-[#006edc] transition-all active:scale-[0.98]"
-            >
-              <ChatBubbleLeftRightIcon className="w-5 h-5 lg:w-6 lg:h-6 shrink-0" />
-              Liên hệ shop (Messenger)
-            </button>
-          </div>
-
-          {(showMessengerToast || showCopyOrderToast) && (
-            <motion.p
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-3 lg:mt-4 text-sm lg:text-base font-semibold text-emerald-700 bg-emerald-50 rounded-lg py-2.5 px-4 max-w-lg lg:max-w-3xl mx-auto"
-            >
-              {showMessengerToast
-                ? "Đã copy nội dung — dán (Ctrl+V) vào Messenger và gửi shop."
-                : "Đã copy tóm tắt đơn hàng."}
-            </motion.p>
-          )}
-        </div>
-
-        {/* —— Phụ: chi tiết + các tùy chọn —— PC: 2 cột —— */}
-        <div className="p-4 sm:p-5 lg:p-8 xl:px-10 xl:pb-10 bg-slate-50/80 lg:grid lg:grid-cols-12 lg:gap-8 lg:items-start">
-          <div className="lg:col-span-7 space-y-4">
-          <p className="text-[10px] lg:text-xs font-bold uppercase tracking-widest text-slate-400 text-center lg:text-left">
-            Thêm (tùy chọn)
-          </p>
-
-          <details className="group rounded-xl border border-pink-100 bg-white open:shadow-sm lg:shadow-sm">
-            <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-4 py-3 lg:px-5 lg:py-3.5 text-left font-semibold text-pink-900 text-sm lg:text-base [&::-webkit-details-marker]:hidden">
-              <span>Xem chi tiết đơn</span>
-              <span className="text-slate-400 text-xs font-normal group-open:rotate-180 transition-transform">
-                ▼
-              </span>
-            </summary>
-            <div className="px-4 pb-4 lg:px-5 lg:pb-5 pt-0 border-t border-pink-50 text-left space-y-3">
-              {details.devices && details.devices.length > 1 ? (
-                <div className="space-y-2 pt-3">
-                  {details.devices.map((d, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <img
-                        src={d.img}
-                        alt={d.name}
-                        className="w-11 h-11 rounded-lg object-cover border border-pink-100"
-                      />
-                      <p className="font-semibold text-pink-900 text-sm">{d.name}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 pt-3">
-                  <img
-                    src={details.device.img}
-                    alt={details.device.name}
-                    className="w-14 h-14 rounded-lg object-cover border border-pink-100"
-                  />
-                  <div>
-                    <p className="font-semibold text-pink-900 text-sm">
-                      {details.device.name}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </details>
-          </div>
-
-          <div className="lg:col-span-5 mt-4 lg:mt-0 space-y-3 lg:pl-2 lg:border-l lg:border-slate-200/90">
-            <p className="text-[10px] lg:text-xs font-bold uppercase tracking-widest text-slate-400 text-center lg:text-left">
-              Thao tác nhanh
-            </p>
-            <div className="flex flex-col sm:flex-row lg:flex-col gap-2">
-            {(details.orderIdNew || details.orderCode) && (
-              <Link
-                to={
-                  details.orderIdNew
-                    ? `/album/order/${details.orderIdNew}`
-                    : `/order/code/${details.orderCode}`
-                }
-                className="inline-flex flex-1 min-h-[44px] min-w-0 items-center justify-center gap-2 px-3 py-2.5 lg:py-3 rounded-xl bg-pink-600 text-white text-sm lg:text-[15px] font-semibold hover:bg-pink-700 transition-colors"
-              >
-                <CameraIcon className="w-4 h-4 shrink-0" />
-                Album & in ảnh miễn phí
-              </Link>
-            )}
-            {(details.orderIdNew || details.orderCode) && (
-              <Link
-                to={
-                  details.orderIdNew
-                    ? `/order/${details.orderIdNew}`
-                    : `/order/code/${details.orderCode}`
-                }
-                className="inline-flex flex-1 min-h-[44px] min-w-0 items-center justify-center gap-2 px-3 py-2.5 lg:py-3 rounded-xl bg-white text-pink-700 text-sm lg:text-[15px] font-semibold border border-pink-200 hover:bg-pink-50 transition-colors"
-              >
-                <LinkIcon className="w-4 h-4 shrink-0" />
-                Link đơn hàng
-              </Link>
-            )}
-            <button
-              type="button"
-              onClick={handleAddToCalendar}
-              className="inline-flex flex-1 min-h-[44px] min-w-0 items-center justify-center gap-2 px-3 py-2.5 lg:py-3 rounded-xl bg-white text-pink-800 text-sm lg:text-[15px] font-semibold border border-pink-200 hover:bg-pink-50 transition-colors"
-            >
-              <CalendarIcon className="w-4 h-4 shrink-0" />
-              Google Calendar
-            </button>
-            <button
-              type="button"
-              onClick={handleShare}
-              className="inline-flex flex-1 min-h-[44px] min-w-0 items-center justify-center gap-2 px-3 py-2.5 lg:py-3 rounded-xl bg-white text-slate-700 text-sm lg:text-[15px] font-semibold border border-slate-200 hover:bg-slate-50 transition-colors"
-            >
-              <ShareIcon className="w-4 h-4 shrink-0" />
-              Chia sẻ
-            </button>
-          </div>
-
-          {showShare && (
-            <p className="text-center lg:text-left text-xs font-medium text-emerald-700">
-              Đã copy nội dung chia sẻ.
-            </p>
-          )}
-          </div>
-        </div>
-      </motion.div>
-
+    <div className="space-y-3">
+      {/* 1 — Trạng thái: gọn để CTA nằm trong màn hình đầu */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15, duration: 0.4 }}
-        className="grid gap-2 sm:grid-cols-2 lg:max-w-2xl lg:mx-auto lg:gap-3"
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className={`${CARD} px-5 py-6 text-center`}
       >
-        <Link
-          to="/my-bookings"
-          className="flex items-center justify-center gap-2 w-full px-4 py-3 lg:py-3.5 rounded-xl bg-[#222] text-[#FF9FCA] text-sm lg:text-base font-bold border border-[#222] hover:bg-[#333] transition-colors"
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.1, type: "spring", stiffness: 220 }}
         >
-          Đơn của tôi
-        </Link>
-        <Link
-          to="/catalog"
-          className="flex items-center justify-center gap-2 w-full px-4 py-3 lg:py-3.5 rounded-xl bg-white text-slate-800 text-sm lg:text-base font-bold border border-slate-200 hover:bg-slate-50 transition-colors"
-        >
-          <CameraIcon className="w-4 h-4 lg:w-5 lg:h-5" />
-          Thuê thêm
-        </Link>
+          <CheckCircleIcon className="mx-auto h-12 w-12 text-emerald-500" />
+        </motion.div>
+        <h1 className="mt-3 text-[22px] font-black leading-tight tracking-tight text-[#2b2226]">
+          Thanh toán thành công
+        </h1>
+        <p className="mx-auto mt-1.5 max-w-[38ch] text-sm leading-relaxed text-[#8a7f84]">
+          Shop đã nhận tiền. Còn một bước cuối để shop xác nhận lịch cho bạn.
+        </p>
       </motion.div>
+
+      {/* 2 — Việc duy nhất cần làm ngay */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08, duration: 0.35 }}
+        className={`${CARD} px-4 py-4 sm:px-5`}
+      >
+        <p className="text-[10px] font-black uppercase tracking-[0.09em] text-[#E85C9C]">
+          Bước cuối
+        </p>
+        <p className="mt-1 text-[15px] font-bold leading-snug text-[#2b2226]">
+          Gửi thông tin đơn cho shop để xác nhận lịch
+        </p>
+        <p className="mt-1 text-[13px] leading-relaxed text-[#8a7f84]">
+          Nội dung đơn được copy sẵn — bạn chỉ cần dán vào chat và gửi.
+        </p>
+        <button
+          type="button"
+          onClick={handleMessengerClick}
+          className="mt-3.5 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#0084FF] px-4 text-[15px] font-bold text-white transition-colors hover:bg-[#006edc] active:scale-[0.99]"
+        >
+          <ChatBubbleLeftRightIcon className="h-5 w-5 shrink-0" />
+          Nhắn shop qua Messenger
+        </button>
+        {showMessengerToast ? (
+          <motion.p
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-2.5 rounded-lg bg-emerald-50 px-3 py-2 text-[13px] font-semibold text-emerald-700"
+          >
+            Đã copy nội dung — dán (Ctrl+V) vào Messenger và gửi shop.
+          </motion.p>
+        ) : null}
+      </motion.div>
+
+      {/* 3 — Quà photobooth (chỉ chi nhánh Phú Nhuận) */}
+      <PhotoboothGiftBlock branchId={details.branchId} variant="banner" />
+
+      {/* 4 — Hoá đơn: thiết bị, thời gian, tiền, mã đơn */}
+      <section className={CARD}>
+        <header className="flex items-center justify-between gap-3 border-b border-[#f4eef1] px-4 py-3 sm:px-5">
+          <h2 className="text-sm font-bold text-[#2b2226]">Chi tiết đơn</h2>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+            Đã thanh toán
+          </span>
+        </header>
+
+        <div className="divide-y divide-[#f7f2f4]">
+          {deviceLines.map((line) => (
+            <div
+              key={line.name}
+              className="flex items-center gap-3 px-4 py-3 sm:px-5"
+            >
+              <DeviceThumb src={line.img} alt={line.name} />
+              <p className="min-w-0 flex-1 text-sm font-semibold leading-snug text-[#2b2226]">
+                {line.name}
+              </p>
+              <span className="shrink-0 text-[13px] text-[#8a7f84]">
+                x{line.qty}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <dl className="border-t border-[#f4eef1] py-1">
+          <ReceiptRow
+            label="Nhận máy"
+            value={formatOrderDateTime(details.bookingFrom)}
+          />
+          <ReceiptRow
+            label="Trả máy"
+            value={formatOrderDateTime(details.bookingTo)}
+          />
+          <ReceiptRow label="Chi nhánh" value={branchLabel} />
+          <ReceiptRow label="Khách hàng" value={details.customerName} />
+        </dl>
+
+        <div className="flex items-baseline justify-between gap-4 border-t border-[#f4eef1] bg-[#fffafc] px-4 py-3 sm:px-5">
+          <span className="text-[13px] text-[#8a7f84]">Tổng tiền</span>
+          <span className="text-lg font-black tabular-nums text-[#d43487]">
+            {Number(details.total || 0).toLocaleString("vi-VN")} đ
+          </span>
+        </div>
+
+        {orderRef ? (
+          <div className="flex items-center gap-3 border-t border-[#f4eef1] px-4 py-2.5 sm:px-5">
+            <span className="shrink-0 text-[13px] text-[#8a7f84]">Mã đơn</span>
+            <span
+              title={String(orderRef)}
+              className="min-w-0 flex-1 truncate text-right font-mono text-xs text-[#6d6167]"
+            >
+              {orderRef}
+            </span>
+            <button
+              type="button"
+              onClick={handleCopyRef}
+              className="shrink-0 text-[13px] font-bold text-[#E85C9C] transition-opacity active:opacity-60"
+            >
+              {copiedRef ? "Đã copy" : "Copy"}
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      {/* 5 — Nhận máy: địa chỉ + giấy tờ cần mang */}
+      <section className={CARD}>
+        <div className="px-4 py-3.5 sm:px-5">
+          <h2 className="text-sm font-bold text-[#2b2226]">
+            Nhận và hoàn máy tại
+          </h2>
+          <p className="mt-1 text-sm leading-relaxed text-[#5f545a]">
+            {pickupSpotLabel}
+          </p>
+          <a
+            href={mapUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1.5 inline-flex items-center gap-1 text-[13px] font-bold text-[#E85C9C]"
+          >
+            Chỉ đường Google Maps
+            <ChevronRightIcon className="h-3.5 w-3.5" />
+          </a>
+        </div>
+        <p className="border-t border-[#f4eef1] bg-[#fbf8f9] px-4 py-3 text-[13px] leading-relaxed text-[#6d6167] sm:px-5">
+          Khi đến nhận máy, mang giúp FAO <strong>CCCD bản gốc</strong> hoặc{" "}
+          <strong>VNeID định danh mức 2</strong> nha.
+        </p>
+      </section>
+
+      {/* 6 — Lối đi phụ: nhẹ hơn CTA chính, dạng danh sách */}
+      <section className={CARD}>
+        <div className="divide-y divide-[#f7f2f4]">
+          {albumHref ? (
+            <Link
+              to={albumHref}
+              className="flex min-h-13 items-center gap-3 px-4 transition-colors active:bg-[#fdf6f9] sm:px-5"
+            >
+              <CameraIcon className="h-4.5 w-4.5 shrink-0 text-[#E85C9C]" />
+              <span className="min-w-0 flex-1 text-sm font-semibold text-[#2b2226]">
+                Album & in ảnh miễn phí
+              </span>
+              <ChevronRightIcon className="h-4 w-4 shrink-0 text-[#c9bec3]" />
+            </Link>
+          ) : null}
+          <button
+            type="button"
+            onClick={handleAddToCalendar}
+            className="flex min-h-13 w-full items-center gap-3 px-4 text-left transition-colors active:bg-[#fdf6f9] sm:px-5"
+          >
+            <CalendarIcon className="h-4.5 w-4.5 shrink-0 text-[#E85C9C]" />
+            <span className="min-w-0 flex-1 text-sm font-semibold text-[#2b2226]">
+              Nhắc lịch bằng Google Calendar
+            </span>
+            <ChevronRightIcon className="h-4 w-4 shrink-0 text-[#c9bec3]" />
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -611,22 +557,14 @@ export default function PaymentStatusPage() {
             if (bookings.length > 0) {
               const first = bookings[0];
               const totalSum = bookings.reduce((s, b) => s + (b.total || 0), 0);
-              const devices = await Promise.all(
-                bookings.map(async (b) => {
-                  try {
-                    const devRes = await api.get(`/v1/devices/${b.device?.id}`);
-                    return {
-                      name: devRes.data?.name || b.device?.name || "Thiết bị",
-                      img: devRes.data?.images?.[0] || FALLBACK_IMG,
-                    };
-                  } catch {
-                    return {
-                      name: b.device?.name || "Thiết bị",
-                      img: FALLBACK_IMG,
-                    };
-                  }
-                })
-              );
+              const deviceDisplayById = await fetchDeviceDisplayMap();
+              const devices = bookings.map((b) => {
+                const info = deviceDisplayById.get(String(b.device?.id));
+                return {
+                  name: info?.name || b.device?.name || "Thiết bị",
+                  img: info?.img || null,
+                };
+              });
               const branchId = inferOrderBookingBranchId(bookings);
               const savedCustomer = loadCustomerInfo();
               setBookingDetails({
@@ -703,9 +641,9 @@ export default function PaymentStatusPage() {
   }, [searchParams]);
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-white to-pink-100 pb-32 md:pb-36 lg:pb-24">
+    <div className="min-h-dvh bg-[#f4f1f2] pb-32 md:pb-36 lg:pb-24">
       <SlideNav />
-      <div className="max-w-5xl lg:max-w-6xl xl:max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-10 lg:py-10 xl:px-12">
+      <div className="mx-auto w-full max-w-150 px-3 py-5 sm:px-4 sm:py-8">
         {status === "checking" && (
           <LoadingState message="Đang kiểm tra trạng thái thanh toán..." />
         )}

@@ -317,24 +317,23 @@ function ChicCardInner({
 
           <div className="rounded-2xl border border-pink-100 bg-gradient-to-br from-[#fff8fc] to-white px-3.5 py-3">
             <div className="flex flex-col gap-1.5">
+              {/* Giá gạch chỉ có nghĩa khi thực sự giảm — bằng giá thì bỏ luôn. */}
               {savingLabel ? (
                 <span className="text-sm font-semibold leading-none text-gray-400 line-through decoration-rose-400 decoration-1 sm:text-base">
                   {originalLabel}
                 </span>
-              ) : (
-                <span className="text-sm font-bold leading-none text-gray-500 sm:text-base">
-                  {originalLabel}
-                </span>
-              )}
+              ) : null}
 
               <span className="text-xl font-black leading-tight text-[#d43487] sm:text-2xl">
                 {discountedDisplayLabel}
               </span>
             </div>
 
-            <p className="mt-2.5 text-[10px] font-semibold leading-snug text-[#9b5879]">
-              {priceFootnote}
-            </p>
+            {savingLabel ? (
+              <p className="mt-2.5 text-[10px] font-semibold leading-snug text-[#9b5879]">
+                {priceFootnote}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-col gap-2.5">

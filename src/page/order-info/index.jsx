@@ -23,6 +23,7 @@ import {
   inferBookingBranchId,
   inferOrderBookingBranchId,
 } from "../../utils/deviceBranch";
+import { fetchDeviceDisplayMap } from "../../utils/deviceDisplayInfo";
 import {
   buildOrderSummaryText,
   formatOrderDateTime,
@@ -236,15 +237,13 @@ export default function OrderInfoPage() {
             img: FALLBACK_IMG,
           };
           if (b.device?.id) {
-            try {
-              const devRes = await api.get(`/v1/devices/${b.device.id}`);
-              device = {
-                name: devRes.data?.name || device.name,
-                img: devRes.data?.images?.[0] || FALLBACK_IMG,
-              };
-            } catch {
-              /* keep fallback */
-            }
+            const info = (await fetchDeviceDisplayMap()).get(
+              String(b.device.id),
+            );
+            device = {
+              name: info?.name || device.name,
+              img: info?.img || FALLBACK_IMG,
+            };
           }
           const oid =
             b.orderIdNew != null && String(b.orderIdNew).trim() !== ""
@@ -305,22 +304,14 @@ export default function OrderInfoPage() {
         const payosFromNote = parsePayOsCodeFromNote(first?.note);
         const payosDisplay = byCode ? String(orderCode) : payosFromNote;
 
-        const devices = await Promise.all(
-          bookings.map(async (b) => {
-            try {
-              const devRes = await api.get(`/v1/devices/${b.device?.id}`);
-              return {
-                name: devRes.data?.name || b.device?.name || "Thiết bị",
-                img: devRes.data?.images?.[0] || FALLBACK_IMG,
-              };
-            } catch {
-              return {
-                name: b.device?.name || "Thiết bị",
-                img: FALLBACK_IMG,
-              };
-            }
-          }),
-        );
+        const deviceDisplayById = await fetchDeviceDisplayMap();
+        const devices = bookings.map((b) => {
+          const info = deviceDisplayById.get(String(b.device?.id));
+          return {
+            name: info?.name || b.device?.name || "Thiết bị",
+            img: info?.img || FALLBACK_IMG,
+          };
+        });
 
         const branchId = inferOrderBookingBranchId(bookings);
         setOrderDetails({

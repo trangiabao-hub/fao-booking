@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import dayjs from "dayjs";
 import "dayjs/locale/vi";
 import {
   ArrowDownTrayIcon,
   ArrowPathIcon,
+  CheckIcon,
   PhotoIcon,
   PrinterIcon,
   XMarkIcon,
@@ -12,6 +13,7 @@ import {
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import SlideNav from "../../components/SlideNav";
 import PtbToast from "../../ptb/components/ui/PtbToast";
+import PhotoLightbox from "../../ptb/components/ui/PhotoLightbox";
 import {
   ensureSession,
   fetchMyAlbums,
@@ -30,10 +32,14 @@ dayjs.locale("vi");
 
 const vnd = (n) => `${Number(n || 0).toLocaleString("vi-VN")}đ`;
 
-/** Strip 1×4 in trên giấy 2×6", các layout còn lại 4×6". */
+/**
+ * Strip 1×4 in trên giấy 2×6", các layout còn lại 4×6". Giữ đúng tỉ lệ này để
+ * ô ảnh không bóp méo và không phải crop — chiều cao thả tự do theo tỉ lệ.
+ */
 const TILE_ASPECT = { "1x4": "2 / 6", "1x3": "2 / 6" };
 const DEFAULT_TILE_ASPECT = "4 / 6";
 const UNDATED = "undated";
+const LONG_PRESS_MS = 420;
 
 /** Bottom bar cao 68px + đệm đáy của nó; thanh thao tác phải nằm trên khoảng đó. */
 const ABOVE_NAV = "calc(5rem + max(12px, env(safe-area-inset-bottom, 0px)))";
@@ -167,11 +173,16 @@ export default function AlbumPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(() => new Set());
+  const [selectMode, setSelectMode] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(null);
   const [printOpen, setPrintOpen] = useState(false);
   const [printBw, setPrintBw] = useState(false);
   const [printNoCrop, setPrintNoCrop] = useState(false);
   const [busy, setBusy] = useState("");
   const [toast, setToast] = useState(null);
+
+  /** Nhấn giữ để vào chế độ chọn — click sau đó phải bị bỏ qua. */
+  const longPress = useRef({ timer: null, fired: false });
 
   useBodyScrollLock(printOpen);
 
@@ -183,6 +194,7 @@ export default function AlbumPage() {
   );
   const plan = useMemo(() => buildPrintPlan(selectedPhotos), [selectedPhotos]);
   const printableCount = plan.freeCount + plan.paidCount;
+  const allSelected = photos.length > 0 && selected.size === photos.length;
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (silent) setRefreshing(true);
@@ -221,11 +233,45 @@ export default function AlbumPage() {
     });
   };
 
-  const handleSave = async () => {
-    if (!selectedPhotos.length || busy) return;
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+
+  const startLongPress = (event, photoId) => {
+    // Chuột không dùng nhấn giữ — click chậm không được biến thành chọn ảnh.
+    if (event.pointerType === "mouse") return;
+    longPress.current.fired = false;
+    longPress.current.timer = setTimeout(() => {
+      longPress.current.fired = true;
+      setSelectMode(true);
+      toggle(photoId);
+      navigator.vibrate?.(8);
+    }, LONG_PRESS_MS);
+  };
+
+  const cancelLongPress = () => {
+    if (longPress.current.timer) clearTimeout(longPress.current.timer);
+    longPress.current.timer = null;
+  };
+
+  const handleTileClick = (photo) => {
+    if (longPress.current.fired) {
+      longPress.current.fired = false;
+      return;
+    }
+    if (selectMode) {
+      toggle(photo.id);
+      return;
+    }
+    setViewerIndex(photos.findIndex((p) => p.id === photo.id));
+  };
+
+  const handleSave = async (list = selectedPhotos) => {
+    if (!list.length || busy) return;
     setBusy("save");
     try {
-      const { method, count } = await savePhotosToDevice(selectedPhotos);
+      const { method, count } = await savePhotosToDevice(list);
       if (method === "cancelled") return;
       setToast({
         message:
@@ -234,7 +280,7 @@ export default function AlbumPage() {
             : `Đã tải ${count} ảnh về máy`,
         type: "success",
       });
-      setSelected(new Set());
+      if (list === selectedPhotos) exitSelectMode();
     } catch (err) {
       setToast({
         message: err?.message || "Không lưu được ảnh",
@@ -279,7 +325,7 @@ export default function AlbumPage() {
 
     setBusy("");
     setPrintOpen(false);
-    setSelected(new Set());
+    exitSelectMode();
     await load({ silent: true });
 
     setToast(
@@ -292,10 +338,20 @@ export default function AlbumPage() {
     );
   };
 
-  const shell = (children) => (
-    <div className="min-h-dvh bg-[linear-gradient(180deg,#FFF7FB_0%,#FFFFFF_45%,#FFF9FC_100%)] px-3 pb-32 pt-5 sm:px-5 md:pb-36">
+  /**
+   * `overlays` nằm ngoài cột nội dung: cột đó có `z-10` nên tạo stacking context,
+   * lightbox / sheet đặt bên trong sẽ bị thanh nav (z-70) đè lên.
+   */
+  const shell = (children, overlays = null) => (
+    <div className="relative min-h-dvh bg-[#F7F4F6] px-3 pb-32 sm:px-5 md:pb-36">
+      {/* Vệt sáng hồng rất mờ ở đầu trang để canvas có chiều sâu, ảnh nổi lên trên */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 top-0 z-0 h-80 bg-[radial-gradient(90%_100%_at_50%_0%,#FFE1EF_0%,rgba(255,225,239,0)_72%)]"
+      />
       <SlideNav />
-      <div className="mx-auto w-full max-w-5xl">{children}</div>
+      <div className="relative z-10 mx-auto w-full max-w-5xl">{children}</div>
+      {overlays}
       <PtbToast
         message={toast?.message}
         type={toast?.type}
@@ -306,7 +362,7 @@ export default function AlbumPage() {
 
   if (!hasSession) {
     return shell(
-      <div className="mt-6 rounded-3xl border border-[#F1E4EC] bg-white p-8 text-center shadow-[0_12px_32px_rgba(16,24,40,0.06)]">
+      <div className="mt-8 rounded-3xl border border-[#F1E4EC] bg-white p-8 text-center shadow-[0_12px_32px_rgba(16,24,40,0.06)]">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#FFF2F8] text-2xl">
           🔐
         </div>
@@ -329,28 +385,69 @@ export default function AlbumPage() {
 
   return shell(
     <>
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-black tracking-tight text-[#172033]">
-            Album của tôi
-          </h1>
-          <p className="mt-1 text-[13px] font-medium text-[#667085]">
-            {loading
-              ? "Đang tải ảnh…"
-              : `${photos.length} ảnh đã ghép từ ${albums.length} chuyến thuê`}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => load({ silent: true })}
-          disabled={refreshing}
-          className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-[#F1E4EC] bg-white px-3 text-[12px] font-bold text-[#667085] transition hover:text-[#E6007E] disabled:opacity-50"
-        >
-          <ArrowPathIcon
-            className={cn("h-4 w-4", refreshing && "animate-spin")}
-          />
-          Làm mới
-        </button>
+      {/* Thanh trên đổi vai theo chế độ, giống các app ảnh: xem → chọn */}
+      <header className="sticky top-0 z-30 -mx-3 bg-[#F7F4F6]/85 px-3 py-2.5 backdrop-blur-md sm:-mx-5 sm:px-5">
+        {selectMode ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={exitSelectMode}
+              aria-label="Thoát chế độ chọn"
+              className="-ml-1.5 flex h-10 w-10 items-center justify-center rounded-full text-[#344054] transition hover:bg-[#F7F3F5]"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+            <p className="flex-1 text-[15px] font-bold text-[#172033]">
+              {selected.size ? `Đã chọn ${selected.size}` : "Chọn ảnh"}
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setSelected(
+                  allSelected
+                    ? new Set()
+                    : new Set(photos.map((photo) => photo.id)),
+                )
+              }
+              className="rounded-full px-3 py-2 text-[13px] font-bold text-[#E6007E] transition hover:bg-[#FFF2F8]"
+            >
+              {allSelected ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl font-black tracking-tight text-[#172033]">
+                Album của tôi
+              </h1>
+              <p className="mt-0.5 text-[13px] font-medium text-[#667085]">
+                {loading
+                  ? "Đang tải ảnh…"
+                  : `${photos.length} ảnh đã ghép từ ${albums.length} chuyến thuê`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => load({ silent: true })}
+              disabled={refreshing}
+              aria-label="Làm mới"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-[#667085] transition hover:bg-[#F7F3F5] hover:text-[#E6007E] disabled:opacity-50"
+            >
+              <ArrowPathIcon
+                className={cn("h-5 w-5", refreshing && "animate-spin")}
+              />
+            </button>
+            {photos.length ? (
+              <button
+                type="button"
+                onClick={() => setSelectMode(true)}
+                className="h-10 rounded-full border border-[#F1E4EC] px-4 text-[13px] font-bold text-[#172033] transition hover:border-[#F3D4E4] hover:text-[#E6007E]"
+              >
+                Chọn
+              </button>
+            ) : null}
+          </div>
+        )}
       </header>
 
       {error ? (
@@ -360,19 +457,21 @@ export default function AlbumPage() {
       ) : null}
 
       {loading ? (
-        <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-          {Array.from({ length: 12 }).map((_, i) => (
+        <div className="mt-3 columns-3 gap-0.75 sm:columns-4 sm:gap-1 lg:columns-6">
+          {Array.from({ length: 18 }).map((_, i) => (
             <div
               key={i}
-              style={{ aspectRatio: DEFAULT_TILE_ASPECT }}
-              className="animate-pulse rounded-2xl bg-[#F5EDF2]"
+              style={{
+                aspectRatio: i % 3 === 0 ? TILE_ASPECT["1x4"] : DEFAULT_TILE_ASPECT,
+              }}
+              className="mb-0.75 break-inside-avoid animate-pulse bg-[#F5EDF2] sm:mb-1"
             />
           ))}
         </div>
       ) : null}
 
       {!loading && !photos.length ? (
-        <div className="mt-6 rounded-3xl border border-[#F1E4EC] bg-white p-8 text-center shadow-[0_12px_32px_rgba(16,24,40,0.06)]">
+        <div className="mt-8 rounded-3xl border border-[#F1E4EC] bg-white p-8 text-center shadow-[0_12px_32px_rgba(16,24,40,0.06)]">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#FFF2F8]">
             <PhotoIcon className="h-7 w-7 text-[#E6007E]" />
           </div>
@@ -392,30 +491,10 @@ export default function AlbumPage() {
         </div>
       ) : null}
 
-      {photos.length ? (
-        <>
-          <div className="mt-4 flex items-center justify-between gap-2">
-            <p className="text-[12px] font-semibold text-[#667085]">
-              Chạm để chọn ảnh
-            </p>
-            <button
-              type="button"
-              onClick={() =>
-                setSelected((prev) =>
-                  prev.size === photos.length
-                    ? new Set()
-                    : new Set(photos.map((photo) => photo.id)),
-                )
-              }
-              className="text-[12px] font-bold text-[#E6007E]"
-            >
-              {selected.size === photos.length ? "Bỏ chọn tất cả" : "Chọn tất cả"}
-            </button>
-          </div>
-
-          {timeline.map((group) => (
-            <section key={group.key} className="mt-4">
-              <div className="sticky top-0 z-10 -mx-3 bg-[#FFF9FC]/95 px-3 py-2 backdrop-blur-sm sm:-mx-5 sm:px-5">
+      {photos.length
+        ? timeline.map((group) => (
+            <section key={group.key} className="mt-1">
+              <div className="sticky top-17 z-20 -mx-3 bg-[#F7F4F6]/85 px-3 py-2 backdrop-blur-md sm:-mx-5 sm:px-5">
                 <h2 className="text-[13px] font-bold text-[#172033] first-letter:uppercase">
                   {group.label}
                   <span className="ml-2 text-[11px] font-semibold text-[#98A2B3]">
@@ -424,80 +503,136 @@ export default function AlbumPage() {
                 </h2>
               </div>
 
-              <div className="mt-1 grid grid-cols-3 items-start gap-2 sm:grid-cols-4 lg:grid-cols-6">
+              {/* Masonry: cột đều nhau, chiều cao ô theo tỉ lệ thật của ảnh */}
+              <div className="columns-3 gap-0.75 sm:columns-4 sm:gap-1 lg:columns-6">
                 {group.photos.map((photo) => {
                   const active = selected.has(photo.id);
                   return (
-                    <button
+                    <div
                       key={photo.id}
-                      type="button"
-                      onClick={() => toggle(photo.id)}
-                      aria-pressed={active}
-                      style={{
-                        aspectRatio:
-                          TILE_ASPECT[photo.layoutType] ?? DEFAULT_TILE_ASPECT,
-                      }}
-                      className={cn(
-                        "relative block w-full overflow-hidden rounded-2xl border-2 bg-[#FBF7F9] transition",
-                        active
-                          ? "border-[#E6007E] shadow-[0_8px_24px_rgba(230,0,126,0.18)]"
-                          : "border-[#EEF2F6] hover:border-[#F3D4E4]",
-                      )}
+                      className="group relative mb-0.75 break-inside-avoid sm:mb-1"
                     >
-                      <img
-                        src={resolveMediaUrl(photo.imageUrl || photo.thumbUrl)}
-                        alt=""
-                        loading="lazy"
-                        className="h-full w-full object-contain"
-                      />
-                      {active ? (
-                        <span className="absolute right-1.5 top-1.5 rounded-full bg-white/90">
-                          <CheckCircleIcon className="h-5 w-5 text-[#E6007E]" />
-                        </span>
-                      ) : null}
-                      {photo.printed ? (
-                        <span className="absolute bottom-1.5 left-1.5 rounded-full bg-emerald-600/90 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                          Đã gửi in
-                        </span>
-                      ) : null}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTileClick(photo)}
+                        onPointerDown={(e) => startLongPress(e, photo.id)}
+                        onPointerUp={cancelLongPress}
+                        onPointerLeave={cancelLongPress}
+                        onPointerCancel={cancelLongPress}
+                        onContextMenu={(e) => e.preventDefault()}
+                        aria-pressed={selectMode ? active : undefined}
+                        style={{
+                          aspectRatio:
+                            TILE_ASPECT[photo.layoutType] ?? DEFAULT_TILE_ASPECT,
+                        }}
+                        className={cn(
+                          "relative block w-full select-none overflow-hidden bg-white transition",
+                          active
+                            ? "ring-2 ring-[#E6007E] ring-offset-1"
+                            : "ring-1 ring-black/6",
+                        )}
+                      >
+                        <img
+                          src={resolveMediaUrl(photo.imageUrl || photo.thumbUrl)}
+                          alt=""
+                          loading="lazy"
+                          draggable={false}
+                          className={cn(
+                            "h-full w-full object-cover transition-transform duration-200",
+                            active ? "scale-[0.94]" : "group-hover:scale-[1.03]",
+                          )}
+                        />
+                        {photo.printed ? (
+                          <span className="absolute bottom-1 left-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[9px] font-bold text-white backdrop-blur-sm">
+                            Đã gửi in
+                          </span>
+                        ) : null}
+                      </button>
+
+                      {/* Vòng chọn: luôn hiện khi đang chọn, còn lại chỉ hiện khi hover */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectMode(true);
+                          toggle(photo.id);
+                        }}
+                        aria-label={active ? "Bỏ chọn ảnh" : "Chọn ảnh"}
+                        className={cn(
+                          "absolute left-1 top-1 z-10 flex h-7 w-7 items-center justify-center rounded-full transition",
+                          active || selectMode
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                        )}
+                      >
+                        {active ? (
+                          <CheckCircleIcon className="h-6 w-6 text-[#E6007E] drop-shadow" />
+                        ) : (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-black/20 text-white shadow">
+                            <CheckIcon className="h-3 w-3" strokeWidth={3} />
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   );
                 })}
               </div>
             </section>
-          ))}
-        </>
-      ) : null}
-
+          ))
+        : null}
+    </>,
+    <>
       {selected.size ? (
         <div
           className="fixed inset-x-0 z-[75] px-3"
           style={{ bottom: ABOVE_NAV }}
         >
-          <div className="mx-auto flex w-full max-w-md items-center gap-2 rounded-2xl border border-[#F1E4EC] bg-white/97 px-2.5 py-2 shadow-[0_12px_32px_rgba(16,24,40,0.16)] backdrop-blur-md">
-            <span className="shrink-0 pl-1 text-[12px] font-bold text-[#172033]">
-              {selected.size} ảnh
-            </span>
+          <div className="mx-auto flex w-full max-w-md items-center gap-2 rounded-2xl border border-[#F1E4EC] bg-white/97 p-2 shadow-[0_12px_32px_rgba(16,24,40,0.16)] backdrop-blur-md">
             <button
               type="button"
-              onClick={handleSave}
+              onClick={() => handleSave()}
               disabled={!!busy}
-              className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#F1E4EC] bg-white text-[12px] font-bold text-[#172033] disabled:opacity-50"
+              aria-label="Lưu về máy"
+              className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[#F1E4EC] px-3 text-[13px] font-bold text-[#172033] transition hover:border-[#F3D4E4] disabled:opacity-50"
             >
               <ArrowDownTrayIcon className="h-4 w-4" />
-              {busy === "save" ? "Đang lưu…" : "Lưu về máy"}
+              <span className="hidden sm:inline">
+                {busy === "save" ? "Đang lưu…" : "Lưu về máy"}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => setPrintOpen(true)}
               disabled={!!busy}
-              className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#E6007E] to-[#EC4899] text-[12px] font-bold text-white disabled:opacity-50"
+              className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#E6007E] text-[13px] font-bold text-white transition hover:bg-[#cf0071] disabled:opacity-50"
             >
               <PrinterIcon className="h-4 w-4" />
-              Gửi shop in
+              Gửi shop in {selected.size} ảnh
             </button>
           </div>
         </div>
+      ) : null}
+
+      {viewerIndex != null ? (
+        <PhotoLightbox
+          photos={photos}
+          index={viewerIndex}
+          onClose={() => setViewerIndex(null)}
+          onNavigate={setViewerIndex}
+          selectedIds={selected}
+          onToggleSelect={(id) => {
+            setSelectMode(true);
+            toggle(id);
+          }}
+          onSave={(photo) => handleSave([photo])}
+          onPrint={(photo) => {
+            // Gửi in đúng ảnh đang xem: chốt vùng chọn về ảnh này rồi mở sheet.
+            setSelected(new Set([photo.id]));
+            setSelectMode(true);
+            setViewerIndex(null);
+            setPrintOpen(true);
+          }}
+          saving={busy === "save"}
+        />
       ) : null}
 
       {printOpen ? (
@@ -512,8 +647,13 @@ export default function AlbumPage() {
             role="dialog"
             aria-modal="true"
             aria-label="Gửi shop in"
-            className="relative w-full max-w-md rounded-t-3xl border border-[#F1E4EC] bg-white p-5 pb-[max(20px,env(safe-area-inset-bottom))] shadow-[0_-8px_40px_rgba(16,24,40,0.18)] sm:rounded-3xl sm:pb-5"
+            className="relative w-full max-w-md rounded-t-3xl border border-[#F1E4EC] bg-white px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-2 shadow-[0_-8px_40px_rgba(16,24,40,0.18)] sm:rounded-3xl sm:pb-5 sm:pt-5"
           >
+            <span
+              aria-hidden
+              className="mx-auto mb-3 block h-1 w-10 rounded-full bg-[#E9DDE4] sm:hidden"
+            />
+
             <div className="flex items-start justify-between gap-3">
               <h2 className="text-[17px] font-bold text-[#172033]">
                 {printableCount
@@ -523,29 +663,44 @@ export default function AlbumPage() {
               <button
                 type="button"
                 onClick={() => setPrintOpen(false)}
-                className="-mr-1 -mt-1 rounded-full p-1 text-[#98A2B3] hover:bg-[#F7F7F7]"
+                className="-mr-1 -mt-1 rounded-full p-1 text-[#98A2B3] transition hover:bg-[#F7F7F7]"
               >
                 <XMarkIcon className="h-5 w-5" />
               </button>
             </div>
 
             {printableCount ? (
-              <div className="mt-3 rounded-2xl border border-[#FCE7F3] bg-[#FFF1F8] px-4 py-3 text-[13px] text-[#172033]">
-                <p className="font-semibold">
-                  {plan.freeCount} ảnh miễn phí
-                  {plan.paidCount > 0 ? ` · ${plan.paidCount} ảnh in thêm` : ""}
-                </p>
-                <p
-                  className={cn(
-                    "mt-1 text-[15px] font-bold",
-                    plan.paidCount > 0 ? "text-[#172033]" : "text-emerald-700",
-                  )}
-                >
-                  {plan.paidCount > 0
-                    ? `${vnd(plan.subtotal)} · trả tại shop`
-                    : "Trong quota miễn phí"}
-                </p>
-              </div>
+              <dl className="mt-3 overflow-hidden rounded-2xl border border-[#F1E4EC]">
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <dt className="text-[13px] text-[#667085]">Ảnh miễn phí</dt>
+                  <dd className="text-[13px] font-bold text-[#172033]">
+                    {plan.freeCount} ảnh
+                  </dd>
+                </div>
+                {plan.paidCount > 0 ? (
+                  <div className="flex items-center justify-between gap-3 border-t border-[#F6EFF3] px-4 py-2.5">
+                    <dt className="text-[13px] text-[#667085]">In thêm</dt>
+                    <dd className="text-[13px] font-bold text-[#172033]">
+                      {plan.paidCount} ảnh
+                    </dd>
+                  </div>
+                ) : null}
+                <div className="flex items-baseline justify-between gap-3 border-t border-[#F6EFF3] bg-[#FFF7FB] px-4 py-3">
+                  <dt className="text-[13px] text-[#667085]">
+                    {plan.paidCount > 0 ? "Trả tại shop" : "Chi phí"}
+                  </dt>
+                  <dd
+                    className={cn(
+                      "text-[15px] font-black",
+                      plan.paidCount > 0 ? "text-[#172033]" : "text-emerald-700",
+                    )}
+                  >
+                    {plan.paidCount > 0
+                      ? vnd(plan.subtotal)
+                      : "Trong quota miễn phí"}
+                  </dd>
+                </div>
+              </dl>
             ) : null}
 
             {plan.blocked.length ? (
@@ -558,20 +713,20 @@ export default function AlbumPage() {
             ) : null}
 
             {printableCount ? (
-              <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-[#F1E4EC] px-3 py-2.5">
-                <label className="flex items-center gap-2 text-[13px] font-semibold text-[#344054]">
+              <div className="mt-3 overflow-hidden rounded-2xl border border-[#F1E4EC]">
+                <label className="flex cursor-pointer items-center gap-2.5 px-4 py-3 text-[13px] font-semibold text-[#344054]">
                   <input
                     type="checkbox"
-                    className="accent-[#E6007E]"
+                    className="h-4 w-4 accent-[#E6007E]"
                     checked={printBw}
                     onChange={(e) => setPrintBw(e.target.checked)}
                   />
                   In ảnh trắng đen
                 </label>
-                <label className="flex items-center gap-2 text-[13px] font-semibold text-[#344054]">
+                <label className="flex cursor-pointer items-center gap-2.5 border-t border-[#F6EFF3] px-4 py-3 text-[13px] font-semibold text-[#344054]">
                   <input
                     type="checkbox"
-                    className="accent-[#E6007E]"
+                    className="h-4 w-4 accent-[#E6007E]"
                     checked={printNoCrop}
                     onChange={(e) => setPrintNoCrop(e.target.checked)}
                   />
@@ -584,7 +739,7 @@ export default function AlbumPage() {
               type="button"
               onClick={handlePrint}
               disabled={busy === "print" || !printableCount}
-              className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#E6007E] to-[#EC4899] text-sm font-bold text-white shadow-[0_8px_24px_rgba(230,0,126,0.28)] disabled:opacity-50"
+              className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#E6007E] text-sm font-bold text-white transition hover:bg-[#cf0071] disabled:opacity-50"
             >
               <PrinterIcon className="h-5 w-5" />
               {busy === "print" ? "Đang gửi…" : "Xác nhận gửi in"}

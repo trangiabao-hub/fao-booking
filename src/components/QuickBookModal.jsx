@@ -18,7 +18,6 @@ import {
   Check,
   ChevronRight,
   Gift,
-  Sparkles,
   Loader2,
 } from "lucide-react";
 import api from "../config/axios";
@@ -84,6 +83,7 @@ import BookingPrefsForm, {
 } from "./BookingPrefsForm";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import RentalRulesModal from "./RentalRulesModal";
+import PhotoboothGiftBlock from "./PhotoboothGiftBlock";
 
 /** Đồng bộ fao-booking với trang /booking (noteVoucher). */
 function buildQuickBookNoteVoucher({
@@ -2422,61 +2422,7 @@ export default function QuickBookModal({
                   )}
                 </div>
 
-                <motion.div
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
-                  className="relative overflow-hidden rounded-xl border border-[#ffd3e7] bg-gradient-to-br from-[#fff4f9] via-white to-[#fff7fb] p-3.5"
-                >
-                  <div
-                    className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-[#ffd0e6]/55 blur-2xl"
-                    aria-hidden
-                  />
-
-                  <div className="relative">
-                    <div className="flex items-end justify-center">
-                      <img
-                        src="/home/fao-photobooth-gift.png"
-                        alt="Frame photobooth FAO Booth bản ngôi sao"
-                        className="h-[167px] w-[106px] -rotate-[7deg] object-cover object-left shadow-[0_10px_22px_rgba(180,50,110,0.22)]"
-                      />
-                      <img
-                        src="/home/fao-photobooth-gift-3.png"
-                        alt="Frame photobooth FAO Booth bản hồng ren"
-                        className="relative z-10 -mx-[18px] h-[189px] w-[117px] object-cover object-left shadow-[0_12px_26px_rgba(180,50,110,0.28)]"
-                      />
-                      <img
-                        src="/home/fao-photobooth-gift-2.png"
-                        alt="Frame photobooth FAO Booth bản chấm bi"
-                        className="h-[167px] w-[106px] rotate-[7deg] object-cover object-left shadow-[0_10px_22px_rgba(180,50,110,0.22)]"
-                      />
-                    </div>
-
-                    <div className="mt-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <Sparkles
-                          size={12}
-                          className="shrink-0 text-[#E85C9C]"
-                          strokeWidth={2.6}
-                        />
-                        <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#E85C9C]">
-                          Quà cho khách iu nhà FAO
-                        </span>
-                      </div>
-
-                      <p className="mt-1.5 text-[15px] font-bold leading-snug text-[#1f1f1f]">
-                        2 frame photobooth siêu hot
-                        <span className="ml-1.5 inline-flex items-center rounded-md bg-[#E85C9C] px-1.5 py-0.5 align-middle text-[10px] font-black uppercase tracking-wide text-white">
-                          Miễn phí
-                        </span>
-                      </p>
-
-                      <p className="mx-auto mt-1.5 max-w-[34ch] text-[12px] leading-relaxed text-[#777]">
-                        Trả máy 30s là frame ảnh miễn phí đem về làm kỉ niệm
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
+                <PhotoboothGiftBlock branchId={selectedBranch} />
 
                 {/* Order rows — Shopee address/order style */}
                 <div className="overflow-hidden rounded-xl border border-[#f0f0f0] bg-white divide-y divide-[#f5f5f5]">
