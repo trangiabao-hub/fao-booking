@@ -18,6 +18,7 @@ import {
   Check,
   ChevronRight,
   Gift,
+  Sparkles,
   Loader2,
 } from "lucide-react";
 import api from "../config/axios";
@@ -895,6 +896,9 @@ export default function QuickBookModal({
   const [showPointCustom, setShowPointCustom] = useState(false);
   const agreementSectionRef = useRef(null);
   const depositSectionRef = useRef(null);
+  const contentScrollRef = useRef(null);
+  /** Bỏ qua scroll-lên-đầu khi đổi step để nhường cho scroll tới field đang lỗi. */
+  const skipStepScrollTopRef = useRef(false);
   const googleLoginRef = useRef(null);
   const contactFormRef = useRef(null);
   const fullNameInputRef = useRef(null);
@@ -1369,6 +1373,14 @@ export default function QuickBookModal({
     step1AvailabilityMessage,
   ]);
 
+  useEffect(() => {
+    if (skipStepScrollTopRef.current) {
+      skipStepScrollTopRef.current = false;
+      return;
+    }
+    contentScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  }, [step]);
+
   const persistMergedCustomer = useCallback((next, fallbackPlatform) => {
     const detected = detectSocialPlatformFromLink(next.ig);
     const snap = buildCustomerInfoSnapshot(
@@ -1626,6 +1638,7 @@ export default function QuickBookModal({
       setAgreementErrors(nextAgreementErrors);
       if (nextAgreementErrors.depositMethod) {
         setError("Vui lòng chọn 1 hình thức cọc trước khi thanh toán.");
+        skipStepScrollTopRef.current = true;
         setStep(2);
         window.requestAnimationFrame(() => {
           depositSectionRef.current?.scrollIntoView({
@@ -1980,7 +1993,10 @@ export default function QuickBookModal({
           <StepProgressBar step={step} />
 
           {/* Content */}
-          <div className="min-h-0 flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-[#f3f1ef] px-4 py-3 sm:py-4">
+          <div
+            ref={contentScrollRef}
+            className="min-h-0 flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-[#f3f1ef] px-4 py-3 sm:py-4"
+          >
             {step === 1 && (
               <div>
                 <BookingPrefsForm
@@ -2392,6 +2408,62 @@ export default function QuickBookModal({
                     </div>
                   )}
                 </div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, ease: "easeOut", delay: 0.05 }}
+                  className="relative overflow-hidden rounded-xl border border-[#ffd3e7] bg-gradient-to-br from-[#fff4f9] via-white to-[#fff7fb] p-3.5"
+                >
+                  <div
+                    className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-[#ffd0e6]/55 blur-2xl"
+                    aria-hidden
+                  />
+
+                  <div className="relative">
+                    <div className="flex items-end justify-center">
+                      <img
+                        src="/home/fao-photobooth-gift.png"
+                        alt="Frame photobooth FAO Booth bản ngôi sao"
+                        className="h-[167px] w-[106px] -rotate-[7deg] object-cover object-left shadow-[0_10px_22px_rgba(180,50,110,0.22)]"
+                      />
+                      <img
+                        src="/home/fao-photobooth-gift-3.png"
+                        alt="Frame photobooth FAO Booth bản hồng ren"
+                        className="relative z-10 -mx-[18px] h-[189px] w-[117px] object-cover object-left shadow-[0_12px_26px_rgba(180,50,110,0.28)]"
+                      />
+                      <img
+                        src="/home/fao-photobooth-gift-2.png"
+                        alt="Frame photobooth FAO Booth bản chấm bi"
+                        className="h-[167px] w-[106px] rotate-[7deg] object-cover object-left shadow-[0_10px_22px_rgba(180,50,110,0.22)]"
+                      />
+                    </div>
+
+                    <div className="mt-4 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Sparkles
+                          size={12}
+                          className="shrink-0 text-[#E85C9C]"
+                          strokeWidth={2.6}
+                        />
+                        <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#E85C9C]">
+                          Quà cho khách iu nhà FAO
+                        </span>
+                      </div>
+
+                      <p className="mt-1.5 text-[15px] font-bold leading-snug text-[#1f1f1f]">
+                        2 frame photobooth siêu hot
+                        <span className="ml-1.5 inline-flex items-center rounded-md bg-[#E85C9C] px-1.5 py-0.5 align-middle text-[10px] font-black uppercase tracking-wide text-white">
+                          Miễn phí
+                        </span>
+                      </p>
+
+                      <p className="mx-auto mt-1.5 max-w-[34ch] text-[12px] leading-relaxed text-[#777]">
+                        Trả máy 30s là frame ảnh miễn phí đem về làm kỉ niệm
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
 
                 {/* Order rows — Shopee address/order style */}
                 <div className="overflow-hidden rounded-xl border border-[#f0f0f0] bg-white divide-y divide-[#f5f5f5]">
