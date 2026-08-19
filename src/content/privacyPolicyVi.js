@@ -1,14 +1,14 @@
-/** Nội dung chính sách quyền riêng tư — dùng cho SPA và trang HTML tĩnh (Meta App Review). */
+/** Nội dung chính sách quyền riêng tư — dùng cho SPA và trang HTML tĩnh. */
 export const PRIVACY_POLICY_PATH = "/chinh-sach-quyen-rieng-tu";
 export const PRIVACY_POLICY_CANONICAL = "https://faocamera.vn/chinh-sach-quyen-rieng-tu";
-export const PRIVACY_POLICY_UPDATED = "23/06/2026";
+export const PRIVACY_POLICY_UPDATED = "19/08/2026";
 
 export const privacyPolicySections = [
   {
     title: "1. Phạm vi áp dụng",
     paragraphs: [
-      "Chính sách này mô tả cách FAO Sài Gòn — Cho thuê máy ảnh (\"FAO\", \"chúng tôi\") thu thập, sử dụng, lưu trữ và bảo vệ dữ liệu cá nhân khi bạn sử dụng website faocamera.vn, ứng dụng đặt thuê thiết bị, tài khoản thành viên, Facebook Page/Messenger của FAO và ứng dụng Meta \"Demo chat\" do FAO vận hành để hỗ trợ đặt thuê và chăm sóc khách hàng.",
-      "Bằng việc sử dụng dịch vụ hoặc đăng nhập qua Facebook/Google, bạn xác nhận đã đọc và đồng ý với chính sách này.",
+      "Chính sách này mô tả cách FAO Sài Gòn — Cho thuê máy ảnh (\"FAO\", \"chúng tôi\") bảo mật thông tin của khách khi đặt thuê trên faocamera.vn và khi ký hợp đồng thuê thiết bị tại cửa hàng.",
+      "Chính sách này áp dụng cùng với Quy định thuê máy và hợp đồng thuê tài sản hai bên ký khi bàn giao thiết bị. Khi có nội dung khác nhau về nghĩa vụ tài sản, cọc, bồi thường thì hợp đồng thuê được ưu tiên áp dụng.",
     ],
   },
   {
@@ -22,70 +22,39 @@ export const privacyPolicySections = [
     ],
   },
   {
-    title: "3. Dữ liệu chúng tôi thu thập",
+    title: "3. Thông tin của khách và mục đích sử dụng",
     paragraphs: [
-      "Thông tin bạn cung cấp trực tiếp: họ tên, số điện thoại, email, Facebook/Instagram (nếu có), thông tin đơn thuê (máy, ngày nhận/trả, chi nhánh, ghi chú), ảnh CMND/CCCD hoặc tài liệu liên quan khi ký hợp đồng thuê (nếu shop yêu cầu theo quy trình nội bộ).",
-      "Thông tin từ đăng nhập Facebook/Google (khi bạn chọn): ID tài khoản, tên hiển thị, ảnh đại diện, email (nếu bạn cấp quyền) — theo phạm vi quyền bạn đồng ý trên màn hình Meta/Google.",
-      "Dữ liệu Messenger: Page-scoped ID (PSID), tên hiển thị trên inbox, lịch sử tin nhắn với Page FAO — để trả lời tư vấn, xác nhận đơn và gửi nhắc nhận/trả máy theo lịch thuê.",
-      "Dữ liệu kỹ thuật: cookie, địa chỉ IP, loại trình duyệt, trang đã xem, mã tham chiếu marketing (UTM) — phục vụ vận hành website, phân tích lượt truy cập và cải thiện dịch vụ.",
+      "Thông tin trên đơn thuê và hợp đồng thuê (thông tin liên hệ, giấy tờ định danh khách xuất trình, nội dung đơn và chứng từ liên quan) được FAO bảo mật và chỉ dùng cho chính giao dịch thuê: xác minh danh tính, bàn giao và thu hồi thiết bị, thanh toán, cọc, hỗ trợ trong và sau khi thuê.",
+      "Ngoài ra, thông tin này là căn cứ đối chiếu khi phát sinh khiếu nại, tranh chấp hoặc rủi ro với tài sản cho thuê.",
+      "FAO không dùng thông tin của khách cho mục đích nào khác và không bán, không trao đổi dữ liệu khách hàng cho bên thứ ba vì mục đích marketing của họ.",
     ],
   },
   {
-    title: "4. Mục đích sử dụng",
+    title: "4. Bảo mật và chia sẻ thông tin",
     paragraphs: [
-      "Xử lý đơn thuê máy ảnh, thanh toán, giao/nhận thiết bị và hỗ trợ sau thuê.",
-      "Liên hệ qua Messenger, Zalo, điện thoại hoặc email về lịch thuê, cọc, gia hạn, nhắc trả máy và thông báo liên quan đến đơn hàng (utility/transactional — không gửi quảng cáo không liên quan).",
-      "Quản lý tài khoản thành viên, điểm tích lũy và lịch sử đơn.",
-      "Phòng chống gian lận, tranh chấp thiết bị và tuân thủ hợp đồng thuê.",
-      "Cải thiện website, đo hiệu quả kênh SEO/blog (dữ liệu tổng hợp, không bán cho bên thứ ba).",
+      "Thông tin được lưu trên hệ thống của FAO với biện pháp kỹ thuật và tổ chức hợp lý; chỉ nhân sự phụ trách đơn thuê được truy cập trong phạm vi công việc.",
+      "FAO chỉ chia sẻ thông tin ở mức cần thiết cho các đơn vị phục vụ trực tiếp giao dịch (thanh toán, vận hành hệ thống), hoặc khi cần bảo vệ quyền lợi hợp pháp trong việc thu hồi tài sản, giải quyết khiếu nại, tranh chấp, hoặc khi cơ quan nhà nước có thẩm quyền yêu cầu theo quy định pháp luật.",
+      "Khách vui lòng giữ bí mật thông tin đăng nhập và mã đơn của mình. FAO không chịu trách nhiệm với thiệt hại phát sinh do khách để lộ thông tin đăng nhập hoặc do sự cố của nền tảng, dịch vụ bên thứ ba nằm ngoài phạm vi kiểm soát của chúng tôi.",
     ],
   },
   {
-    title: "5. Facebook / Meta",
+    title: "5. Thời gian lưu trữ",
     paragraphs: [
-      "FAO sử dụng Meta Platform (Facebook Login, Messenger API, Page token) qua ứng dụng \"Demo chat\". Dữ liệu nhận từ Meta được xử lý theo chính sách này và Chính sách dữ liệu của Meta (facebook.com/privacy/policy).",
-      "Chúng tôi chỉ yêu cầu quyền cần thiết cho hoạt động hỗ trợ khách (ví dụ: pages_messaging, pages_utility_messaging) và không bán dữ liệu Messenger cho bên thứ ba.",
-      "Bạn có thể ngắt kết nối bằng cách gỡ quyền ứng dụng trong cài đặt Facebook hoặc nhắn Page FAO yêu cầu xóa dữ liệu liên quan (trong phạm vi pháp luật cho phép).",
-    ],
-    link: {
-      label: "Chính sách dữ liệu Meta",
-      href: "https://www.facebook.com/privacy/policy/",
-    },
-  },
-  {
-    title: "6. Chia sẻ dữ liệu",
-    paragraphs: [
-      "Chúng tôi có thể chia sẻ dữ liệu với: nhà cung cấp hosting, cổng thanh toán (PayOS), email/SMS, Meta (khi bạn tương tác qua Facebook) — chỉ mức cần thiết để vận hành dịch vụ.",
-      "Có thể tiết lộ khi luật pháp Việt Nam yêu cầu hoặc để bảo vệ quyền lợi hợp pháp của FAO và khách hàng.",
-      "Chúng tôi không bán danh sách khách hàng cho bên thứ ba vì mục đích marketing của họ.",
+      "Hồ sơ đơn thuê, hợp đồng và chứng từ được lưu trong thời gian còn nghĩa vụ giữa hai bên, thời hạn khiếu nại, tranh chấp và theo yêu cầu về kế toán, lưu trữ của pháp luật. Hết thời hạn cần thiết, thông tin được xóa hoặc lưu ở dạng không còn nhận diện được khách.",
     ],
   },
   {
-    title: "7. Lưu trữ và bảo mật",
+    title: "6. Quyền của khách",
     paragraphs: [
-      "Dữ liệu đơn thuê và tài khoản được lưu trên máy chủ bảo mật; thời gian lưu phù hợp với nghĩa vụ kế toán, giải quyết tranh chấp và quy định pháp luật (thông thường tối đa vài năm sau khi hoàn tất giao dịch, trừ khi pháp luật yêu cầu lâu hơn).",
-      "Chúng tôi áp dụng biện pháp kỹ thuật và tổ chức hợp lý (phân quyền nội bộ, mật khẩu, HTTPS). Không hệ thống nào an toàn tuyệt đối; nếu phát hiện sự cố, chúng tôi sẽ thông báo theo quy định hiện hành.",
+      "Khách có quyền yêu cầu xem, chỉnh sửa, cập nhật hoặc xóa thông tin cá nhân của mình trong phạm vi pháp luật cho phép.",
+      "Để bảo vệ đúng người, FAO cần xác minh danh tính người yêu cầu trước khi xử lý. FAO có thể thực hiện một phần hoặc tạm chưa thực hiện yêu cầu xóa nếu thông tin còn cần cho đơn thuê đang thực hiện, nghĩa vụ tài chính chưa hoàn tất, hồ sơ kế toán, lưu trữ hoặc việc giải quyết khiếu nại, tranh chấp.",
+      "Liên hệ: giabaotran912@gmail.com hoặc hotline 0901 355 198 — FAO phản hồi trong thời hạn hợp lý theo quy định pháp luật.",
     ],
   },
   {
-    title: "8. Quyền của bạn",
+    title: "7. Cập nhật chính sách",
     paragraphs: [
-      "Yêu cầu truy cập, chỉnh sửa hoặc xóa dữ liệu cá nhân (trong phạm vi pháp luật).",
-      "Rút lại đồng ý marketing (nếu có) mà không ảnh hưởng xử lý đơn đang thực hiện.",
-      "Khiếu nại tới cơ quan quản lý nhà nước có thẩm quyền nếu cho rằng quyền riêng tư bị vi phạm.",
-      "Liên hệ: giabaotran912@gmail.com hoặc hotline 0901 355 198 — chúng tôi phản hồi trong thời gian hợp lý.",
-    ],
-  },
-  {
-    title: "9. Trẻ em",
-    paragraphs: [
-      "Dịch vụ hướng tới khách hàng từ 18 tuổi trở lên hoặc có sự đồng ý của phụ huynh/người giám hộ khi thuê thiết bị. Chúng tôi không cố ý thu thập dữ liệu trẻ em dưới 13 tuổi.",
-    ],
-  },
-  {
-    title: "10. Cập nhật chính sách",
-    paragraphs: [
-      "Chúng tôi có thể cập nhật chính sách này; phiên bản mới có ngày hiệu lực tại đầu trang. Việc tiếp tục sử dụng dịch vụ sau khi cập nhật được hiểu là bạn chấp nhận thay đổi (trừ khi pháp luật yêu cầu đồng ý riêng).",
+      "FAO có thể cập nhật chính sách này; phiên bản mới có ngày hiệu lực tại đầu trang. Việc tiếp tục sử dụng dịch vụ sau khi cập nhật được hiểu là khách chấp nhận thay đổi (trừ khi pháp luật yêu cầu đồng ý riêng).",
     ],
   },
 ];

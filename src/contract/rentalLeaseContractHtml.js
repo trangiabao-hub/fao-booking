@@ -6,11 +6,15 @@ import dayjs from "dayjs";
 import { formatVND } from "../utils/formatVND";
 import { PRINT_NEUTRAL_BODY, PRINT_NEUTRAL_MUTED } from "../utils/printInkNeutral";
 
+/**
+ * Dữ liệu mock — trang mẫu công khai không để lộ thông tin thật của Bên A.
+ * Hợp đồng in tại shop điền thông tin thật khi bàn giao máy.
+ */
 export const CONTRACT_BEN_A = {
-  fullName: "Trần Phương Vy",
-  cccd: "079305034054",
-  address: "370/16A Bình Quới, Phường 28, Q.Bình Thạnh.",
-  phone: "0901355198",
+  fullName: "Nguyễn Văn A",
+  cccd: "079xxxxxxxxx",
+  address: "123 Đường ABC, Phường XYZ, TP.HCM.",
+  phone: "09xx xxx xxx",
 };
 
 export const DEFAULT_DELIVERY_PLACE = "475 Huỳnh Văn Bánh, Phường Phú Nhuận";

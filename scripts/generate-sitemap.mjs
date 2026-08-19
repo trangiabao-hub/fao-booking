@@ -33,6 +33,7 @@ const entries = [
   { loc: "/catalog?branchId=Q9", changefreq: "weekly", priority: "0.7" },
   { loc: "/blog/", changefreq: "weekly", priority: "0.75" },
   { loc: "/hop-dong-thue-chuan", changefreq: "monthly", priority: "0.5" },
+  { loc: "/quy-dinh-thue-may", changefreq: "monthly", priority: "0.6" },
   { loc: "/photobooth", changefreq: "weekly", priority: "0.6" },
   ...BLOG_POSTS.map((p) => ({
     loc: `/${p.slug}`,

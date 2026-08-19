@@ -83,6 +83,7 @@ import BookingPrefsForm, {
   getAvailabilityRangeError,
 } from "./BookingPrefsForm";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import RentalRulesModal from "./RentalRulesModal";
 
 /** Đồng bộ fao-booking với trang /booking (noteVoucher). */
 function buildQuickBookNoteVoucher({
@@ -886,12 +887,15 @@ export default function QuickBookModal({
   const [agreePickupInPersonAtBranch, setAgreePickupInPersonAtBranch] =
     useState(false);
   const [agreeCccdPerDevice, setAgreeCccdPerDevice] = useState(false);
+  const [agreeRentalRules, setAgreeRentalRules] = useState(false);
+  const [showRentalRulesModal, setShowRentalRulesModal] = useState(false);
   const [selectedDepositMethod, setSelectedDepositMethod] = useState(null);
   const [agreementErrors, setAgreementErrors] = useState({
     noScamElsewhere: false,
     pickupInPersonAtBranch: false,
     depositMethod: false,
     cccdPerDevice: false,
+    rentalRules: false,
   });
   const [showPriceDetail, setShowPriceDetail] = useState(false);
   const [showPointCustom, setShowPointCustom] = useState(false);
@@ -946,6 +950,8 @@ export default function QuickBookModal({
     setAgreeNoScamElsewhere(false);
     setAgreePickupInPersonAtBranch(false);
     setAgreeCccdPerDevice(false);
+    setAgreeRentalRules(false);
+    setShowRentalRulesModal(false);
     setSelectedDepositMethod(null);
     setShowStep2Errors(false);
     setAgreementErrors({
@@ -953,6 +959,7 @@ export default function QuickBookModal({
       pickupInPersonAtBranch: false,
       depositMethod: false,
       cccdPerDevice: false,
+      rentalRules: false,
     });
     if (hasInitialPrefs && initialPrefs) {
       const p = initialPrefs;
@@ -1631,12 +1638,14 @@ export default function QuickBookModal({
       depositMethod: !selectedDepositMethod,
       cccdPerDevice:
         effectiveDevices.length >= 2 && !agreeCccdPerDevice,
+      rentalRules: !agreeRentalRules,
     };
     if (
       nextAgreementErrors.noScamElsewhere ||
       nextAgreementErrors.pickupInPersonAtBranch ||
       nextAgreementErrors.depositMethod ||
-      nextAgreementErrors.cccdPerDevice
+      nextAgreementErrors.cccdPerDevice ||
+      nextAgreementErrors.rentalRules
     ) {
       setAgreementErrors(nextAgreementErrors);
       if (nextAgreementErrors.depositMethod) {
@@ -1666,6 +1675,7 @@ export default function QuickBookModal({
       pickupInPersonAtBranch: false,
       depositMethod: false,
       cccdPerDevice: false,
+      rentalRules: false,
     });
 
     if (effectiveDevices.length > 2 && !cccdConfirmedRef.current) {
@@ -2737,6 +2747,42 @@ export default function QuickBookModal({
                   )}
                   <label
                     className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
+                      agreementErrors.rentalRules
+                        ? "border-amber-300 bg-amber-50 text-amber-950"
+                        : "border-stone-100 bg-stone-50/80 text-stone-700"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={agreeRentalRules}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setAgreeRentalRules(checked);
+                        setAgreementErrors((prev) => ({
+                          ...prev,
+                          rentalRules: !checked && prev.rentalRules,
+                        }));
+                      }}
+                      className="mt-1 h-4 w-4 shrink-0 accent-[#E85C9C]"
+                    />
+                    <span>
+                      Tôi đã đọc kĩ{" "}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setShowRentalRulesModal(true);
+                        }}
+                        className="font-bold text-[#E85C9C] underline decoration-[#E85C9C]/40 underline-offset-2"
+                      >
+                        quy định thuê
+                      </button>{" "}
+                      bên shop, gồm điều kiện thuê, giờ trả máy và chính sách
+                      huỷ / dời lịch.
+                    </span>
+                  </label>
+                  <label
+                    className={`flex items-start gap-3 rounded-xl border p-3 text-[13px] leading-relaxed transition-colors ${
                       agreementErrors.pickupInPersonAtBranch
                         ? "border-amber-300 bg-amber-50 text-amber-950"
                         : "border-stone-100 bg-stone-50/80 text-stone-700"
@@ -2974,6 +3020,16 @@ export default function QuickBookModal({
         </>
       )}
     </AnimatePresence>
+
+    <RentalRulesModal
+      isOpen={showRentalRulesModal}
+      onClose={() => setShowRentalRulesModal(false)}
+      onAcknowledge={() => {
+        setAgreeRentalRules(true);
+        setAgreementErrors((prev) => ({ ...prev, rentalRules: false }));
+        setShowRentalRulesModal(false);
+      }}
+    />
     </>
   );
 }

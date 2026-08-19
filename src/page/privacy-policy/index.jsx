@@ -11,7 +11,7 @@ export default function PrivacyPolicyPage() {
   return (
     <SeoMeta
       title="Chính sách quyền riêng tư"
-      description="Chính sách quyền riêng tư của FAO Sài Gòn — faocamera.vn, đặt thuê máy ảnh, Messenger và ứng dụng Meta Demo chat."
+      description="Chính sách quyền riêng tư của FAO Sài Gòn: thông tin trên đơn thuê và hợp đồng thuê máy ảnh được bảo mật, chỉ dùng cho chính giao dịch thuê."
       path={PRIVACY_POLICY_PATH}
     >
       <div
@@ -35,7 +35,7 @@ export default function PrivacyPolicyPage() {
           </h1>
           <p style={{ fontSize: 14, color: "#64748b", margin: "0 0 24px" }}>
             Có hiệu lực từ {PRIVACY_POLICY_UPDATED}. Áp dụng cho faocamera.vn và
-            ứng dụng Meta &quot;Demo chat&quot; của FAO.
+            các kênh đặt thuê, chăm sóc khách hàng của FAO.
           </p>
 
           {privacyPolicySections.map((section) => (

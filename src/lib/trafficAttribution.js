@@ -28,6 +28,7 @@ const SPA_ROUTES = new Set([
   "trip",
   "album",
   "hop-dong-thue-chuan",
+  "quy-dinh-thue-may",
   "chinh-sach-quyen-rieng-tu",
   "privacy-policy",
   "blog",

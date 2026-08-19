@@ -12,6 +12,7 @@ import GuestFramePage from "./ptb/pages/GuestFramePage";
 import AlbumOrderRedirect from "./ptb/pages/AlbumOrderRedirect";
 import FeedbackPage from "./page/feedback";
 import RentalContractSamplePage from "./page/rental-contract-sample";
+import RentalRulesPage from "./page/rental-rules";
 import PrivacyPolicyPage from "./page/privacy-policy";
 import ShortLinkRedirect from "./page/short-link";
 import SeoMeta from "./components/SeoMeta";
@@ -223,6 +224,10 @@ const App = () => {
     {
       path: "/hop-dong-thue-chuan",
       element: <RentalContractSamplePage />,
+    },
+    {
+      path: "/quy-dinh-thue-may",
+      element: <RentalRulesPage />,
     },
     {
       path: "/chinh-sach-quyen-rieng-tu",

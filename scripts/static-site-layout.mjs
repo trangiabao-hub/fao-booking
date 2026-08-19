@@ -507,6 +507,7 @@ export function renderSiteFooter() {
         <a href="tel:${phone}">📞 ${phone.replace(/(\d{4})(\d{3})(\d{3})/, "$1 $2 $3")}</a>
         <a href="${zalo}" rel="noopener">Zalo</a>
         <a href="${messenger}" rel="noopener">Messenger</a>
+        <a href="/quy-dinh-thue-may">Quy định thuê máy</a>
       </div>
       <span>© ${new Date().getFullYear()} ${escapeHtml(brand)}</span>
     </div>

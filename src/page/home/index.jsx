@@ -46,8 +46,8 @@ const HIGHLIGHTS = [
   },
   {
     icon: "/home/fao-step-camera.png",
-    title: "Trễ dưới 30 phút không phụ thu",
-    note: "Cần thêm giờ, nhắn trước là được",
+    title: "Cho mượn thêm phụ kiện",
+    note: "Hắt sáng, sạc dự phòng, quạt điện cầm tay",
   },
 ];
 
@@ -63,10 +63,6 @@ const FAQS = [
   {
     q: "Chưa từng dùng dòng máy này?",
     a: "Nhân viên hướng dẫn chi tiết từng thao tác lúc bạn nhận máy. Trong lúc thuê có vướng gì, nhắn shop là được hỗ trợ ngay.",
-  },
-  {
-    q: "Lỡ máy hư thì có phải đền?",
-    a: "Máy ảnh là thiết bị điện tử, có tuổi thọ riêng. Lỗi phát sinh không do va đập hay do cách bạn dùng thì shop không tính bồi thường, còn hoàn lại tiền thuê.",
   },
 ];
 
@@ -305,7 +301,7 @@ const OFFERS = [
     note: "Còn đi học tại TP.HCM, mang thẻ HSSV kèm lịch học và CCCD.",
   },
   {
-    title: "Tặng kèm 3 phụ kiện",
+    title: "Free 3 phụ kiện",
     note: "Sạc dự phòng, hắt sáng, quạt mini, miễn phí cho mọi đơn thuê.",
   },
 ];
@@ -507,8 +503,13 @@ function HomeFooter() {
               </a>
             </li>
             <li>
+              <Link to="/quy-dinh-thue-may" className="text-[var(--home-muted)] hover:text-[var(--home-accent)]">
+                Quy định thuê máy
+              </Link>
+            </li>
+            <li>
               <Link to="/hop-dong-thue-chuan" className="text-[var(--home-muted)] hover:text-[var(--home-accent)]">
-                Quy định
+                Hợp đồng mẫu
               </Link>
             </li>
             <li>

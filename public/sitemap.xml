@@ -41,6 +41,11 @@
     <priority>0.5</priority>
   </url>
   <url>
+    <loc>https://faocamera.vn/quy-dinh-thue-may</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://faocamera.vn/photobooth</loc>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>

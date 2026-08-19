@@ -76,6 +76,10 @@ ${seoLines.join("\n")}
 - Thủ tục: CCCD/VNeID/Hộ chiếu — không yêu cầu hộ khẩu
 - Thanh toán: tiền mặt, chuyển khoản QR, quẹt thẻ
 - Hợp đồng mẫu: ${SITE}/hop-dong-thue-chuan
+- Quy định thuê máy: ${SITE}/quy-dinh-thue-may
+- Điều kiện thuê: khách từ 16 tuổi; dưới 16 tuổi cần phụ huynh đồng ý; thuê từ 2 máy cần 1 CCCD chính chủ mỗi máy
+- Trả trễ: cần báo shop trước; nếu ảnh hưởng lịch khách sau phụ thu 100% giá lịch khách sau
+- Huỷ/dời lịch: dời 1 lần khi báo trước 3 ngày; huỷ trước 7 ngày hoàn 80%; trước 4 ngày hoàn 50%; dưới 4 ngày không hoàn
 `;
 
 writeFileSync(join(__dirname, "../public/llms.txt"), content, "utf8");
