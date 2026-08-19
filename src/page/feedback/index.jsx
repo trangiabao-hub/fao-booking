@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChevronDown, Search } from "lucide-react";
 import { format, addDays } from "date-fns";
 import api from "../../config/axios";
 import SlideNav from "../../components/SlideNav";
@@ -32,6 +32,8 @@ const DEFAULT_MODEL = "Tất cả máy";
 /** Chỉ dùng khi không có ảnh thật — giữ vừa đủ để demo, tránh spam request. */
 const MOCK_IMAGES_PER_MODEL = 6;
 const GALLERY_PAGE_SIZE = 12;
+/** Số chip dòng máy hiện sẵn; phần còn lại nằm sau nút "Xem thêm". */
+const MODEL_CHIP_COLLAPSED_LIMIT = 10;
 const ASPECT_RATIO_SEQUENCE = [
   "3 / 4",
   "4 / 5",
@@ -94,6 +96,42 @@ function isAllowedFeedbackBrandLine(line = "") {
   if (t.includes("ricoh")) return true;
   if (t.includes("sony")) return true;
   return false;
+}
+
+/**
+ * Lens / flash / phụ kiện — nhóm riêng để chip máy ảnh không bị loãng.
+ * Chỉ khớp khi tên *mở đầu* bằng từ khoá phụ kiện, tránh nhận nhầm body kèm kit
+ * (vd "Fujifilm XT30II + Len 18-55" vẫn là máy ảnh).
+ */
+const FEEDBACK_ACCESSORY_NAME_PREFIXES = [
+  "LENS",
+  "LEN",
+  "ỐNG KÍNH",
+  "FLASH",
+  "TRIGGER",
+  "SPEEDLITE",
+  "SOFTBOX",
+  "TRIPOD",
+  "GIMBAL",
+  "TAY CẦM",
+  "MICROPHONE",
+  "MIC",
+  "THẺ NHỚ",
+  "PIN",
+  "SẠC",
+];
+
+function isFeedbackAccessoryName(name = "") {
+  const upper = String(name).trim().toUpperCase();
+  if (!upper) return false;
+  return FEEDBACK_ACCESSORY_NAME_PREFIXES.some(
+    (prefix) => upper === prefix || upper.startsWith(`${prefix} `) || upper.startsWith(`${prefix},`),
+  );
+}
+
+/** Dòng dữ liệu nội bộ (đơn test của shop) — không đưa lên trang feedback. */
+function isFeedbackInternalTestName(name = "") {
+  return /^test\b/i.test(String(name).trim());
 }
 
 function sanitizeQuery(value = "") {
@@ -465,6 +503,8 @@ export default function FeedbackPage() {
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [selectedModelKey, setSelectedModelKey] = useState("");
+  const [modelQuery, setModelQuery] = useState("");
+  const [showAllModels, setShowAllModels] = useState(false);
   const [quickBookDevice, setQuickBookDevice] = useState(null);
   const [showQuickBookModal, setShowQuickBookModal] = useState(false);
   const [galleryPage, setGalleryPage] = useState(0);
@@ -672,17 +712,21 @@ export default function FeedbackPage() {
       );
     };
 
-    if (selectedCategory === DEFAULT_CATEGORY_KEY) {
-      return modelRows.filter(rowInAllowedBrand);
-    }
-    const active = categoryOptions.find((c) => c.key === selectedCategory);
-    if (!active?.deviceIds) return modelRows.filter(rowInAllowedBrand);
-    return modelRows.filter((row) => {
-      for (const gid of row.groupDeviceIds || []) {
-        if (active.deviceIds.has(normalizeId(gid))) return true;
-      }
-      return false;
-    });
+    const active =
+      selectedCategory === DEFAULT_CATEGORY_KEY
+        ? null
+        : categoryOptions.find((c) => c.key === selectedCategory);
+
+    const rows =
+      active?.deviceIds
+        ? modelRows.filter((row) =>
+            (row.groupDeviceIds || []).some((gid) =>
+              active.deviceIds.has(normalizeId(gid)),
+            ),
+          )
+        : modelRows.filter(rowInAllowedBrand);
+
+    return rows.filter((row) => !isFeedbackInternalTestName(row.displayName));
   }, [
     modelRows,
     categoryOptions,
@@ -696,6 +740,65 @@ export default function FeedbackPage() {
       ...categoryFilteredRows.map((item) => item.displayName).filter(Boolean),
     ];
   }, [categoryFilteredRows]);
+
+  /** Máy ảnh trước, dòng nhiều ảnh feedback lên đầu; lens/phụ kiện xuống nhóm sau. */
+  const modelChoices = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const row of categoryFilteredRows) {
+      const value = row.displayName;
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      out.push({
+        value,
+        label: formatFeedbackModelTitle(value),
+        photoCount: Array.isArray(row.images) ? row.images.length : 0,
+        isAccessory: isFeedbackAccessoryName(value),
+      });
+    }
+    return out.sort((a, b) => {
+      if (a.isAccessory !== b.isAccessory) return a.isAccessory ? 1 : -1;
+      if (b.photoCount !== a.photoCount) return b.photoCount - a.photoCount;
+      return a.label.localeCompare(b.label, "vi");
+    });
+  }, [categoryFilteredRows]);
+
+  const modelSearchToken = compactToken(modelQuery);
+
+  const searchedModelChoices = useMemo(() => {
+    if (!modelSearchToken) return modelChoices;
+    return modelChoices.filter((choice) =>
+      compactToken(choice.value).includes(modelSearchToken),
+    );
+  }, [modelChoices, modelSearchToken]);
+
+  const { visibleCameraChoices, visibleAccessoryChoices, hiddenModelCount } =
+    useMemo(() => {
+      const cameras = searchedModelChoices.filter((c) => !c.isAccessory);
+      const accessories = searchedModelChoices.filter((c) => c.isAccessory);
+      const collapsed = !modelSearchToken && !showAllModels;
+      if (!collapsed) {
+        return {
+          visibleCameraChoices: cameras,
+          visibleAccessoryChoices: accessories,
+          hiddenModelCount: 0,
+        };
+      }
+      const shown = cameras.slice(0, MODEL_CHIP_COLLAPSED_LIMIT);
+      // Dòng đang chọn luôn nhìn thấy, kể cả khi nằm ngoài phần thu gọn.
+      const selected = searchedModelChoices.find(
+        (c) => c.value === selectedModel,
+      );
+      if (selected && !shown.some((c) => c.value === selected.value)) {
+        shown.push(selected);
+      }
+      return {
+        visibleCameraChoices: shown,
+        visibleAccessoryChoices: [],
+        hiddenModelCount:
+          cameras.length + accessories.length - shown.length,
+      };
+    }, [searchedModelChoices, modelSearchToken, showAllModels, selectedModel]);
 
   useEffect(() => {
     if (modelRows.length === 0 || categoryOptions.length === 0) return;
@@ -999,6 +1102,8 @@ export default function FeedbackPage() {
     setSelectedCategory(key);
     setSelectedModel(DEFAULT_MODEL);
     setSelectedModelKey("");
+    setModelQuery("");
+    setShowAllModels(false);
   }, []);
 
   const handleModelSelectChange = useCallback(
@@ -1216,34 +1321,122 @@ export default function FeedbackPage() {
               })}
             </div>
 
-            <div
-              role="tablist"
-              aria-label="Dòng máy"
-              className="mt-3 flex flex-wrap gap-2"
-            >
-              {modelOptions.map((model) => {
-                const active = selectedModel === model;
-                const label =
-                  model === DEFAULT_MODEL
-                    ? "Tất cả máy"
-                    : formatFeedbackModelTitle(model);
-                return (
-                  <button
-                    key={model}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => handleModelSelectChange(model)}
-                    className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
-                      active
-                        ? "bg-[#1F1F1F] text-[#FF9FCA]"
-                        : "border border-[#e5d5c8] bg-white text-[#6a5a52] hover:border-[#E85C9C]/50"
-                    }`}
+            <div className="mt-3">
+              {modelChoices.length > MODEL_CHIP_COLLAPSED_LIMIT && (
+                <div className="relative mb-2.5 w-full max-w-xs">
+                  <Search
+                    size={14}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#b09b8d]"
+                  />
+                  <input
+                    type="search"
+                    value={modelQuery}
+                    onChange={(e) => setModelQuery(e.target.value)}
+                    placeholder={`Tìm trong ${modelChoices.length} dòng máy…`}
+                    aria-label="Tìm dòng máy"
+                    className="w-full rounded-xl border border-[#e5d5c8] bg-white py-2 pl-8.5 pr-3 text-xs font-semibold text-[#5c4a42] placeholder:font-medium placeholder:text-[#b09b8d] focus:border-[#E85C9C]/60 focus:outline-none"
+                  />
+                </div>
+              )}
+
+              <div
+                role="tablist"
+                aria-label="Dòng máy"
+                className="flex flex-wrap gap-2"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedModel === DEFAULT_MODEL}
+                  onClick={() => handleModelSelectChange(DEFAULT_MODEL)}
+                  className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
+                    selectedModel === DEFAULT_MODEL
+                      ? "bg-[#1F1F1F] text-[#FF9FCA]"
+                      : "border border-[#e5d5c8] bg-white text-[#6a5a52] hover:border-[#E85C9C]/50"
+                  }`}
+                >
+                  Tất cả máy
+                </button>
+                {visibleCameraChoices.map((choice) => {
+                  const active = selectedModel === choice.value;
+                  return (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => handleModelSelectChange(choice.value)}
+                      className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
+                        active
+                          ? "bg-[#1F1F1F] text-[#FF9FCA]"
+                          : "border border-[#e5d5c8] bg-white text-[#6a5a52] hover:border-[#E85C9C]/50"
+                      }`}
+                    >
+                      {choice.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {visibleAccessoryChoices.length > 0 && (
+                <>
+                  <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.08em] text-[#a89486]">
+                    Lens & phụ kiện
+                  </p>
+                  <div
+                    role="tablist"
+                    aria-label="Lens và phụ kiện"
+                    className="mt-1.5 flex flex-wrap gap-2"
                   >
-                    {label}
+                    {visibleAccessoryChoices.map((choice) => {
+                      const active = selectedModel === choice.value;
+                      return (
+                        <button
+                          key={choice.value}
+                          type="button"
+                          role="tab"
+                          aria-selected={active}
+                          onClick={() => handleModelSelectChange(choice.value)}
+                          className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                            active
+                              ? "bg-[#1F1F1F] text-[#FF9FCA]"
+                              : "border border-dashed border-[#e5d5c8] bg-white/70 text-[#8a7468] hover:border-[#E85C9C]/50"
+                          }`}
+                        >
+                          {choice.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {modelSearchToken && searchedModelChoices.length === 0 && (
+                <p className="mt-2.5 text-xs text-[#8a7468]">
+                  Không có dòng máy nào khớp “{modelQuery.trim()}”.
+                </p>
+              )}
+
+              {!modelSearchToken &&
+                (hiddenModelCount > 0 || showAllModels) &&
+                modelChoices.length > MODEL_CHIP_COLLAPSED_LIMIT && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllModels((prev) => !prev)}
+                    aria-expanded={showAllModels}
+                    className="mt-2.5 inline-flex items-center gap-1 text-xs font-bold text-[#a01e58] hover:underline"
+                  >
+                    {showAllModels
+                      ? "Thu gọn danh sách"
+                      : `Xem thêm ${hiddenModelCount} dòng máy`}
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform ${
+                        showAllModels ? "rotate-180" : ""
+                      }`}
+                    />
                   </button>
-                );
-              })}
+                )}
             </div>
           </div>
 
