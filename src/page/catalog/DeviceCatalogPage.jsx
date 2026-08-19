@@ -423,6 +423,7 @@ export default function DeviceCatalogPage() {
             email: user?.email,
             name: user?.displayName,
             avatar: user?.photoURL,
+            idToken: await user.getIdToken(),
           });
           const newToken = response?.data?.token;
           if (!newToken) throw new Error("Không nhận được token.");
@@ -478,10 +479,10 @@ export default function DeviceCatalogPage() {
     setQuickBookBranchOverride(null);
 
     setAvailabilityPrefs((prev) => {
-      if (suggestion.switchToSixHours && suggestion.sixHourChoices?.length) {
-        const choice = sixChoiceKey
-          ? suggestion.sixHourChoices.find((c) => c.key === sixChoiceKey)
-          : suggestion.sixHourChoices[0];
+      if (sixChoiceKey && suggestion.sixHourChoices?.length) {
+        const choice = suggestion.sixHourChoices.find(
+          (c) => c.key === sixChoiceKey,
+        );
         if (!choice) return prev;
         const day = normalizeDate(choice.fromDateTime);
         const nextPickupType =
@@ -533,6 +534,8 @@ export default function DeviceCatalogPage() {
         };
       }
 
+      if (!suggestion.fromDateTime || !suggestion.toDateTime) return prev;
+
       const nextDate = normalizeDate(suggestion.fromDateTime);
       const nextEndDate = normalizeDate(suggestion.toDateTime);
       const nextPickupType =
@@ -563,11 +566,11 @@ export default function DeviceCatalogPage() {
 
     trackCatalogBookClick(
       device,
-      suggestion.switchToSixHours && suggestion.sixHourChoices?.length
-        ? sixChoiceKey === "evening"
-          ? "quick_suggested_six_evening"
-          : "quick_suggested_six_morning"
-        : "quick_suggested",
+      sixChoiceKey === "evening"
+        ? "quick_suggested_six_evening"
+        : sixChoiceKey === "morning"
+          ? "quick_suggested_six_morning"
+          : "quick_suggested",
     );
     setQuickBookDevice(device);
     setQuickBookDevices([device]);
@@ -747,13 +750,24 @@ export default function DeviceCatalogPage() {
               const fromDt = new Date(modelAvailabilityInfo.suggestedFrom);
               const toDt = new Date(modelAvailabilityInfo.suggestedTo);
               if (!isValid(fromDt) || !isValid(toDt)) return null;
+              const currentSlot =
+                availabilityPrefs.pickupSlot || availabilityPrefs.timeFrom;
+              const suggestedSlot = format(fromDt, "HH:mm");
+              const toMin = (t) => {
+                if (!t || typeof t !== "string") return NaN;
+                const [h, m] = t.split(":").map((x) => parseInt(x, 10));
+                if (Number.isNaN(h) || Number.isNaN(m)) return NaN;
+                return h * 60 + m;
+              };
+              const shiftMinutes = toMin(suggestedSlot) - toMin(currentSlot);
               return {
                 fromDateTime: fromDt,
                 toDateTime: toDt,
-                timeFrom: format(fromDt, "HH:mm"),
+                timeFrom: suggestedSlot,
                 timeTo: format(toDt, "HH:mm"),
                 suggestedDeviceId: modelAvailabilityInfo.suggestedDeviceId,
                 switchToSixHours: false,
+                shiftMinutes: Number.isNaN(shiftMinutes) ? null : shiftMinutes,
               };
             })()
           : null;
@@ -777,8 +791,8 @@ export default function DeviceCatalogPage() {
       const displaySourceDevice = sortedGroup[0]?.device;
 
       const preferredDeviceId =
-        availabilitySuggestion?.sixHourChoices?.[0]?.suggestedDeviceId ??
         availabilitySuggestion?.suggestedDeviceId ??
+        availabilitySuggestion?.sixHourChoices?.[0]?.suggestedDeviceId ??
         modelAvailabilityInfo?.suggestedDeviceId;
       const rep =
         sortedGroup.find((g) => g.device.id === preferredDeviceId) ||

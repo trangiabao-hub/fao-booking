@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowRight, Filter } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { format, addDays } from "date-fns";
 import api from "../../config/axios";
 import SlideNav from "../../components/SlideNav";
@@ -56,6 +56,7 @@ function detectLineFromName(name = "") {
   const upper = String(name).toUpperCase();
   if (upper.includes("FUJIFILM") || upper.includes("FUJI")) return "FUJIFILM";
   if (upper.includes("CANON")) return "CANON";
+  if (upper.includes("RICOH")) return "RICOH";
   if (upper.includes("SONY")) return "SONY";
   if (
     upper.includes("POCKET") ||
@@ -66,6 +67,33 @@ function detectLineFromName(name = "") {
     return "ACTION CAM";
   }
   return "KHÁC";
+}
+
+const FEEDBACK_PARENT_TAB_BRANDS = [
+  { id: "canon", label: "Canon" },
+  { id: "fujifilm", label: "Fujifilm" },
+  { id: "ricoh", label: "Ricoh" },
+  { id: "sony", label: "Sony" },
+];
+
+function parentTabBrandId(label = "") {
+  const t = compactToken(label);
+  if (!t) return null;
+  if (t.includes("fuji")) return "fujifilm";
+  if (t.includes("canon")) return "canon";
+  if (t.includes("ricoh")) return "ricoh";
+  if (t.includes("sony")) return "sony";
+  return null;
+}
+
+function isAllowedFeedbackBrandLine(line = "") {
+  const t = compactToken(line);
+  if (!t) return false;
+  if (t.includes("fuji")) return true;
+  if (t.includes("canon")) return true;
+  if (t.includes("ricoh")) return true;
+  if (t.includes("sony")) return true;
+  return false;
 }
 
 function sanitizeQuery(value = "") {
@@ -131,7 +159,10 @@ function formatFeedbackModelTitle(raw = "") {
     .join("");
 }
 
-/** Băng washi nhiều màu — class cho lớp trong cùng (gradient + xoay). */
+function formatCategoryTabLabel(label = "", key = "") {
+  if (key === DEFAULT_CATEGORY_KEY) return "Tất cả";
+  return formatFeedbackModelTitle(label) || String(label).trim() || "Khác";
+}
 const FEEDBACK_TAPE_CLASSES = [
   "h-4 w-16 sm:w-20 bg-gradient-to-b from-[#fce8ef]/95 to-[#f5c8d8]/85 rotate-[-5deg] border border-white/50 shadow-[0_1px_3px_rgba(0,0,0,0.08)]",
   "h-4 w-16 sm:w-20 bg-gradient-to-b from-[#dff5ea]/95 to-[#7dd3b8]/88 rotate-[6deg] border border-white/45 shadow-[0_1px_3px_rgba(0,0,0,0.08)]",
@@ -595,24 +626,69 @@ export default function FeedbackPage() {
     };
   }, [apiCategories, deviceById]);
 
+  const parentTabCategories = useMemo(() => {
+    const allTab = categoryOptions.find((c) => c.key === DEFAULT_CATEGORY_KEY);
+    const byBrand = new Map();
+    for (const cat of categoryOptions) {
+      if (cat.key === DEFAULT_CATEGORY_KEY) continue;
+      const brandId = parentTabBrandId(cat.label);
+      if (!brandId || byBrand.has(brandId)) continue;
+      const preset = FEEDBACK_PARENT_TAB_BRANDS.find((b) => b.id === brandId);
+      byBrand.set(brandId, { ...cat, label: preset?.label || cat.label });
+    }
+    return [
+      allTab,
+      ...FEEDBACK_PARENT_TAB_BRANDS.map((b) => byBrand.get(b.id)).filter(Boolean),
+    ].filter(Boolean);
+  }, [categoryOptions]);
+
+  const allowedParentCategoryKeys = useMemo(
+    () =>
+      new Set(
+        parentTabCategories
+          .filter((c) => c.key !== DEFAULT_CATEGORY_KEY)
+          .map((c) => c.key),
+      ),
+    [parentTabCategories],
+  );
+
   useEffect(() => {
-    if (apiCategories.length === 0) return;
-    if (!categoryOptions.some((c) => c.key === selectedCategory)) {
+    if (parentTabCategories.length === 0) return;
+    if (!parentTabCategories.some((c) => c.key === selectedCategory)) {
       setSelectedCategory(DEFAULT_CATEGORY_KEY);
     }
-  }, [apiCategories.length, categoryOptions, selectedCategory]);
+  }, [parentTabCategories, selectedCategory]);
 
   const categoryFilteredRows = useMemo(() => {
-    if (selectedCategory === DEFAULT_CATEGORY_KEY) return modelRows;
+    const rowInAllowedBrand = (row) => {
+      for (const opt of categoryOptions) {
+        if (!allowedParentCategoryKeys.has(opt.key) || !opt.deviceIds) continue;
+        for (const gid of row.groupDeviceIds || []) {
+          if (opt.deviceIds.has(normalizeId(gid))) return true;
+        }
+      }
+      return isAllowedFeedbackBrandLine(
+        row.line || detectLineFromName(row.displayName),
+      );
+    };
+
+    if (selectedCategory === DEFAULT_CATEGORY_KEY) {
+      return modelRows.filter(rowInAllowedBrand);
+    }
     const active = categoryOptions.find((c) => c.key === selectedCategory);
-    if (!active?.deviceIds) return modelRows;
+    if (!active?.deviceIds) return modelRows.filter(rowInAllowedBrand);
     return modelRows.filter((row) => {
       for (const gid of row.groupDeviceIds || []) {
         if (active.deviceIds.has(normalizeId(gid))) return true;
       }
       return false;
     });
-  }, [modelRows, categoryOptions, selectedCategory]);
+  }, [
+    modelRows,
+    categoryOptions,
+    selectedCategory,
+    allowedParentCategoryKeys,
+  ]);
 
   const modelOptions = useMemo(() => {
     return [
@@ -919,6 +995,12 @@ export default function FeedbackPage() {
     [catalogSlotPrefs, slotAvailabilityLoading, slotModelAvailability],
   );
 
+  const handleCategorySelect = useCallback((key) => {
+    setSelectedCategory(key);
+    setSelectedModel(DEFAULT_MODEL);
+    setSelectedModelKey("");
+  }, []);
+
   const handleModelSelectChange = useCallback(
     (value) => {
       setSelectedModel(value);
@@ -1029,7 +1111,7 @@ export default function FeedbackPage() {
           <div className="mb-5 rounded-xl border border-[#e8c4d4] bg-[#fff5f9] px-4 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
             <div className="min-w-0">
               <p className="text-xs font-semibold text-[#9d3d5c]">Ảnh thật từ khách thuê</p>
-              <p className="font-feedback-display text-[clamp(1.25rem,3vw,1.65rem)] text-[#a01e58] leading-tight mt-0.5">
+              <p className="font-feedback-ui mt-0.5 text-[clamp(1.05rem,2.4vw,1.35rem)] font-bold leading-tight tracking-tight text-[#a01e58]">
                 {formatFeedbackModelTitle(selectedModel)}
               </p>
               {filterDescription && (
@@ -1098,8 +1180,8 @@ export default function FeedbackPage() {
                 Feedback
               </p>
               <p className="mt-1.5 font-feedback-ui text-sm text-[#6a5a52] max-w-xl">
-                Mỗi dòng máy là một “trang nhớ” — lật bộ lọc để xem ảnh thật và
-                lời mô tả từ khách.
+                Mỗi dòng máy là một “trang nhớ” — chọn hãng rồi dòng máy để xem
+                ảnh thật và lời mô tả từ khách.
               </p>
             </div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[#e8c4d4] bg-[#fff5f9] px-3.5 py-1.5 text-xs font-bold text-[#9d3d5c] w-fit shadow-sm rotate-[-0.4deg]">
@@ -1107,53 +1189,61 @@ export default function FeedbackPage() {
             </div>
           </div>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-[#e5d5c8] bg-white p-3 shadow-sm">
-              <p className="mb-1.5 text-xs font-semibold text-[#8a6f62]">
-                Loại máy
-              </p>
-              <div className="relative">
-                <Filter
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a09088]"
-                />
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full h-11 rounded-lg border border-[#e5d5c8] bg-[#fffcf7] pl-9 pr-3 text-sm font-semibold text-[#333] focus:outline-none focus:ring-2 focus:ring-[#e8a4bc]/50 focus:border-[#d498a8]"
-                >
-                  {categoryOptions.map((category) => (
-                    <option key={category.key} value={category.key}>
-                      {category.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className="mt-6">
+            <div
+              role="tablist"
+              aria-label="Loại máy"
+              className="flex gap-0.5 overflow-x-auto border-b border-[#e5d5c8] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              {parentTabCategories.map((category) => {
+                const active = selectedCategory === category.key;
+                return (
+                  <button
+                    key={category.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => handleCategorySelect(category.key)}
+                    className={`shrink-0 px-3.5 py-2.5 text-sm font-bold tracking-wide transition-colors ${
+                      active
+                        ? "-mb-px border-b-2 border-[#E85C9C] text-[#a01e58]"
+                        : "text-[#8a6f62] hover:text-[#5c4a42]"
+                    }`}
+                  >
+                    {formatCategoryTabLabel(category.label, category.key)}
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="rounded-xl border border-[#e5d5c8] bg-white p-3 shadow-sm">
-              <p className="mb-1.5 text-xs font-semibold text-[#8a6f62]">
-                Dòng máy
-              </p>
-              <div className="relative">
-                <Filter
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a09088]"
-                />
-                <select
-                  value={selectedModel}
-                  onChange={(e) => handleModelSelectChange(e.target.value)}
-                  className="w-full h-11 rounded-lg border border-[#e5d5c8] bg-[#fffcf7] pl-9 pr-3 text-sm font-semibold text-[#333] focus:outline-none focus:ring-2 focus:ring-[#e8a4bc]/50 focus:border-[#d498a8]"
-                >
-                  {modelOptions.map((model) => (
-                    <option key={model} value={model}>
-                      {model === DEFAULT_MODEL
-                        ? model
-                        : formatFeedbackModelTitle(model)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div
+              role="tablist"
+              aria-label="Dòng máy"
+              className="mt-3 flex flex-wrap gap-2"
+            >
+              {modelOptions.map((model) => {
+                const active = selectedModel === model;
+                const label =
+                  model === DEFAULT_MODEL
+                    ? "Tất cả máy"
+                    : formatFeedbackModelTitle(model);
+                return (
+                  <button
+                    key={model}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => handleModelSelectChange(model)}
+                    className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
+                      active
+                        ? "bg-[#1F1F1F] text-[#FF9FCA]"
+                        : "border border-[#e5d5c8] bg-white text-[#6a5a52] hover:border-[#E85C9C]/50"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1259,12 +1349,7 @@ export default function FeedbackPage() {
                         aria-hidden
                       />
                       <p
-                        className="font-feedback-display normal-case mt-2 line-clamp-2 font-normal leading-[1.12] tracking-[0.085em] text-[#8b2848] max-w-full mx-auto"
-                        style={{
-                          fontSize: "clamp(1.18rem, 3.1vw + 0.4rem, 1.58rem)",
-                          textShadow:
-                            "0 1px 0 rgba(255,255,255,0.95), 0 0 20px rgba(251, 182, 206, 0.28)",
-                        }}
+                        className="font-feedback-ui mt-2 line-clamp-2 text-[15px] font-bold leading-snug tracking-tight text-[#8b2848] sm:text-base"
                       >
                         {formatFeedbackModelTitle(item.modelName)}
                       </p>

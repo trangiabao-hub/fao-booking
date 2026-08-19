@@ -1,573 +1,549 @@
-// src/HomePage.jsx
-
-import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+  MagnifyingGlassIcon,
+  PencilSquareIcon,
+  QrCodeIcon,
+  CameraIcon,
+  MapPinIcon,
+  PhoneIcon,
+} from "@heroicons/react/24/outline";
+import { ChevronRightIcon, CheckCircleIcon } from "@heroicons/react/24/solid";
 import SlideNav from "../../components/SlideNav";
 import BookingPromoBanners from "../../components/BookingPromoBanners";
 import {
-  CameraIcon,
-  ShieldCheckIcon,
-  StarIcon,
-  SparklesIcon,
-  ChevronRightIcon,
-  FilmIcon,
-  VideoCameraIcon,
-} from "@heroicons/react/24/solid";
+  MESSENGER_LINK,
+  PHONE_NUMBER,
+  PHONE_DISPLAY,
+  SOCIAL_LINKS,
+} from "../../data/contactConfig";
+import { BRANCHES } from "../../data/localBusiness";
+import { PRIVACY_POLICY_PATH } from "../../content/privacyPolicyVi";
+import "./homeLanding.css";
 
-// Cần cài đặt Swiper: npm install swiper
-import { Swiper, SwiperSlide } from "swiper/react";
-import { Pagination, Autoplay } from "swiper/modules";
+const NAV = [
+  { to: "/", label: "Trang chủ" },
+  { to: "/catalog", label: "Đặt lịch" },
+  { to: "/feedback", label: "Feedback & HDSD" },
+  { to: "/my-bookings", label: "Đơn hàng" },
+  { to: "/account", label: "Tài khoản" },
+];
 
-// Import CSS của Swiper
-import "swiper/css";
-import "swiper/css/pagination";
+const HEADLINE_LINES = ["FAO Sài Gòn", "Chuyên cho thuê máy ảnh HCM"];
+const BRANDS = ["Canon", "Fuji", "Sony", "Ricoh", "DJI"];
+const HERO_EASE = [0.16, 1, 0.3, 1];
 
-// --- Dữ liệu tĩnh ---
-const categories = [
+const HIGHLIGHTS = [
   {
-    name: "Fujifilm",
-    description: "Chất ảnh film, hoài cổ và đầy nghệ thuật.",
-    image: "/fuji.jpg",
-    link: "/catalog?category=fuji",
+    icon: "/home/fao-emoji-student.png",
+    title: "Chỉ cần CCCD hoặc VNeID",
+    note: "Shop không giữ giấy tờ gốc",
   },
   {
-    name: "Canon",
-    description: "Màu sắc chân thực, lựa chọn an toàn.",
-    image: "/canon.jpg",
-    link: "/catalog?category=canon",
+    icon: "/home/fao-step-pay.png",
+    title: "Cọc 0đ cho HSSV",
+    note: "Hoặc cọc bằng laptop, iPad, điện thoại",
   },
   {
-    name: "Sony",
-    description: "Công nghệ đỉnh cao cho quay video và vlog.",
-    image: "/sony.jpg",
-    link: "/catalog?category=sony",
-  },
-  {
-    name: "Action Cam & Pocket",
-    description: "Nhỏ gọn, đa năng, bắt trọn khoảnh khắc.",
-    image: "/pocket.jpg",
-    link: "/catalog?category=pocket",
+    icon: "/home/fao-step-camera.png",
+    title: "Trễ dưới 30 phút không phụ thu",
+    note: "Cần thêm giờ, nhắn trước là được",
   },
 ];
-const features = [
+
+const FAQS = [
   {
-    icon: StarIcon,
-    title: "Máy xịn, giá xinh",
-    description: "Luôn cập nhật các dòng máy hot nhất với chi phí thuê hợp lý.",
+    q: "Ảnh mình chụp lấy ra kiểu gì?",
+    a: "Shop chuẩn bị sẵn đầu đọc thẻ để bạn lấy ảnh qua điện thoại hoặc laptop. Trả máy mà chưa kịp copy, shop xuất ảnh lên Google Drive gửi bạn.",
   },
   {
-    icon: SparklesIcon,
-    title: "Vệ sinh kỹ lưỡng",
-    description:
-      "Mỗi thiết bị đều được làm sạch và kiểm tra cẩn thận trước khi giao.",
+    q: "Sợ màu ảnh không như ý?",
+    a: "Lúc nhận máy, shop set sẵn màu hot trend hoặc đúng tông màu bạn muốn. Đang chụp mà chưa ưng, gọi video shop chỉnh lại cùng bạn ngay.",
   },
   {
-    icon: ShieldCheckIcon,
-    title: "Thủ tục đơn giản",
-    description:
-      "Chỉ cần CCCD/Hộ chiếu. Đặt lịch online nhanh chóng, tiện lợi.",
+    q: "Chưa từng dùng dòng máy này?",
+    a: "Nhân viên hướng dẫn chi tiết từng thao tác lúc bạn nhận máy. Trong lúc thuê có vướng gì, nhắn shop là được hỗ trợ ngay.",
+  },
+  {
+    q: "Lỡ máy hư thì có phải đền?",
+    a: "Máy ảnh là thiết bị điện tử, có tuổi thọ riêng. Lỗi phát sinh không do va đập hay do cách bạn dùng thì shop không tính bồi thường, còn hoàn lại tiền thuê.",
   },
 ];
-const swiperStyles = `
-  .swiper-pagination-bullet { background-color: #f9a8d4 !important; width: 10px !important; height: 10px !important; opacity: 0.5 !important; }
-  .swiper-pagination-bullet-active { background-color: #ec4899 !important; opacity: 1 !important; }
-`;
 
-// --- Các Component Tái sử dụng ---
-const AnimatedSection = ({ children, className = "", id }) => (
-  <motion.section
-    id={id}
-    className={`py-20 sm:py-24 ${className}`}
-    initial={{ opacity: 0, y: 50 }}
-    whileInView={{ opacity: 1, y: 0 }}
-    viewport={{ once: true, amount: 0.2 }}
-    transition={{ duration: 0.8, ease: "easeOut" }}
-  >
-    <div className="container mx-auto px-4 sm:px-6 lg:px-8">{children}</div>
-  </motion.section>
-);
-
-const BackgroundPattern = () => (
-  <motion.div
-    className="absolute inset-0 -z-10 h-full w-full bg-white bg-[radial-gradient(#e879f9_1px,transparent_1px)] [background-size:32px_32px]"
-    animate={{
-      backgroundPosition: ["0% 0%", "100% 100%"],
-    }}
-    transition={{
-      duration: 40,
-      repeat: Infinity,
-      repeatType: "mirror",
-      ease: "easeInOut",
-    }}
-  />
-);
-
-const Sparkle = ({ className }) => (
-  <motion.div
-    className={`absolute rounded-full bg-pink-300 ${className}`}
-    initial={{ scale: 0, opacity: 0 }}
-    animate={{ scale: [0, 1, 0], opacity: [0, 0.7, 0] }}
-    transition={{
-      duration: 2,
-      repeat: Infinity,
-      repeatType: "loop",
-      ease: "easeInOut",
-      delay: Math.random() * 2, // Random delay for each sparkle
-    }}
-  />
-);
-
-const Header = () => (
-  <header className="fixed top-0 left-0 right-0 z-50 border-b border-pink-100 bg-white/80 backdrop-blur-lg">
-    <div className="container mx-auto flex h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
-      <Link to="/" className="flex items-center gap-2">
-        <CameraIcon className="h-8 w-8 text-pink-500" />
-        <span className="text-xl font-bold tracking-tight text-pink-800">
-          Fao Sài Gòn
-        </span>
-      </Link>
-      <a
-        href="/blog/"
-        className="rounded-full border border-pink-200 bg-white px-4 py-2 text-sm font-semibold text-pink-600 transition hover:border-pink-300 hover:bg-pink-50"
-      >
-        Blog
-      </a>
-    </div>
-  </header>
-);
-
-// --- Các Component Chính của Trang ---
-const HeroSection = () => {
-  const title = "Lưu khoảnh khắc cùng";
-  const title2 = "Fao Sài Gòn";
-
-  const sentenceVariant = {
-    hidden: { opacity: 1 },
-    visible: {
-      opacity: 1,
-      transition: {
-        delay: 0.2,
-        staggerChildren: 0.08,
-      },
-    },
-  };
-
-  const wordVariant = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0 },
-  };
-
-  const FloatingIcon = ({ icon: Icon, className, delay = 0 }) => (
+function HeroRise({ children, className = "", delay = 0 }) {
+  const reduce = useReducedMotion();
+  return (
     <motion.div
-      className={`absolute text-pink-200/80 z-0 ${className}`}
-      initial={{ opacity: 0, scale: 0, y: 100, rotate: -30 }}
-      animate={{ opacity: 1, scale: 1, y: 0, rotate: 0 }}
-      transition={{
-        type: "spring",
-        stiffness: 50,
-        damping: 12,
-        delay: 1.5 + delay,
-      }}
+      className={className}
+      initial={reduce ? false : { opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, delay, ease: HERO_EASE }}
     >
-      <motion.div
-        animate={{
-          y: [0, -25, 5, -25, 0],
-          rotate: [-10, 15, -10],
-          scale: [1, 1.08, 1],
-        }}
-        transition={{
-          duration: 8 + Math.random() * 4,
-          repeat: Infinity,
-          repeatType: "mirror",
-          ease: "easeInOut",
-        }}
-      >
-        <Icon />
-      </motion.div>
+      {children}
     </motion.div>
   );
+}
+
+function Reveal({ children, className = "", delay = 0 }) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.div
+      className={className}
+      initial={reduce ? false : { opacity: 0, y: 18 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.22 }}
+      transition={{ duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function HomeHeader() {
+  return (
+    <header className="sticky top-0 z-50 border-b border-[var(--home-line)] bg-white/88 backdrop-blur-lg">
+      <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <Link to="/" className="flex shrink-0 items-center gap-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--home-accent)] text-white shadow-[0_8px_18px_-10px_rgb(199,54,122)]">
+            <CameraIcon className="h-5 w-5" aria-hidden />
+          </span>
+          <span className="text-[13px] font-extrabold tracking-[0.12em] text-[var(--home-ink)]">
+            FAO.CAMERA
+          </span>
+        </Link>
+
+        <nav
+          className="hidden items-center gap-0.5 lg:flex"
+          aria-label="Điều hướng chính"
+        >
+          {NAV.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--home-muted)] transition hover:bg-[#fde8f0] hover:text-[var(--home-accent)]"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <a
+          href={MESSENGER_LINK}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="home-cta min-h-10 px-4 text-sm"
+        >
+          Tư vấn ngay
+        </a>
+      </div>
+    </header>
+  );
+}
+
+function HomeHero() {
+  const reduce = useReducedMotion();
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-rose-50 to-pink-100 pb-[calc(4rem+max(12px,env(safe-area-inset-bottom))+12px)] text-center">
-      <BackgroundPattern />
+    <section className="home-hero-wash relative">
+      <div className="mx-auto max-w-[1200px] px-4 pt-9 pb-11 sm:px-6 lg:px-8 lg:pt-14 lg:pb-14">
+        <div className="grid gap-10 lg:grid-cols-12 lg:items-center lg:gap-14">
+          <div className="lg:col-span-6">
+            <HeroRise>
+              <p className="home-hero-brands">
+                {BRANDS.map((brand) => (
+                  <span key={brand}>{brand}</span>
+                ))}
+              </p>
+            </HeroRise>
 
-      <FloatingIcon
-        icon={CameraIcon}
-        className="top-[15%] left-[5%] w-12 h-12 md:w-20 md:h-20"
-        delay={0.1}
-      />
-      <FloatingIcon
-        icon={FilmIcon}
-        className="bottom-[10%] left-[15%] w-10 h-10 md:w-16 md:h-16 rotate-12"
-        delay={0.3}
-      />
-      <FloatingIcon
-        icon={VideoCameraIcon}
-        className="top-[20%] right-[5%] w-14 h-14 md:w-24 md:h-24 -rotate-12"
-        delay={0.2}
-      />
-      <FloatingIcon
-        icon={CameraIcon}
-        className="bottom-[15%] right-[10%] w-9 h-9 md:w-14 md:h-14 rotate-[20deg]"
-        delay={0.4}
-      />
+            <HeroRise delay={0.08}>
+              <h1 className="home-hero-title">
+                <span className="home-hero-title-main">
+                  {HEADLINE_LINES[0]}
+                </span>
+                <span className="home-hero-title-sub">{HEADLINE_LINES[1]}</span>
+              </h1>
+            </HeroRise>
 
-      <Sparkle className="top-[10%] left-[5%] h-2 w-2" />
-      <Sparkle className="top-[20%] right-[10%] h-3 w-3" />
-      <Sparkle className="bottom-[15%] left-[20%] h-4 w-4" />
-      <Sparkle className="bottom-[25%] right-[15%] h-2 w-2" />
-      <Sparkle className="top-[40%] left-[30%] h-3 w-3 hidden md:block" />
-      <Sparkle className="top-[50%] right-[35%] h-2 w-2 hidden md:block" />
+            <HeroRise delay={0.16}>
+              <p className="home-hero-lead">
+                Xem lịch trống từng ngày, cọc online là máy được giữ tên bạn.
+                Nhận tại Phú Nhuận hoặc Thủ Đức.
+              </p>
+            </HeroRise>
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <motion.h1
-          className="text-4xl sm:text-4xl lg:text-6xl font-extrabold text-pink-900 tracking-tight"
-          variants={sentenceVariant}
-          initial="hidden"
-          animate="visible"
-        >
-          {title.split(" ").map((word, index) => (
-            <motion.span
-              key={index}
-              variants={wordVariant}
-              className="inline-block mr-3"
+            <HeroRise
+              delay={0.24}
+              className="mt-8 flex flex-wrap items-center gap-3"
             >
-              {word}
-            </motion.span>
-          ))}
-          <br />
-          <p className="text-pink-500 mt-4">
-            {title2.split(" ").map((word, index) => (
-              <motion.span
-                key={index}
-                variants={wordVariant}
-                className="inline-block mr-3"
-              >
-                {word}
-              </motion.span>
-            ))}
-          </p>
-        </motion.h1>
+              <Link to="/catalog" className="home-cta home-cta-glow">
+                Check lịch trống
+                <ChevronRightIcon className="h-4 w-4" aria-hidden />
+              </Link>
+              <a href="#uu-dai" className="home-cta-ghost">
+                Xem ưu đãi
+              </a>
+            </HeroRise>
+          </div>
 
-        <motion.p
-          className="mt-6 max-w-2xl mx-auto text-lg text-slate-700"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 1.2 }}
-        >
-          Dịch vụ cho thuê máy ảnh và phụ kiện xịn sò dành cho các bạn nữ. Chỉ
-          cần vài cú click để có ngay một 'em' máy ảnh xinh xắn cho chuyến đi
-          sắp tới!
-        </motion.p>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: "spring", stiffness: 100, delay: 1.4 }}
-        >
-          <Link
-            to="/catalog"
-            className="mt-10 inline-flex items-center gap-3 bg-pink-500 text-white font-bold px-8 py-4 rounded-full text-lg hover:bg-pink-600 transition-all duration-300 shadow-xl shadow-pink-500/40 transform hover:scale-105"
-          >
-            Chọn máy & bắt đầu sáng tạo <ChevronRightIcon className="h-5 w-5" />
-          </Link>
-        </motion.div>
-      </div>
-    </div>
-  );
-};
-
-const FeaturesSection = () => (
-  <AnimatedSection id="features" className="bg-rose-50">
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-      {features.map((feature, index) => {
-        const Icon = feature.icon;
-        return (
           <motion.div
-            key={index}
-            className="bg-white p-8 rounded-2xl shadow-md border border-pink-100"
-            initial={{ opacity: 0, y: 50, scale: 0.95 }}
-            whileInView={{ opacity: 1, y: 0, scale: 1 }}
-            viewport={{ once: true, amount: 0.2 }}
-            transition={{
-              type: "spring",
-              stiffness: 90,
-              damping: 15,
-              delay: index * 0.1,
-            }}
+            className="lg:col-span-6"
+            initial={reduce ? false : { opacity: 0, scale: 1.04 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.85, ease: HERO_EASE }}
           >
-            <div className="inline-block bg-pink-500 p-4 rounded-full mb-5 ring-4 ring-pink-100">
-              <Icon className="h-8 w-8 text-white" />
-            </div>
-            <h3 className="text-xl font-bold text-pink-900 mb-2">
-              {feature.title}
-            </h3>
-            <p className="text-slate-600">{feature.description}</p>
+            <figure className="home-hero-media">
+              <img
+                src="/home/fao-hero-lifestyle.jpg"
+                alt="Bạn trẻ cầm máy Fujifilm, phong cách FAO Sài Gòn"
+                className="home-hero-photo"
+                width={900}
+                height={1200}
+                fetchPriority="high"
+              />
+            </figure>
           </motion.div>
-        );
-      })}
-    </div>
-  </AnimatedSection>
-);
+        </div>
 
-const TestimonialsSection = () => {
-  const [testimonials, setTestimonials] = useState([]);
-  const [loading, setLoading] = useState(true);
+        <HeroRise delay={0.32} className="mt-9 lg:mt-12">
+          <ul className="home-hero-perks" aria-label="Ưu đãi khi thuê tại FAO">
+            {HIGHLIGHTS.map((item) => (
+              <li key={item.title}>
+                <img
+                  src={item.icon}
+                  alt=""
+                  width={48}
+                  height={48}
+                  loading="lazy"
+                />
+                <div>
+                  <p className="home-perk-title">{item.title}</p>
+                  <p className="home-perk-note">{item.note}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </HeroRise>
+      </div>
+    </section>
+  );
+}
 
-  const fallbackTestimonials = [
+function HomeProcess() {
+  const steps = [
     {
-      name: "An Nhiên",
-      location: "TP. Hồ Chí Minh",
-      avatar: "https://i.pravatar.cc/80?u=an-nhien",
-      feedback:
-        "Thủ tục siêu nhanh, 5 phút là xong! Máy ảnh đẹp mê ly. Chắc chắn sẽ là khách quen.",
+      icon: MagnifyingGlassIcon,
+      title: "Chọn máy ảnh ưng ý",
+      body: "Chọn máy ảnh phù hợp với mọi nhu cầu.",
     },
     {
-      name: "Phương Linh",
-      location: "Hà Nội",
-      avatar: "https://i.pravatar.cc/80?u=phuong-linh",
-      feedback:
-        "Shop tư vấn siêu có tâm. Hướng dẫn mình từ A-Z. 10 điểm không có nhưng!",
+      icon: PencilSquareIcon,
+      title: "Điền form",
+      body: "Nhập thông tin, ngày thuê và chọn hình thức thuê.",
     },
     {
-      name: "Bảo Trân",
-      location: "Đà Nẵng",
-      avatar: "https://i.pravatar.cc/80?u=bao-tran",
-      feedback:
-        "Giá thuê quá hợp lý cho một em máy xịn thế này. Ảnh chụp ra màu vintage xinh xỉu.",
+      icon: QrCodeIcon,
+      title: "Thanh toán nhanh website",
+      body: "Có ngay mã đơn hàng xác nhận.",
+    },
+    {
+      icon: CameraIcon,
+      title: "Đến shop nhận máy",
+      body: "Hoặc shop hỗ trợ ship dưới 10km.",
     },
   ];
 
-  useEffect(() => {
-    // Giả lập API call để tránh lỗi khi không có API endpoint
-    setTimeout(() => {
-      setTestimonials(fallbackTestimonials);
-      setLoading(false);
-    }, 1000);
-
-    /*
-        // Code gốc gọi API thật
-        fetch('/api/google-reviews')
-            .then(res => {
-                if (!res.ok) throw new Error('API call failed');
-                return res.json();
-            })
-            .then(data => {
-                setTestimonials(data.length > 0 ? data : fallbackTestimonials);
-                setLoading(false);
-            })
-            .catch(error => {
-                console.error("Failed to load Google testimonials, using fallback:", error);
-                setTestimonials(fallbackTestimonials);
-                setLoading(false);
-            });
-        */
-  }, []);
-
-  if (loading) {
-    return (
-      <AnimatedSection id="testimonials" className="bg-white text-center">
-        <p className="text-slate-600">Đang tải feedback từ khách hàng...</p>
-      </AnimatedSection>
-    );
-  }
-
   return (
-    <AnimatedSection id="testimonials" className="bg-white">
-      <div className="text-center mb-16">
-        <h2 className="text-3xl sm:text-4xl font-extrabold text-pink-900">
-          Khách Hàng Xinh Nói Gì?
-        </h2>
-        <p className="mt-4 text-slate-600 max-w-xl mx-auto">
-          Những chia sẻ chân thực từ Google Reviews là động lực để tụi mình phát
-          triển.
-        </p>
+    <section id="huong-dan" className="home-botanical scroll-mt-20">
+      <div className="mx-auto max-w-[1200px] px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+        <Reveal>
+          <h2 className="max-w-[18ch] text-3xl font-extrabold tracking-tight text-[var(--home-ink)] sm:text-4xl">
+            Quy trình thuê máy
+          </h2>
+        </Reveal>
+
+        <div className="relative mt-10">
+          <div
+            className="home-process-line pointer-events-none absolute top-8 right-8 left-8 hidden h-px lg:block"
+            aria-hidden
+          />
+          <ol className="home-step-list grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {steps.map((step, index) => {
+              const Icon = step.icon;
+              return (
+                <Reveal key={step.title} delay={index * 0.06}>
+                  <li className="home-step relative flex items-start gap-4 lg:block">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--home-accent)] bg-white text-[var(--home-accent)] lg:h-16 lg:w-16">
+                      <Icon className="h-6 w-6 lg:h-7 lg:w-7" aria-hidden />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-base font-bold text-[var(--home-ink)] lg:mt-4 lg:text-lg">
+                        {step.title}
+                      </h3>
+                      <p className="mt-1 max-w-[32ch] text-sm leading-relaxed text-[var(--home-muted)] lg:max-w-[28ch]">
+                        {step.body}
+                      </p>
+                    </div>
+                  </li>
+                </Reveal>
+              );
+            })}
+          </ol>
+        </div>
       </div>
-      <Swiper
-        modules={[Pagination, Autoplay]}
-        spaceBetween={30}
-        slidesPerView={1}
-        loop={true}
-        autoplay={{ delay: 4000, disableOnInteraction: false }}
-        pagination={{ clickable: true }}
-        breakpoints={{
-          640: { slidesPerView: 2, spaceBetween: 20 },
-          1024: { slidesPerView: 3, spaceBetween: 30 },
-        }}
-        className="!pb-12"
-      >
-        {testimonials.map((testimonial, index) => (
-          <SwiperSlide key={index} className="h-auto">
-            <motion.div
-              initial={{ opacity: 0, y: 50, scale: 0.9 }}
-              whileInView={{ opacity: 1, y: 0, scale: 1 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ type: "spring", stiffness: 100, damping: 20 }}
-              className="bg-rose-50 border border-pink-100 rounded-2xl p-8 h-full flex flex-col text-center"
+    </section>
+  );
+}
+
+const OFFERS = [
+  {
+    title: "Giảm 20% giá thuê",
+    note: "Áp dụng thứ hai đến thứ sáu, đặt trực tiếp trên web.",
+  },
+  {
+    title: "Cọc 0đ cho học sinh, sinh viên",
+    note: "Còn đi học tại TP.HCM, mang thẻ HSSV kèm lịch học và CCCD.",
+  },
+  {
+    title: "Tặng kèm 3 phụ kiện",
+    note: "Sạc dự phòng, hắt sáng, quạt mini, miễn phí cho mọi đơn thuê.",
+  },
+];
+
+function HomeFaq() {
+  return (
+    <section id="hoi-dap" className="home-faq scroll-mt-20">
+      <div className="mx-auto max-w-[1200px] px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+        <Reveal>
+          <h2 className="home-section-title">Khách hay hỏi trước khi thuê</h2>
+        </Reveal>
+
+        <dl className="home-faq-list mt-9">
+          {FAQS.map((item, index) => (
+            <Reveal key={item.q} delay={index * 0.05}>
+              <div className="home-faq-row">
+                <dt className="home-faq-q">{item.q}</dt>
+                <dd className="home-faq-a">{item.a}</dd>
+              </div>
+            </Reveal>
+          ))}
+        </dl>
+
+        <Reveal className="mt-9">
+          <Link to="/feedback" className="home-link-arrow">
+            Xem ảnh khách chụp thật
+            <ChevronRightIcon className="h-4 w-4" aria-hidden />
+          </Link>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function HomeOffers() {
+  return (
+    <section id="uu-dai" className="home-camera-dots scroll-mt-20">
+      <div className="mx-auto max-w-[1200px] px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+        <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-14">
+          <Reveal className="lg:col-span-5">
+            <Link
+              to="/catalog"
+              className="home-offer-poster mx-auto block max-w-[400px] lg:max-w-none"
             >
               <img
-                src={testimonial.avatar}
-                alt={testimonial.name}
-                className="w-20 h-20 rounded-full mx-auto mb-4 object-cover ring-4 ring-white shadow-md"
+                src="/home/fao-offer-poster.jpg"
+                alt="Thuê máy ảnh FAO Sài Gòn giảm 20% thứ hai đến thứ sáu. Cọc 0đ cho HSSV còn học tại TP.HCM. Pocket 3 144k, Canon R50 168k, Canon G7X 160k, Fuji X-T30 280k."
+                className="home-offer-poster-img"
+                width={819}
+                height={1024}
               />
-              <p className="text-slate-600 italic flex-grow">
-                "{testimonial.feedback}"
+            </Link>
+          </Reveal>
+
+          <div className="lg:col-span-7">
+            <Reveal>
+              <h2 className="home-section-title">Ưu đãi hot</h2>
+              <p className="home-offer-lead">
+                Ba ưu đãi bên dưới áp dụng cho đơn đặt qua website. Xem lịch
+                trống và giá từng ngày rồi chốt, không phải chờ báo giá.
               </p>
-              <div className="mt-4">
-                <p className="font-bold text-pink-800">{testimonial.name}</p>
-                <p className="text-sm text-slate-500">{testimonial.location}</p>
+            </Reveal>
+
+            <Reveal className="mt-7">
+              <ul className="home-offer-list">
+                {OFFERS.map((offer) => (
+                  <li key={offer.title}>
+                    <CheckCircleIcon
+                      className="home-offer-check h-6 w-6 shrink-0"
+                      aria-hidden
+                    />
+                    <div>
+                      <p className="home-offer-title">{offer.title}</p>
+                      <p className="home-offer-note">{offer.note}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Reveal>
+
+            <Reveal className="mt-7">
+              <p className="home-offer-prices">
+                Giá sau giảm: DJI Pocket 3 còn 144.000đ, Canon G7X 160.000đ,
+                Canon R50 168.000đ, Fujifilm X-T30 280.000đ mỗi ngày, cùng hơn
+                100 dòng máy khác.
+              </p>
+              <div className="mt-6">
+                <Link to="/catalog" className="home-cta home-cta-glow">
+                  Check lịch trống
+                  <ChevronRightIcon className="h-5 w-5" aria-hidden />
+                </Link>
               </div>
-            </motion.div>
-          </SwiperSlide>
-        ))}
-      </Swiper>
-    </AnimatedSection>
-  );
-};
-
-const CategoriesSection = () => (
-  <AnimatedSection id="categories">
-    <div className="text-center mb-16">
-      <h2 className="text-3xl sm:text-4xl font-extrabold text-pink-900">
-        Tìm "Chân Ái" Của Bạn
-      </h2>
-      <p className="mt-4 text-slate-600 max-w-xl mx-auto">
-        Mỗi dòng máy mang một cá tính riêng. Khám phá phong cách phù hợp nhất
-        với bạn.
-      </p>
-    </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-      {categories.map((cat) => (
-        <Link to={cat.link} key={cat.name} className="group block">
-          <motion.div
-            className="relative rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 h-96"
-            whileHover={{ y: -8 }}
-            transition={{ type: "spring", stiffness: 150 }}
-          >
-            <img
-              src={cat.image}
-              alt={cat.name}
-              className="absolute h-full w-full object-cover group-hover:scale-110 transition-transform duration-500"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent"></div>
-            <div className="absolute bottom-0 left-0 right-0 p-6 text-white transform transition-transform duration-500 group-hover:translate-y-[-8px]">
-              <h3 className="text-2xl font-bold tracking-tight">{cat.name}</h3>
-              <p className="text-sm text-pink-200 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100">
-                {cat.description}
+              <p className="home-offer-fine">
+                Cuối tuần và mùa cao điểm máy hết sớm, đặt trước để giữ đúng
+                ngày bạn cần.
               </p>
-            </div>
-          </motion.div>
-        </Link>
-      ))}
-    </div>
-  </AnimatedSection>
-);
-
-const CallToActionSection = () => (
-  <AnimatedSection className="bg-pink-50">
-    <div className="bg-gradient-to-tr from-pink-500 to-rose-400 flex flex-col md:flex-row items-center gap-8 md:gap-12 rounded-3xl overflow-hidden p-8 md:p-12 text-white">
-      <div className="w-full md:w-2/5 md:order-2">
-        <motion.img
-          src="/take-photo.avif"
-          alt="Girl taking photo"
-          className="w-full h-full object-cover rounded-2xl shadow-2xl"
-          initial={{ scale: 1.2, opacity: 0 }}
-          whileInView={{ scale: 1, opacity: 1 }}
-          viewport={{ once: true, amount: 0.5 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        />
+            </Reveal>
+          </div>
+        </div>
       </div>
-      <div className="w-full md:w-3/5 text-center md:text-left md:order-1">
-        <h2 className="text-3xl sm:text-4xl font-extrabold">
-          Mới tập chụp? Đừng lo!
-        </h2>
-        <p className="mt-4 text-pink-100 text-lg">
-          Tụi mình sẽ hướng dẫn bạn cách sử dụng máy cơ bản nhất để có những tấm
-          ảnh thật lung linh. Bạn chỉ việc sáng tạo, mọi thứ cứ để Fao lo.
-        </p>
-        <Link
-          to="/catalog"
-          className="mt-8 inline-block bg-white text-pink-600 font-bold px-8 py-3 rounded-full text-lg hover:bg-rose-50 transition-all duration-300 shadow-xl transform hover:scale-105"
-        >
-          Chọn máy ngay
-        </Link>
-      </div>
-    </div>
-  </AnimatedSection>
-);
+    </section>
+  );
+}
 
-const Footer = () => (
-  <footer className="bg-slate-800 text-slate-400">
-    <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 text-center">
-      <Link
-        to="/"
-        className="inline-flex items-center justify-center gap-2 mb-4"
-      >
-        <CameraIcon className="h-8 w-8 text-pink-400" />
-        <span className="text-xl font-bold text-white tracking-tight">
-          Fao Sài Gòn
-        </span>
-      </Link>
-      <p className="text-sm">
-        Mang đến những trải nghiệm chụp ảnh tuyệt vời nhất.
-      </p>
-      <div className="flex justify-center gap-6 mt-6">
-        <a
-          href="https://instagram.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Instagram"
-          className="hover:text-pink-400 transition-colors"
-        >
-          <i className="fab fa-instagram text-2xl"></i>
-        </a>
-        <a
-          href="https://facebook.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Facebook"
-          className="hover:text-pink-400 transition-colors"
-        >
-          <i className="fab fa-facebook text-2xl"></i>
-        </a>
-        <a
-          href="https://tiktok.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="TikTok"
-          className="hover:text-pink-400 transition-colors"
-        >
-          <i className="fab fa-tiktok text-2xl"></i>
-        </a>
-      </div>
-      <p className="mt-8 text-xs text-slate-500">
-        © {new Date().getFullYear()} Fao Sài Gòn. All Rights Reserved.
-      </p>
-    </div>
-  </footer>
-);
+function HomeFooter() {
+  const branches = [BRANCHES.PHU_NHUAN, BRANCHES.Q9];
 
-// ==== Component Gốc: HomePage ====
+  return (
+    <footer className="border-t border-[var(--home-line)] bg-white pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:pb-10">
+      <div className="mx-auto grid max-w-[1200px] gap-10 px-4 py-12 sm:px-6 lg:grid-cols-12 lg:px-8">
+        <div className="lg:col-span-5">
+          <Link to="/" className="inline-flex items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--home-accent)] text-white">
+              <CameraIcon className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="text-[13px] font-extrabold tracking-[0.12em]">
+              FAO.CAMERA
+            </span>
+          </Link>
+          <ul className="mt-5 space-y-3 text-sm text-[var(--home-muted)]">
+            {branches.map((branch) => (
+              <li key={branch.id}>
+                <a
+                  href={branch.mapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-start gap-2 hover:text-[var(--home-accent)]"
+                >
+                  <MapPinIcon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>{branch.fullAddress}</span>
+                </a>
+              </li>
+            ))}
+            <li>
+              <a
+                href={`tel:${PHONE_NUMBER}`}
+                className="inline-flex items-center gap-2 hover:text-[var(--home-accent)]"
+              >
+                <PhoneIcon className="h-4 w-4" aria-hidden />
+                {PHONE_DISPLAY}
+              </a>
+            </li>
+          </ul>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <a
+              href={SOCIAL_LINKS.instagram}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--home-ink)] ring-1 ring-[var(--home-line)] hover:bg-[#fde8f0]"
+            >
+              Instagram
+            </a>
+            <a
+              href={SOCIAL_LINKS.facebook}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--home-ink)] ring-1 ring-[var(--home-line)] hover:bg-[#fde8f0]"
+            >
+              Facebook
+            </a>
+            <a
+              href={BRANCHES.PHU_NHUAN.mapUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full px-3 py-2 text-sm font-semibold text-[var(--home-ink)] ring-1 ring-[var(--home-line)] hover:bg-[#fde8f0]"
+            >
+              Google Maps
+            </a>
+          </div>
+        </div>
+
+        <div className="lg:col-span-3">
+          <p className="text-sm font-bold text-[var(--home-ink)]">Menu</p>
+          <ul className="mt-4 space-y-2 text-sm">
+            <li>
+              <Link to="/" className="text-[var(--home-muted)] hover:text-[var(--home-accent)]">
+                Trang chủ
+              </Link>
+            </li>
+            <li>
+              <Link to="/catalog" className="text-[var(--home-muted)] hover:text-[var(--home-accent)]">
+                Check lịch trống
+              </Link>
+            </li>
+            <li>
+              <Link to="/feedback" className="text-[var(--home-muted)] hover:text-[var(--home-accent)]">
+                Ảnh feedback & hướng dẫn
+              </Link>
+            </li>
+          </ul>
+        </div>
+
+        <div className="lg:col-span-4">
+          <p className="text-sm font-bold text-[var(--home-ink)]">Chính sách</p>
+          <ul className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <li>
+              <a href="#huong-dan" className="text-[var(--home-muted)] hover:text-[var(--home-accent)]">
+                Quy trình
+              </a>
+            </li>
+            <li>
+              <Link to="/hop-dong-thue-chuan" className="text-[var(--home-muted)] hover:text-[var(--home-accent)]">
+                Quy định
+              </Link>
+            </li>
+            <li>
+              <a href="#uu-dai" className="text-[var(--home-muted)] hover:text-[var(--home-accent)]">
+                Quyền lợi
+              </a>
+            </li>
+            <li>
+              <Link to={PRIVACY_POLICY_PATH} className="text-[var(--home-muted)] hover:text-[var(--home-accent)]">
+                Bảo mật
+              </Link>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
 export default function HomePage() {
   return (
-    <div className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-white text-slate-800">
-      <style>{swiperStyles}</style>
-      <Header />
-
+    <div className="home-landing min-h-[100dvh] overflow-x-hidden">
+      <a href="#home-main" className="home-skip">
+        Bỏ qua điều hướng
+      </a>
+      <HomeHeader />
       <BookingPromoBanners />
-
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-20">
-        <HeroSection />
-        <main className="min-h-0 shrink-0">
-          {/* <FeaturesSection />
-        <TestimonialsSection />
-        <CategoriesSection />
-        <CallToActionSection /> */}
-        </main>
-      </div>
-      {/* <Footer /> */}
-      <SlideNav />
+      <main id="home-main">
+        <HomeHero />
+        <HomeProcess />
+        <HomeFaq />
+        <HomeOffers />
+      </main>
+      <HomeFooter />
+      <SlideNav mobileOnly />
     </div>
   );
 }

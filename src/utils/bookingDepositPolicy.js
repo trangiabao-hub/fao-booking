@@ -65,6 +65,52 @@ export function formatHt2DepositPhrase(devices) {
   return `cọc ${parts} (tổng ${formatDepositVndVi(total)}đ)`;
 }
 
+export const DEPOSIT_POLICY_NOTES = [
+  "Nếu là acc clone (Facebook/Zalo/Instagram), cọc 10.000.000đ.",
+  "Đọc kĩ quy trình - quy định ghim đầu trang.",
+];
+
+/**
+ * 3 hình thức cọc tại cửa hàng — chọn 1.
+ * @param {Array<object>|null|undefined} devices
+ */
+export function getDepositMethodOptions(devices) {
+  const ht2Phrase = formatHt2DepositPhrase(devices);
+  const ht2Title = ht2Phrase
+    ? ht2Phrase.charAt(0).toUpperCase() + ht2Phrase.slice(1)
+    : "Cọc theo máy";
+  return [
+    {
+      id: "HT1",
+      code: "HT1",
+      title: "Cọc 0đ",
+      audience: "Học sinh / sinh viên còn đi học",
+      detail:
+        "Đem thẻ HSSV và lịch học (có thể dùng trên web) + CCCD bản gốc hoặc VNeID định danh mức 2.",
+    },
+    {
+      id: "HT2",
+      code: "HT2",
+      title: ht2Title,
+      audience: "Cọc tiền mặt tại cửa hàng",
+      detail: "CCCD bản gốc hoặc VNeID định danh mức 2.",
+    },
+    {
+      id: "HT3",
+      code: "HT3",
+      title: "Cọc bằng tài sản",
+      audience: "Laptop, iPad, điện thoại tương đương",
+      detail: "CCCD bản gốc hoặc VNeID định danh mức 2.",
+    },
+  ];
+}
+
+export function getDepositMethodSummaryLabel(id, devices) {
+  const option = getDepositMethodOptions(devices).find((item) => item.id === id);
+  if (!option) return "";
+  return `${option.code} · ${option.title}`;
+}
+
 /**
  * Cam kết cọc trên web — khớp copy summary đơn staff.
  * @param {Array<object>|null|undefined} devices

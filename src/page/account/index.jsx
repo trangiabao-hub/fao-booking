@@ -155,6 +155,7 @@ export default function AccountPage() {
         email: user?.email,
         name: user?.displayName,
         avatar: user?.photoURL,
+        idToken: await user.getIdToken(),
       });
 
       const token = response?.data?.token;

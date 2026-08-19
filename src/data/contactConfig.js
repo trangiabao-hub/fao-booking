@@ -6,3 +6,11 @@
 export const MESSENGER_LINK = "https://m.me/Faodigitalcamera";
 export const ZALO_LINK = "https://zalo.me/0901355198";
 export const PHONE_NUMBER = "0901355198";
+export const PHONE_DISPLAY = "0901 355 198";
+
+export const SOCIAL_LINKS = {
+  facebook: "https://www.facebook.com/Faodigitalcamera",
+  instagram: "https://www.instagram.com/fao_thuemayanh/",
+  messenger: MESSENGER_LINK,
+  zalo: ZALO_LINK,
+};

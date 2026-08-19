@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+/* Một radius dùng chung cho card, nút, input, modal. Đổi số này là đổi cả page.
+   rounded-full vẫn dành cho hình tròn (avatar, chấm trạng thái). */
+:root {
+  --fao-radius: 8px;
+}
+
+@theme inline {
+  --radius: var(--fao-radius);
+  --radius-xs: var(--fao-radius);
+  --radius-sm: var(--fao-radius);
+  --radius-md: var(--fao-radius);
+  --radius-lg: var(--fao-radius);
+  --radius-xl: var(--fao-radius);
+  --radius-2xl: var(--fao-radius);
+  --radius-3xl: var(--fao-radius);
+  --radius-4xl: var(--fao-radius);
+}
+
 @import url("https://fonts.googleapis.com/css2?family=Pinyon+Script&display=swap");
 
 @keyframes ptb-drawer-up {
@@ -62,7 +80,7 @@
   background-color: #fdf2f8; /* pink-50 */
 }
 .rdrDateDisplayItem {
-  border-radius: 12px;
+  border-radius: var(--fao-radius);
 }
 .rdrDateDisplayItem input {
   color: #be185d; /* pink-700 */

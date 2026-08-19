@@ -6,7 +6,7 @@ import { MapPin, Star, Clock3, Check, Bell } from "lucide-react";
 import { BRANCHES } from "../../data/bookingConstants";
 import { formatPriceK } from "../../utils/bookingHelpers";
 import { parseDeviceReleaseDate } from "../../utils/deviceReleaseDate";
-import { formatTimeVi } from "../../utils/formatTimeVi";
+import { formatTimeVi, formatTimeViFromString } from "../../utils/formatTimeVi";
 import { FALLBACK_IMG } from "../../constants/catalog";
 
 function ChicCardInner({
@@ -44,37 +44,41 @@ function ChicCardInner({
 
   const branchShort =
     device.crossBranchOnly && device.primaryBookBranchId
-      ? (
-          BRANCHES.find((b) => b.id === device.primaryBookBranchId)?.label || ""
-        )
+      ? (BRANCHES.find((b) => b.id === device.primaryBookBranchId)?.label || "")
           .replace(/^FAO\s*/i, "")
           .trim()
       : "";
 
-  const suggestionBranchLabel =
-    (
-      BRANCHES.find((b) => b.id === device.primaryBookBranchId)?.label || ""
-    )
-      .replace(/^FAO\s*/i, "")
-      .trim() || "chi nhánh hiện tại";
-
   const isAvailable = device.isAvailable !== false;
   const blockedBeforeRelease = device.blockedBeforeRelease === true;
-  const releaseDay = blockedBeforeRelease ? parseDeviceReleaseDate(device) : null;
+  const releaseDay = blockedBeforeRelease
+    ? parseDeviceReleaseDate(device)
+    : null;
 
   const suggestedSlot = device.availabilitySuggestion || null;
-  const hasSixHourChoices =
-    Array.isArray(suggestedSlot?.sixHourChoices) &&
-    suggestedSlot.sixHourChoices.length > 0;
+  const sixHourChoicesList = suggestedSlot?.sixHourChoices || [];
+  const hasSixHourChoices = sixHourChoicesList.length > 0;
 
-  const hasSingleTimeSuggestion =
+  const shiftedHourLabel =
+    suggestedSlot?.fromDateTime && isValid(suggestedSlot.fromDateTime)
+      ? formatTimeVi(suggestedSlot.fromDateTime)
+      : formatTimeViFromString(suggestedSlot?.timeFrom);
+  const shiftMinutes = Number(suggestedSlot?.shiftMinutes);
+  const shiftedBookLabel = Number.isFinite(shiftMinutes) && shiftMinutes !== 0
+    ? shiftMinutes > 0
+      ? `Đặt trễ hơn ${Math.abs(Math.round(shiftMinutes))}p`
+      : `Đặt sớm hơn ${Math.abs(Math.round(shiftMinutes))}p`
+    : shiftedHourLabel
+      ? `Đặt nhận trả ${shiftedHourLabel}`
+      : "";
+  const hasShiftedOneDay =
     !!suggestedSlot &&
-    !hasSixHourChoices &&
     !!suggestedSlot.fromDateTime &&
-    !!suggestedSlot.toDateTime;
+    !!suggestedSlot.toDateTime &&
+    !!shiftedBookLabel;
 
   const hasSuggestedSlot =
-    !isAvailable && !!(hasSixHourChoices || hasSingleTimeSuggestion);
+    !isAvailable && (hasSixHourChoices || hasShiftedOneDay);
 
   const hasCrossBranchEscape =
     crossBranchHint?.branches?.length > 0 && !device.crossBranchOnly;
@@ -86,17 +90,6 @@ function ChicCardInner({
     !blockedBeforeRelease &&
     typeof onSwitchToBranch === "function" &&
     !!crossBranchHint?.branches?.[0]?.branchId;
-
-  const demoteLocalSlotSuggestions =
-    hasCrossBranchEscape && !isAvailable && hasSuggestedSlot;
-
-  const sixHourChoicesList = suggestedSlot?.sixHourChoices || [];
-  const sixHourChoiceCount = sixHourChoicesList.length;
-
-  const sixHourButtonsLayoutClass =
-    sixHourChoiceCount >= 2
-      ? "grid grid-cols-2 gap-2"
-      : "flex w-full flex-col gap-2";
 
   const handleQuickBook = useCallback(
     (e) => {
@@ -110,11 +103,10 @@ function ChicCardInner({
   const handleSuggestedQuickBook = useCallback(
     (e) => {
       e.stopPropagation();
-      if (!hasSuggestedSlot) return;
-      if (hasSixHourChoices) return;
+      if (!hasShiftedOneDay) return;
       onSuggestedQuickBook?.(device);
     },
-    [device, hasSuggestedSlot, hasSixHourChoices, onSuggestedQuickBook],
+    [device, hasShiftedOneDay, onSuggestedQuickBook],
   );
 
   const handleSixHourChoice = useCallback(
@@ -144,20 +136,46 @@ function ChicCardInner({
     [device, onNotifyWaitlist],
   );
 
-  const renderSixHourButtons = () => (
-    <div className={sixHourButtonsLayoutClass}>
-      {sixHourChoicesList.map((c) => (
+  const suggestionBtnClass =
+    "w-full rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-bold leading-snug text-white shadow-[0_8px_16px_rgba(5,150,105,0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-700 active:translate-y-0";
+
+  const renderSuggestionButtons = () => (
+    <div className="flex w-full flex-col gap-2">
+      {hasShiftedOneDay ? (
         <button
-          key={c.key}
           type="button"
-          onClick={(e) => handleSixHourChoice(e, c.key)}
-          className="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 px-3 py-2.5 text-[11px] font-black uppercase leading-tight tracking-[0.06em] text-white shadow-[0_10px_20px_rgba(5,150,105,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_24px_rgba(5,150,105,0.28)] active:translate-y-0 sm:text-xs"
+          onClick={handleSuggestedQuickBook}
+          className={suggestionBtnClass}
         >
-          {c.key === "morning" ? "Sáng 9h–15h" : "Tối 15h–21h"}
+          {shiftedBookLabel}
         </button>
-      ))}
+      ) : null}
+      {sixHourChoicesList.map((c) => {
+        const sixDay =
+          c.fromDateTime && isValid(c.fromDateTime)
+            ? format(c.fromDateTime, "d/M")
+            : suggestedSlot?.sixHourLabelDay &&
+                isValid(suggestedSlot.sixHourLabelDay)
+              ? format(suggestedSlot.sixHourLabelDay, "d/M")
+              : "";
+        const timeLabel = c.key === "morning" ? "9h-15h" : "15h-21h";
+        return (
+          <button
+            key={c.key}
+            type="button"
+            onClick={(e) => handleSixHourChoice(e, c.key)}
+            className={suggestionBtnClass}
+          >
+            Đặt {timeLabel}
+            {sixDay ? ` (${sixDay})` : ""}
+          </button>
+        );
+      })}
     </div>
   );
+
+  const isSoldOutNoSuggestion =
+    !isAvailable && !hasSuggestedSlot && !blockedBeforeRelease;
 
   return (
     <motion.div
@@ -176,7 +194,9 @@ function ChicCardInner({
       id={cardAnchorId}
     >
       <div
-        className={`relative flex h-fit flex-col overflow-hidden rounded-[20px] border bg-[#fffdfb] shadow-[0_12px_32px_rgba(15,23,42,0.08)] transition-all duration-200 ${
+        className={`relative flex h-fit flex-col overflow-hidden rounded-xl border bg-[#fffdfb] shadow-[0_12px_32px_rgba(15,23,42,0.08)] transition-all duration-200 ${
+          isSoldOutNoSuggestion ? "opacity-90" : ""
+        } ${
           isFocused
             ? "border-[#E85C9C] ring-2 ring-[#ffb6d7]/70"
             : "border-[#f5d7e6]"
@@ -247,13 +267,11 @@ function ChicCardInner({
               className={`absolute inset-0 z-10 flex items-end justify-center p-3 ${
                 blockedBeforeRelease
                   ? "bg-gradient-to-t from-black/65 via-black/10 to-transparent"
-                  : hasSuggestedSlot
-                    ? "bg-gradient-to-t from-emerald-950/55 via-emerald-900/10 to-transparent"
-                    : "bg-gradient-to-t from-black/70 via-black/25 to-transparent"
+                  : "bg-gradient-to-t from-black/70 via-black/25 to-transparent"
               }`}
             >
               {blockedBeforeRelease && releaseDay ? (
-                <div className="w-full rounded-2xl border border-white/20 bg-white/92 px-3 py-2.5 text-center shadow-xl backdrop-blur-md">
+                <div className="w-full rounded-xl border border-white/20 bg-white/92 px-3 py-2.5 text-center shadow-xl backdrop-blur-md">
                   <p className="text-xs font-bold leading-snug text-[#333]">
                     Có thể đặt từ{" "}
                     <span className="font-black text-[#E85C9C]">
@@ -263,8 +281,8 @@ function ChicCardInner({
                     </span>
                   </p>
                 </div>
-              ) : demoteLocalSlotSuggestions ? (
-                <div className="w-full rounded-2xl border border-white/20 bg-black/55 px-3 py-2.5 text-center shadow-xl backdrop-blur-md">
+              ) : hasSuggestedSlot ? (
+                <div className="w-full rounded-xl border border-white/20 bg-black/55 px-3 py-2.5 text-center shadow-xl backdrop-blur-md">
                   <p className="text-[11px] font-black uppercase tracking-[0.08em] text-white">
                     Không trống khung giờ
                   </p>
@@ -272,56 +290,11 @@ function ChicCardInner({
                     Xem gợi ý đặt nhanh ở bên dưới
                   </p>
                 </div>
-              ) : hasSuggestedSlot ? (
-                <div className="w-full rounded-2xl border border-emerald-200 bg-emerald-50/95 px-3 py-2.5 shadow-xl backdrop-blur-md">
-                  <div className="mb-1 flex items-center gap-1.5">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                    <span className="text-[11px] font-black uppercase tracking-[0.08em] text-emerald-700">
-                      {hasSixHourChoices ? "Còn slot 6 tiếng" : "Gợi ý dời lịch"}
-                    </span>
-                  </div>
-
-                  <div className="text-[11px] font-bold leading-snug text-emerald-950">
-                    {hasSixHourChoices ? (
-                      <>
-                        Ngày{" "}
-                        <span className="font-black text-[#E85C9C]">
-                          {suggestedSlot.sixHourLabelDay &&
-                          isValid(suggestedSlot.sixHourLabelDay)
-                            ? format(suggestedSlot.sixHourLabelDay, "dd/MM")
-                            : suggestedSlot.sixHourChoices?.[0]?.fromDateTime &&
-                                isValid(
-                                  suggestedSlot.sixHourChoices[0].fromDateTime,
-                                )
-                              ? format(
-                                  suggestedSlot.sixHourChoices[0].fromDateTime,
-                                  "dd/MM",
-                                )
-                              : "—"}
-                        </span>{" "}
-                        còn khung trống.
-                      </>
-                    ) : (
-                      <>
-                        Đổi sang{" "}
-                        <span className="font-black text-[#E85C9C]">
-                          {isValid(suggestedSlot.fromDateTime)
-                            ? `${formatTimeVi(suggestedSlot.fromDateTime)} ${format(
-                                suggestedSlot.fromDateTime,
-                                "dd/MM",
-                              )}`
-                            : "—"}
-                        </span>{" "}
-                        là có thể đặt.
-                      </>
-                    )}
-                  </div>
-                </div>
               ) : (
-                <div className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/20 bg-black/55 px-3 py-2.5 text-white shadow-xl backdrop-blur-md">
+                <div className="flex w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-white/20 bg-black/55 px-3 py-2.5 text-center text-white shadow-xl backdrop-blur-md">
                   <Clock3 size={15} />
-                  <span className="text-xs font-black uppercase tracking-[0.06em]">
-                    Hết khung giờ
+                  <span className="text-xs font-black uppercase leading-snug tracking-[0.06em]">
+                    Không trống ngày bạn chọn
                   </span>
                 </div>
               )}
@@ -408,74 +381,24 @@ function ChicCardInner({
                   Đặt ngay
                 </span>
               </button>
-            ) : demoteLocalSlotSuggestions && hasSixHourChoices ? (
-              <details className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
-                <summary className="cursor-pointer select-none px-3 py-2.5 text-xs font-black uppercase tracking-[0.06em] text-emerald-900 hover:bg-emerald-50 [&::-webkit-details-marker]:hidden">
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin size={13} className="text-emerald-700" />
-                    Còn máy tại {suggestionBranchLabel}
-                    <span className="text-emerald-600">▾</span>
-                  </span>
-                </summary>
-
-                <div className="border-t border-emerald-100 p-2">
-                  {renderSixHourButtons()}
-                </div>
-              </details>
-            ) : demoteLocalSlotSuggestions && hasSingleTimeSuggestion ? (
-              <details className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
-                <summary className="cursor-pointer select-none px-3 py-2.5 text-xs font-black uppercase tracking-[0.06em] text-emerald-900 hover:bg-emerald-50 [&::-webkit-details-marker]:hidden">
-                  Không tiện đổi chi nhánh?{" "}
-                  <span className="text-emerald-700">Đổi khung giờ ▾</span>
-                </summary>
-
-                <div className="border-t border-emerald-100 p-2">
-                  <button
-                    type="button"
-                    onClick={handleSuggestedQuickBook}
-                    className="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 px-3 py-2.5 text-xs font-black uppercase tracking-[0.06em] text-white shadow-[0_10px_20px_rgba(5,150,105,0.22)] transition-all duration-200 hover:-translate-y-0.5"
-                  >
-                    Dời theo gợi ý & đặt
-                  </button>
-                </div>
-              </details>
-            ) : !isAvailable && hasSixHourChoices ? (
-              <details
-                open
-                className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm"
-              >
-                <summary className="cursor-pointer select-none px-3 py-2.5 text-xs font-black uppercase tracking-[0.06em] text-emerald-900 hover:bg-emerald-50 [&::-webkit-details-marker]:hidden">
-                  <span className="inline-flex items-center gap-1.5">
-                    <MapPin size={13} className="text-emerald-700" />
-                    Còn máy tại {suggestionBranchLabel}
-                    <span className="text-emerald-600">▾</span>
-                  </span>
-                </summary>
-
-                <div className="border-t border-emerald-100 p-2">
-                  {renderSixHourButtons()}
-                </div>
-              </details>
+            ) : !isAvailable && hasSuggestedSlot ? (
+              renderSuggestionButtons()
             ) : (
               <button
                 type="button"
-                onClick={hasSuggestedSlot ? handleSuggestedQuickBook : handleQuickBook}
-                disabled={!isAvailable && !hasSuggestedSlot}
-                className={`w-full rounded-2xl px-3 py-3 text-xs font-black uppercase leading-tight tracking-[0.07em] transition-all duration-200 sm:text-[13px] ${
+                onClick={handleQuickBook}
+                disabled={!isAvailable}
+                className={`w-full rounded-xl px-3 py-3 text-xs font-black uppercase leading-tight tracking-[0.07em] transition-all duration-200 sm:text-[13px] ${
                   isAvailable
                     ? "bg-gradient-to-r from-[#f1469d] via-[#df4eb2] to-[#b65bff] text-white shadow-[0_14px_26px_rgba(225,69,154,0.34)] hover:-translate-y-0.5 hover:shadow-[0_18px_32px_rgba(225,69,154,0.42)]"
-                    : hasSuggestedSlot
-                      ? "bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-[0_12px_22px_rgba(5,150,105,0.24)] hover:-translate-y-0.5"
-                      : "cursor-not-allowed bg-gray-200 text-gray-500"
+                    : "cursor-not-allowed bg-gray-200 text-gray-500"
                 }`}
               >
                 {isAvailable
                   ? branchShort
                     ? `Đặt tại ${branchShort}`
                     : "Đặt ngay"
-                  : hasSuggestedSlot
-                    ? "Dời theo gợi ý & đặt"
-                    : "Tạm hết máy"}
+                  : "Tạm hết máy"}
               </button>
             )}
 
@@ -484,7 +407,7 @@ function ChicCardInner({
               onClick={(e) => e.stopPropagation()}
               className="w-full rounded-2xl border border-[#ffd3e7] bg-white px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.06em] text-[#d43487] transition-all duration-200 hover:bg-[#fff1f7]"
             >
-              Xem feedback thực tế
+              Ảnh feedback
             </Link>
           </div>
         </div>
@@ -539,6 +462,8 @@ function chicPropsEqual(prev, next) {
     if (p6 !== n6) return false;
     if (ps?.fromDateTime !== ns?.fromDateTime) return false;
     if (ps?.toDateTime !== ns?.toDateTime) return false;
+    if (ps?.timeFrom !== ns?.timeFrom) return false;
+    if (ps?.shiftMinutes !== ns?.shiftMinutes) return false;
     if (ps?.sixHourLabelDay !== ns?.sixHourLabelDay) return false;
   }
 

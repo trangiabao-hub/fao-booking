@@ -67,6 +67,32 @@ export function formatPickupReturnSummary(date) {
   )} (${format(date, "dd/MM")})`;
 }
 
+/** "21/08 9h sáng" */
+export function formatMomentWithDayPart(date) {
+  if (!date || !isValid(date)) return "";
+  return `${format(date, "dd/MM")} ${formatTimeShort(date)} ${getDayPartLabel(date).toLowerCase()}`;
+}
+
+/** "Nhận 21/08 9h sáng" */
+export function formatPickupMomentVi(date) {
+  const body = formatMomentWithDayPart(date);
+  return body ? `Nhận ${body}` : "";
+}
+
+/** "Trả 23/08 9h sáng" */
+export function formatReturnMomentVi(date) {
+  const body = formatMomentWithDayPart(date);
+  return body ? `Trả ${body}` : "";
+}
+
+/** "Nhận 21/08 9h sáng → Trả 23/08 9h sáng" */
+export function formatPickupReturnRangeVi(fromDate, toDate) {
+  const fromLabel = formatPickupMomentVi(fromDate);
+  const toLabel = formatReturnMomentVi(toDate);
+  if (!fromLabel || !toLabel) return "";
+  return `${fromLabel} → ${toLabel}`;
+}
+
 export function countWeekdaysInRange(startDateTime, endDateTime) {
   if (!startDateTime || !endDateTime || endDateTime <= startDateTime) {
     return { totalDays: 0, weekdayDays: 0 };

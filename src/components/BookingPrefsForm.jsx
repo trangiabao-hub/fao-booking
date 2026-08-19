@@ -366,8 +366,29 @@ export default function BookingPrefsForm({
     "w-full max-w-full min-w-0 min-h-[48px] rounded-xl border-2 border-[#eee] bg-white px-3.5 py-3.5 text-base font-semibold focus:border-[#FF9FCA] focus:outline-none";
   const gateChoiceClass =
     "min-h-[52px] touch-manipulation rounded-xl border-2 font-black transition-all active:scale-[0.98]";
-  const gateLinkClass =
-    "flex min-h-[44px] items-center text-left text-sm font-semibold text-[#E85C9C] underline-offset-2 hover:underline touch-manipulation";
+
+  const handleDurationTypeChange = (nextType) => {
+    if (nextType === durationType) return;
+    setDurationType(nextType);
+    if (nextType === "SIX_HOURS") {
+      if (date) setEndDate(date);
+      setPickupType("MORNING");
+      setPickupSlot(MORNING_PICKUP_TIME);
+      setTimeFrom(MORNING_PICKUP_TIME);
+      setTimeTo(getSixHourAutoReturnTime(MORNING_PICKUP_TIME));
+      return;
+    }
+    if (date) {
+      const minEnd = addDays(date, 1);
+      if (!endDate || normalizeDate(endDate)?.getTime() <= date.getTime()) {
+        setEndDate(minEnd);
+      }
+    }
+    setPickupType("MORNING");
+    setPickupSlot(MORNING_PICKUP_TIME);
+    setTimeFrom(MORNING_PICKUP_TIME);
+    setTimeTo(MORNING_PICKUP_TIME);
+  };
 
   useEffect(() => {
     if (durationType === "SIX_HOURS") {
@@ -436,6 +457,54 @@ export default function BookingPrefsForm({
         ) : null}
         {showTimeFields ? (
         <>
+        <div className="min-w-0">
+          <div
+            className={isGate ? gateLabelClass : "text-sm mb-1 font-bold uppercase tracking-wider text-[#777] block"}
+            id="duration-type-label"
+          >
+            Hình thức thuê
+          </div>
+          <div
+            role="radiogroup"
+            aria-labelledby="duration-type-label"
+            className="grid min-w-0 grid-cols-2 gap-2"
+          >
+            {[
+              { id: "SIX_HOURS", title: "6 tiếng", hint: "Cùng ngày" },
+              { id: "ONE_DAY", title: "Theo ngày", hint: "1 ngày trở lên" },
+            ].map((option) => {
+              const active = durationType === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => handleDurationTypeChange(option.id)}
+                  className={`${isGate ? gateChoiceClass : "min-w-0 rounded-xl border-2 font-black transition-all px-3 py-3 text-sm"} ${
+                    isGate ? "w-full px-3 py-3 text-left" : "text-left"
+                  } ${
+                    active
+                      ? "bg-[#222] text-[#FF9FCA] border-[#222]"
+                      : "bg-white text-[#555] border-[#eee] hover:border-[#FF9FCA]"
+                  }`}
+                >
+                  <span className="block text-sm">
+                    {option.title}
+                  </span>
+                  <span
+                    className={`mt-0.5 block font-semibold ${
+                      isGate ? "text-[11px] leading-snug" : "text-[11px]"
+                    } ${active ? "text-[#ffb6d7]" : "text-[#999]"}`}
+                  >
+                    {option.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {durationType === "SIX_HOURS" ? (
           <>
             <div className="min-w-0">
@@ -482,16 +551,6 @@ export default function BookingPrefsForm({
                 })}
               </div>
             </div>
-
-            {sections === "all" ? (
-              <button
-                type="button"
-                onClick={() => setDurationType("ONE_DAY")}
-                className={isGate ? gateLinkClass : "text-left text-xs font-semibold text-[#E85C9C] underline-offset-2 hover:underline"}
-              >
-                Cần thuê nhiều ngày?
-              </button>
-            ) : null}
           </>
         ) : (
           <>
@@ -673,16 +732,6 @@ export default function BookingPrefsForm({
               </MotionDiv>
             </AnimatePresence>
           )}
-
-            {sections === "all" ? (
-              <button
-                type="button"
-                onClick={() => setDurationType("SIX_HOURS")}
-                className={isGate ? gateLinkClass : "text-left text-xs font-semibold text-[#E85C9C] underline-offset-2 hover:underline"}
-              >
-                Chỉ thuê 6 tiếng?
-              </button>
-            ) : null}
           </>
         )}
         </>

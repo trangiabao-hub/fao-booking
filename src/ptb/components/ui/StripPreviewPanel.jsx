@@ -302,10 +302,12 @@ export default function StripPreviewPanel({
   onPrintBwChange,
   onPrintNoCropChange,
 }) {
-  const [previewWidth, setPreviewWidth] = useState(140);
+  const [previewWidth, setPreviewWidth] = useState(0);
+  const [previewReady, setPreviewReady] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const panelRef = useRef(null);
   const boxRef = useRef(null);
+  const previewWidthRef = useRef(0);
   const frameRatio = getFrameHeightRatio(strip);
   const previewAspect = dualPreview ? frameRatio / 2 : frameRatio;
   const hasOverlay = Boolean(strip.frameOverlaySrc);
@@ -321,22 +323,36 @@ export default function StripPreviewPanel({
       // Mobile: gần full box để frame to hơn; desktop giữ pad nhẹ
       const pad = isMobile ? 0 : 8;
       const boxHeight = Math.max(0, box.clientHeight - pad);
-      const boxWidth = Math.max(0, box.clientWidth - pad);
       if (boxHeight <= 0 || !(previewAspect > 0)) return;
+
+      // Max width lấy từ hàng cha (ổn định) — không lấy box.clientWidth
+      // vì panel width phụ thuộc previewWidth → loop phóng to dần.
+      const row = panelRef.current?.parentElement;
+      const maxFromRow = row
+        ? Math.floor(row.clientWidth * (isMobile ? 1 : 0.48)) - (isMobile ? 0 : 40)
+        : 0;
+      const maxFromBox = Math.floor(box.clientWidth - pad);
+      const maxW = Math.max(
+        0,
+        isMobile ? maxFromBox : maxFromRow > 0 ? maxFromRow : maxFromBox,
+      );
+
       const totalFromHeight = Math.floor(
         boxHeight / Math.max(previewAspect, 0.5),
       );
-      const totalFromWidth = Math.floor(boxWidth);
       const fitted = Math.min(
         totalFromHeight,
-        totalFromWidth > 0 ? totalFromWidth : totalFromHeight,
+        maxW > 0 ? maxW : totalFromHeight,
       );
       if (fitted < 40) return;
-      const totalW = fitted;
       const stripW = dualPreview
-        ? Math.max(32, Math.floor(totalW / 2))
-        : totalW;
-      setPreviewWidth(stripW);
+        ? Math.max(32, Math.floor(fitted / 2))
+        : fitted;
+      if (stripW !== previewWidthRef.current) {
+        previewWidthRef.current = stripW;
+        setPreviewWidth(stripW);
+      }
+      setPreviewReady(true);
     };
 
     measure();
@@ -346,7 +362,8 @@ export default function StripPreviewPanel({
     vv?.addEventListener("resize", measure);
     const ro = new ResizeObserver(measure);
     ro.observe(box);
-    if (panelRef.current) ro.observe(panelRef.current);
+    const row = panelRef.current?.parentElement;
+    if (row) ro.observe(row);
 
     return () => {
       window.removeEventListener("resize", measure);
@@ -388,10 +405,13 @@ export default function StripPreviewPanel({
 
   const panelWidth = isMobile
     ? undefined
-    : Math.max(
-        200,
-        (dualPreview ? previewWidth * 2 : previewWidth) + 40,
-      );
+    : previewReady
+      ? Math.max(
+          200,
+          (dualPreview ? previewWidth * 2 : previewWidth) + 40,
+        )
+      : // Ổn định trước measure — tránh start 140 rồi phình dần
+        "min(48%, 420px)";
 
   const chipClass =
     "inline-flex h-9 items-center border px-2.5 text-[13px] font-semibold transition-colors";
@@ -474,25 +494,33 @@ export default function StripPreviewPanel({
             className={cn(
               "flex max-h-full items-stretch justify-center",
               dualPreview && "shadow-[0_2px_10px_rgba(16,24,40,0.08)]",
+              !previewReady && "invisible",
             )}
             style={printBw ? { filter: "grayscale(1)" } : undefined}
           >
-            <StripPreview {...previewProps} showShadow={!dualPreview} />
-            {dualPreview && dualSame ? (
-              <div className="pointer-events-none select-none" aria-hidden="true">
-                <StripPreview
-                  {...previewProps}
-                  dragState={null}
-                  onSlotUpload={() => {}}
-                  onSlotRemove={() => {}}
-                  onAdjustSlot={() => {}}
-                  onDragStart={() => {}}
-                  onDragMove={() => {}}
-                  onDragEnd={() => {}}
-                  onPinchZoom={() => {}}
-                  showShadow={false}
-                />
-              </div>
+            {previewReady && previewWidth > 0 ? (
+              <>
+                <StripPreview {...previewProps} showShadow={!dualPreview} />
+                {dualPreview && dualSame ? (
+                  <div
+                    className="pointer-events-none select-none"
+                    aria-hidden="true"
+                  >
+                    <StripPreview
+                      {...previewProps}
+                      dragState={null}
+                      onSlotUpload={() => {}}
+                      onSlotRemove={() => {}}
+                      onAdjustSlot={() => {}}
+                      onDragStart={() => {}}
+                      onDragMove={() => {}}
+                      onDragEnd={() => {}}
+                      onPinchZoom={() => {}}
+                      showShadow={false}
+                    />
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </div>
         </div>
