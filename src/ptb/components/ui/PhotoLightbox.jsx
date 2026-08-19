@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDownTrayIcon,
   ChevronLeftIcon,
@@ -11,7 +12,15 @@ import dayjs from "dayjs";
 import { resolveMediaUrl } from "../../lib/frameUtils";
 import useBodyScrollLock from "../../../hooks/useBodyScrollLock";
 
-const SWIPE_THRESHOLD_PX = 48;
+const SWIPE_THRESHOLD_PX = 56;
+const SWIPE_VELOCITY = 420;
+
+/** Ảnh mới vào từ phía đang lướt tới, ảnh cũ rời khỏi phía đối diện. */
+const slideVariants = {
+  enter: (direction) => ({ x: direction > 0 ? "100%" : "-100%", opacity: 0.4 }),
+  center: { x: 0, opacity: 1 },
+  exit: (direction) => ({ x: direction > 0 ? "-100%" : "100%", opacity: 0.4 }),
+};
 
 /**
  * Xem ảnh toàn màn hình theo chuẩn các app ảnh: nền tối, ảnh không bị crop,
@@ -29,7 +38,7 @@ export default function PhotoLightbox({
   saving = false,
 }) {
   const photo = photos[index];
-  const touchStartX = useRef(null);
+  const [direction, setDirection] = useState(0);
 
   useBodyScrollLock(!!photo);
 
@@ -37,6 +46,7 @@ export default function PhotoLightbox({
     (step) => {
       const next = index + step;
       if (next < 0 || next >= photos.length) return;
+      setDirection(step);
       onNavigate?.(next);
     },
     [index, photos.length, onNavigate],
@@ -63,16 +73,6 @@ export default function PhotoLightbox({
       aria-modal="true"
       aria-label="Xem ảnh"
       className="fixed inset-0 z-[150] flex flex-col bg-[#0c0b0e]"
-      onTouchStart={(e) => {
-        touchStartX.current = e.touches[0]?.clientX ?? null;
-      }}
-      onTouchEnd={(e) => {
-        if (touchStartX.current == null) return;
-        const delta = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current;
-        touchStartX.current = null;
-        if (Math.abs(delta) < SWIPE_THRESHOLD_PX) return;
-        go(delta < 0 ? 1 : -1);
-      }}
     >
       <div className="flex items-center justify-between gap-3 px-2 pt-[max(8px,env(safe-area-inset-top))] text-white">
         <button
@@ -101,20 +101,50 @@ export default function PhotoLightbox({
         </button>
       </div>
 
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-3 py-2">
-        <img
-          key={photo.id}
-          src={resolveMediaUrl(photo.imageUrl || photo.thumbUrl)}
-          alt=""
-          className="max-h-full max-w-full object-contain"
-        />
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <AnimatePresence initial={false} custom={direction}>
+          <motion.div
+            key={photo.id}
+            custom={direction}
+            variants={slideVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{
+              x: { type: "spring", stiffness: 320, damping: 34, mass: 0.7 },
+              opacity: { duration: 0.16 },
+            }}
+            drag="x"
+            dragElastic={1}
+            dragMomentum={false}
+            dragConstraints={{ left: 0, right: 0 }}
+            onDragEnd={(_, info) => {
+              const past =
+                info.offset.x <= -SWIPE_THRESHOLD_PX ||
+                info.velocity.x <= -SWIPE_VELOCITY;
+              const back =
+                info.offset.x >= SWIPE_THRESHOLD_PX ||
+                info.velocity.x >= SWIPE_VELOCITY;
+              if (past) go(1);
+              else if (back) go(-1);
+            }}
+            className="absolute inset-0 flex touch-pan-y items-center justify-center px-3 py-2"
+          >
+            <img
+              src={resolveMediaUrl(photo.imageUrl || photo.thumbUrl)}
+              alt=""
+              draggable={false}
+              className="max-h-full max-w-full select-none object-contain"
+            />
+          </motion.div>
+        </AnimatePresence>
 
         {index > 0 ? (
           <button
             type="button"
             onClick={() => go(-1)}
             aria-label="Ảnh trước"
-            className="absolute left-1 hidden h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white transition hover:bg-black/60 sm:flex"
+            className="absolute left-1 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white transition hover:bg-black/60 sm:flex"
           >
             <ChevronLeftIcon className="h-6 w-6" />
           </button>
@@ -124,7 +154,7 @@ export default function PhotoLightbox({
             type="button"
             onClick={() => go(1)}
             aria-label="Ảnh sau"
-            className="absolute right-1 hidden h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white transition hover:bg-black/60 sm:flex"
+            className="absolute right-1 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white transition hover:bg-black/60 sm:flex"
           >
             <ChevronRightIcon className="h-6 w-6" />
           </button>
