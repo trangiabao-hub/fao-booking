@@ -3,13 +3,13 @@ import {
   ArrowDownTrayIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  PrinterIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import dayjs from "dayjs";
 import { resolveMediaUrl } from "../../lib/frameUtils";
 import useBodyScrollLock from "../../../hooks/useBodyScrollLock";
-import { cn } from "../../lib/theme";
 
 const SWIPE_THRESHOLD_PX = 48;
 
@@ -25,6 +25,7 @@ export default function PhotoLightbox({
   selectedIds,
   onToggleSelect,
   onSave,
+  onPrint,
   saving = false,
 }) {
   const photo = photos[index];
@@ -131,8 +132,8 @@ export default function PhotoLightbox({
       </div>
 
       <div className="px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2">
-        <div className="mx-auto flex w-full max-w-md items-center gap-2">
-          <div className="min-w-0 flex-1">
+        <div className="mx-auto w-full max-w-md">
+          <div className="text-center">
             <p className="truncate text-[13px] font-semibold text-white/90">
               {photo.albumTitle || "Ảnh photobooth"}
             </p>
@@ -142,27 +143,26 @@ export default function PhotoLightbox({
               </p>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => onSave?.(photo)}
-            disabled={saving}
-            className="flex h-10 items-center gap-1.5 rounded-full bg-white/10 px-3.5 text-[13px] font-bold text-white transition hover:bg-white/20 disabled:opacity-50"
-          >
-            <ArrowDownTrayIcon className="h-4 w-4" />
-            {saving ? "Đang lưu…" : "Lưu"}
-          </button>
-          <button
-            type="button"
-            onClick={() => onToggleSelect?.(photo.id)}
-            className={cn(
-              "h-10 rounded-full px-4 text-[13px] font-bold transition",
-              active
-                ? "bg-white text-[#141216]"
-                : "bg-[#E6007E] text-white hover:bg-[#cf0071]",
-            )}
-          >
-            {active ? "Đã chọn" : "Chọn để in"}
-          </button>
+
+          <div className="mt-2.5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onSave?.(photo)}
+              disabled={saving}
+              className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-white/12 text-[13px] font-bold text-white transition hover:bg-white/20 disabled:opacity-50"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              {saving ? "Đang lưu…" : "Lưu về máy"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onPrint?.(photo)}
+              className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#E6007E] text-[13px] font-bold text-white transition hover:bg-[#cf0071]"
+            >
+              <PrinterIcon className="h-4 w-4" />
+              Gửi shop in
+            </button>
+          </div>
         </div>
       </div>
     </div>
