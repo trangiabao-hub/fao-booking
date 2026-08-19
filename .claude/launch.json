@@ -7,6 +7,12 @@
       "runtimeArgs": ["vite", "--mode", "localenv"],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "fao-market",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["../fao-market/src/server.js"],
+      "port": 4317
     }
   ]
 }

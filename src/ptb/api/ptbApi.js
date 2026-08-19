@@ -23,6 +23,12 @@ export async function fetchAlbumByOrder(orderIdNew) {
   return res.data;
 }
 
+/** Toàn bộ album (kèm ảnh) của tài khoản đang đăng nhập. Cần JWT. */
+export async function fetchMyAlbums() {
+  const res = await api.get("/v1/ptb/me/albums");
+  return Array.isArray(res.data) ? res.data : [];
+}
+
 export async function fetchAlbumByToken(shareToken) {
   const res = await api.get(`/v1/ptb/trip/token/${encodeURIComponent(shareToken)}`);
   return res.data;

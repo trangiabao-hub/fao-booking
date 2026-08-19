@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { Camera, House, ReceiptText, UserRound, Menu, X } from "lucide-react";
+import {
+  Camera,
+  House,
+  Images,
+  ReceiptText,
+  UserRound,
+  Menu,
+  X,
+} from "lucide-react";
 import api from "../config/axios";
 import { loadCustomerSession, loadRecentOrder } from "../utils/storage";
 
@@ -33,6 +41,7 @@ export default function SlideNav({ mobileOnly = false }) {
     { id: "catalog", to: "/catalog", label: "Đặt lịch", icon: Camera },
     ...(hasSession
       ? [
+          { id: "album", to: "/album", label: "Album", icon: Images },
           {
             id: "bookings",
             to: "/my-bookings",
@@ -69,7 +78,7 @@ export default function SlideNav({ mobileOnly = false }) {
               <div key={item.id} className="flex flex-1 items-center">
                 <Link
                   to={item.to}
-                  className={`flex w-full min-h-[44px] flex-col items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold transition ${
+                  className={`relative flex w-full min-h-[44px] flex-col items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-semibold transition ${
                     isActive
                       ? "bg-[#FCE7F3] text-[#E6007E]"
                       : "text-[#667085] hover:bg-[#FFF9FC]"

@@ -1,13 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { PHOTO_THEMES, STRIP_WIDTH_MM } from "../lib/constants";
+import { PHOTO_THEMES } from "../lib/constants";
 import {
   applyFrameToStrip,
   applyPlainToStrip,
   groupFramesBySize,
 } from "../lib/frameUtils";
 import { canvasToBlob, renderStripCanvas } from "../lib/renderStrip";
-import { createEmptyStrip, getLayoutDef, getSlotCount, getSlotCssAspect, isPlainFrame } from "../lib/utils";
+import {
+  createEmptyStrip,
+  getLayoutDef,
+  getSlotCount,
+  getSlotCssAspect,
+  isPlainFrame,
+  stripWidthMmForLayout,
+} from "../lib/utils";
 import { usePtbFrames } from "../hooks/usePtbFrames";
 import { FrameEditorRow, FrameEditorWorkspace } from "./ui/AlbumPageLayout";
 import FrameGalleryPanel from "./ui/FrameGalleryPanel";
@@ -281,7 +288,7 @@ export default function StripEditor({
     };
     const { canvas } = await renderStripCanvas(
       strip,
-      STRIP_WIDTH_MM,
+      stripWidthMmForLayout(strip.layoutType),
       exportTheme,
       strip.frameOverlaySrc,
       layoutOptions,
@@ -319,7 +326,7 @@ export default function StripEditor({
       };
       const { canvas } = await renderStripCanvas(
         strip,
-        STRIP_WIDTH_MM,
+        stripWidthMmForLayout(strip.layoutType),
         exportTheme,
         strip.frameOverlaySrc,
         layoutOptions,

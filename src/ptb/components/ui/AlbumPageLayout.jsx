@@ -13,8 +13,10 @@ export default function AlbumPageLayout({
         ptb.pageBg,
         // Mobile Safari: flex + dvh (không cộng thêm thanh Safari — nó overlay)
         "max-lg:flex max-lg:h-dvh max-lg:max-h-dvh max-lg:min-h-0 max-lg:flex-col max-lg:overflow-hidden",
+        // SlideNav cao 68px + đệm đáy max(12px, safe-area) → chừa đúng chừng đó
+        // rồi cộng 8px thoáng, nếu không hàng cuối bị thanh nav liếm mất.
         reserveNav
-          ? "max-lg:pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]"
+          ? "max-lg:pb-[calc(4.75rem+max(12px,env(safe-area-inset-bottom,0px)))]"
           : "max-lg:pb-[max(0.35rem,env(safe-area-inset-bottom,0px))]",
         // Desktop: fill viewport như staff free-device
         "lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden lg:pb-0",
@@ -23,8 +25,8 @@ export default function AlbumPageLayout({
       <div
         className={cn(
           // Full-bleed — không max-width container (giống staff)
-          "flex w-full min-h-0 flex-1 flex-col px-2 pt-1.5 sm:px-4 sm:pt-3 lg:gap-2 lg:px-4 lg:pb-3 lg:pt-3",
-          reserveNav ? "max-lg:gap-1.5" : "max-lg:gap-1",
+          "flex w-full min-h-0 flex-1 flex-col px-2 pt-1 sm:px-4 sm:pt-3 lg:gap-2 lg:px-4 lg:pb-3 lg:pt-3",
+          "max-lg:gap-1",
           className,
         )}
       >

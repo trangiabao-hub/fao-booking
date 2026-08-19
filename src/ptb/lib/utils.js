@@ -1,4 +1,6 @@
 import {
+  DNP_PAGE,
+  DNP_STRIP,
   LAYOUT_DEFS,
   PLAIN_BRAND_RATIO,
   PLAIN_FRAME_ASPECT,
@@ -29,6 +31,17 @@ export function isPlainFrame(strip) {
 
 export function getPlainAspect(layoutType) {
   return PLAIN_FRAME_ASPECT[layoutType] ?? PLAIN_FRAME_ASPECT["1x4"];
+}
+
+/**
+ * Khổ render export theo layout: 1×4 = strip 2×6"; 2×2 / 1×1 / 3×3 = sheet 4×6".
+ * 3×3 dùng pad/gap/footer px tuyệt đối nên sai widthMm là sai luôn tỉ lệ viền.
+ */
+export function stripWidthMmForLayout(layoutType) {
+  const type = String(layoutType || "1x4")
+    .toLowerCase()
+    .replace(/×/g, "x");
+  return type === "1x4" ? DNP_STRIP.wMm : DNP_PAGE.wMm;
 }
 
 export function getPlainFrameMetrics(layoutType, frameWidthPx = 200, opts = {}) {

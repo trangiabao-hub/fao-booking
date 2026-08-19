@@ -35,7 +35,7 @@ function ConfigFields({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div>
+      <div data-ptb-tour="cfg-print">
         <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[#98A2B3]">
           Khi in
         </p>
@@ -86,7 +86,7 @@ function ConfigFields({
 
       {plainMode ? (
         <>
-          <div>
+          <div data-ptb-tour="cfg-color">
             <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[#98A2B3]">
               Màu khung
             </p>
@@ -156,7 +156,7 @@ function ConfigFields({
             </div>
           </div>
 
-          <div>
+          <div data-ptb-tour="cfg-brand">
             <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[#98A2B3]">
               Chữ dưới frame
             </p>
@@ -305,7 +305,7 @@ export default function StripPreviewPanel({
   const [previewWidth, setPreviewWidth] = useState(0);
   const [previewReady, setPreviewReady] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
-  const panelRef = useRef(null);
+  const asideRef = useRef(null);
   const boxRef = useRef(null);
   const previewWidthRef = useRef(0);
   const frameRatio = getFrameHeightRatio(strip);
@@ -326,8 +326,8 @@ export default function StripPreviewPanel({
       if (boxHeight <= 0 || !(previewAspect > 0)) return;
 
       // Max width lấy từ hàng cha (ổn định) — không lấy box.clientWidth
-      // vì panel width phụ thuộc previewWidth → loop phóng to dần.
-      const row = panelRef.current?.parentElement;
+      // hay chính aside, vì width của chúng phụ thuộc previewWidth → feedback loop.
+      const row = asideRef.current?.parentElement;
       const maxFromRow = row
         ? Math.floor(row.clientWidth * (isMobile ? 1 : 0.48)) - (isMobile ? 0 : 40)
         : 0;
@@ -362,7 +362,7 @@ export default function StripPreviewPanel({
     vv?.addEventListener("resize", measure);
     const ro = new ResizeObserver(measure);
     ro.observe(box);
-    const row = panelRef.current?.parentElement;
+    const row = asideRef.current?.parentElement;
     if (row) ro.observe(row);
 
     return () => {
@@ -439,6 +439,7 @@ export default function StripPreviewPanel({
 
   return (
     <aside
+      ref={asideRef}
       className={cn(
         isMobile
           ? "flex w-full min-h-0 flex-1 flex-col"
@@ -447,7 +448,6 @@ export default function StripPreviewPanel({
       style={isMobile ? undefined : { width: panelWidth }}
     >
       <div
-        ref={panelRef}
         className={cn(
           "flex min-h-0 flex-1 flex-col border border-[#F1E4EC] bg-white shadow-[0_12px_32px_rgba(16,24,40,0.06)]",
           isMobile
@@ -456,7 +456,10 @@ export default function StripPreviewPanel({
         )}
       >
         {!hasOverlay ? (
-          <div className="relative z-10 mb-0.5 flex shrink-0 flex-wrap justify-center gap-1 bg-white pb-0.5">
+          <div
+            data-ptb-tour="layout"
+            className="relative z-10 mb-0.5 flex shrink-0 flex-wrap justify-center gap-1 bg-white pb-0.5"
+          >
             {LAYOUT_SIZES.map((id) => {
               const def = LAYOUT_DEFS[id] ?? { label: id };
               return (
@@ -485,6 +488,7 @@ export default function StripPreviewPanel({
 
         <div
           ref={boxRef}
+          data-ptb-tour="preview"
           className={cn(
             "relative z-0 flex w-full min-h-0 flex-1 items-center justify-center overflow-hidden bg-transparent p-0",
             isMobile && "min-h-[160px]",
@@ -528,22 +532,27 @@ export default function StripPreviewPanel({
         {/* Desktop: config inline */}
         {!isMobile ? (
           <div className="mt-2 flex shrink-0 flex-col gap-2.5 border-t border-[#F1E4EC] bg-white pt-2.5">
-            <ConfigFields {...configProps} />
-            {instantPrint ? (
-              <PrintNowButton
-                canSave={canSave}
-                printing={printing}
-                onInstantPrint={onInstantPrint}
-              />
-            ) : (
-              <SaveButton canSave={canSave} saving={saving} onSave={onSave} />
-            )}
+            <div data-ptb-tour="config">
+              <ConfigFields {...configProps} />
+            </div>
+            <div data-ptb-tour="save">
+              {instantPrint ? (
+                <PrintNowButton
+                  canSave={canSave}
+                  printing={printing}
+                  onInstantPrint={onInstantPrint}
+                />
+              ) : (
+                <SaveButton canSave={canSave} saving={saving} onSave={onSave} />
+              )}
+            </div>
           </div>
         ) : (
           <div className="mt-1 flex shrink-0 flex-col gap-1">
             <div className="grid grid-cols-2 gap-1">
               <button
                 type="button"
+                data-ptb-tour="config"
                 onClick={() => setConfigOpen(true)}
                 className="inline-flex h-10 items-center justify-center gap-1.5 border border-[#F1E4EC] bg-white text-[13px] font-bold text-[#172033]"
               >
@@ -555,26 +564,29 @@ export default function StripPreviewPanel({
                   </span>
                 ) : null}
               </button>
-              {instantPrint ? (
-                <PrintNowButton
-                  canSave={canSave}
-                  printing={printing}
-                  onInstantPrint={onInstantPrint}
-                  className="h-10 py-0"
-                />
-              ) : (
-                <SaveButton
-                  canSave={canSave}
-                  saving={saving}
-                  onSave={onSave}
-                  className="h-10 py-0"
-                />
-              )}
+              <div data-ptb-tour="save">
+                {instantPrint ? (
+                  <PrintNowButton
+                    canSave={canSave}
+                    printing={printing}
+                    onInstantPrint={onInstantPrint}
+                    className="h-10 py-0"
+                  />
+                ) : (
+                  <SaveButton
+                    canSave={canSave}
+                    saving={saving}
+                    onSave={onSave}
+                    className="h-10 py-0"
+                  />
+                )}
+              </div>
             </div>
 
             {onOpenFrames ? (
               <button
                 type="button"
+                data-ptb-tour="frames"
                 onClick={onOpenFrames}
                 className="flex w-full shrink-0 items-center gap-2 border border-[#F1E4EC] bg-[#FFF7FB] px-2 py-1 text-left"
               >
@@ -639,6 +651,7 @@ export default function StripPreviewPanel({
             <div className="shrink-0 border-t border-[#F1E4EC] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               <button
                 type="button"
+                data-ptb-tour="cfg-close"
                 className="inline-flex h-11 w-full items-center justify-center bg-[#E6007E] text-[13px] font-bold text-white"
                 onClick={() => setConfigOpen(false)}
               >

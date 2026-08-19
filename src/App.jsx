@@ -7,6 +7,7 @@ import AccountBookingsPage from "./page/account-bookings";
 import AccountPage from "./page/account";
 import Menu from "./page/menu";
 import PhotoBoothPage from "./page/photobooth";
+import AlbumPage from "./page/album";
 import TripAlbumPage from "./ptb/pages/TripAlbumPage";
 import GuestFramePage from "./ptb/pages/GuestFramePage";
 import AlbumOrderRedirect from "./ptb/pages/AlbumOrderRedirect";
@@ -193,6 +194,19 @@ const App = () => {
           noindex
         >
           <GuestFramePage />
+        </SeoMeta>
+      ),
+    },
+    {
+      path: "/album",
+      element: (
+        <SeoMeta
+          title="Album của tôi"
+          description="Xem lại toàn bộ ảnh photobooth bạn đã ghép tại FAO, lưu về máy hoặc gửi shop in."
+          path="/album"
+          noindex
+        >
+          <AlbumPage />
         </SeoMeta>
       ),
     },

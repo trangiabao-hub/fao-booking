@@ -656,7 +656,7 @@ export default function AccountBookingsPage() {
                             className="inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-pink-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-pink-700 sm:w-auto sm:px-6 sm:py-3"
                           >
                             <PhotoIcon className="h-5 w-5" />
-                            Album & in ảnh
+                            Nhận {FREE_PRINT_QUOTA} ảnh Photobooth miễn phí
                           </Link>
                         ) : null}
                         <Link

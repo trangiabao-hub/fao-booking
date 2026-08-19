@@ -1,28 +1,43 @@
-import React, { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import SlideNav from "../../components/SlideNav";
 import AlbumHeaderCard from "../components/ui/AlbumHeaderCard";
 import PrintCheckout from "../components/PrintCheckout";
 import StripEditor from "../components/StripEditor";
 import AlbumPageLayout from "../components/ui/AlbumPageLayout";
 import SaveSuccessCard from "../components/ui/SaveSuccessCard";
+import PtbOnboardingModal from "../components/ui/PtbOnboardingModal";
 import PtbToast from "../components/ui/PtbToast";
+import PtbTour from "../components/ui/PtbTour";
 import { usePtbAlbum } from "../hooks/usePtbAlbum";
+import { PTB_TOUR_STEPS } from "../lib/onboarding";
 import { cn, ptb } from "../lib/theme";
 
 export default function TripAlbumPage() {
   const { shareToken } = useParams();
+  const [searchParams] = useSearchParams();
+  // ?view=album — vào thẳng danh sách ảnh đã lưu (lối tắt Album ở bottom bar).
+  const wantsAlbumView = searchParams.get("view") === "album";
   const [view, setView] = useState("create"); // create | print
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
   const [justSaved, setJustSaved] = useState(false);
   const [editorKey, setEditorKey] = useState(0);
-  const [galleryTab, setGalleryTab] = useState("frames");
+  const [galleryTab, setGalleryTab] = useState(
+    wantsAlbumView ? "album" : "frames",
+  );
   const [frameDrawerOpen, setFrameDrawerOpen] = useState(false);
   // Giữ option in ở page — không mất khi remount StripEditor sau khi lưu
   const [printBw, setPrintBw] = useState(false);
   const [printNoCrop, setPrintNoCrop] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const tourTimerRef = useRef(null);
+  const introShownRef = useRef(false);
+  const albumViewAppliedRef = useRef(false);
+
+  useEffect(() => () => window.clearTimeout(tourTimerRef.current), []);
 
   const {
     album,
@@ -35,8 +50,40 @@ export default function TripAlbumPage() {
     freeRemaining,
   } = usePtbAlbum(shareToken);
 
+  // Chào mỗi lần mở trang. Chốt bằng ref để refetch album giữa chừng
+  // (sau khi lưu strip) không bật lại modal. Vào bằng lối tắt Album thì
+  // khách chỉ muốn xem ảnh — không chặn bằng màn giới thiệu.
+  useEffect(() => {
+    if (loading || !album || isReadonly || wantsAlbumView) return;
+    if (introShownRef.current) return;
+    introShownRef.current = true;
+    setShowIntro(true);
+  }, [loading, album, isReadonly, wantsAlbumView]);
+
+  // Mobile: gallery nằm trong drawer nên phải mở ra mới thấy ảnh.
+  useEffect(() => {
+    if (!wantsAlbumView || loading || !album) return;
+    if (albumViewAppliedRef.current) return;
+    albumViewAppliedRef.current = true;
+    setGalleryTab("album");
+    if (window.matchMedia("(max-width: 1023px)").matches) {
+      setFrameDrawerOpen(true);
+    }
+  }, [wantsAlbumView, loading, album]);
+
   const showToast = (message, type = "success") => {
     setToast({ message, type });
+  };
+
+  const dismissIntro = () => setShowIntro(false);
+
+  const startTour = () => {
+    dismissIntro();
+    // Tour bám vào editor — đảm bảo editor đang hiển thị trước khi mở.
+    setJustSaved(false);
+    setView("create");
+    // Chờ modal trượt xuống xong rồi mới khoét sáng, tránh hai lớp overlay chồng nhau.
+    tourTimerRef.current = window.setTimeout(() => setTourOpen(true), 260);
   };
 
   const handleSaveStrip = async (blob, meta) => {
@@ -129,7 +176,12 @@ export default function TripAlbumPage() {
     <AlbumPageLayout>
       <SlideNav mobileOnly />
 
-      <AlbumHeaderCard album={album} isReadonly={isReadonly} />
+      <AlbumHeaderCard
+        isReadonly={isReadonly}
+        albumCount={album?.images?.length ?? 0}
+        onViewAlbum={openAlbumTab}
+        onShowGuide={isReadonly ? undefined : () => setShowIntro(true)}
+      />
 
       {view === "print" ? (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
@@ -194,6 +246,19 @@ export default function TripAlbumPage() {
       {error ? (
         <p className="text-center text-[13px] font-medium text-red-600">{error}</p>
       ) : null}
+
+      <PtbOnboardingModal
+        isOpen={showIntro}
+        freeRemaining={freeRemaining}
+        onStart={dismissIntro}
+        onStartTour={startTour}
+      />
+
+      <PtbTour
+        open={tourOpen}
+        steps={PTB_TOUR_STEPS}
+        onClose={() => setTourOpen(false)}
+      />
 
       <PtbToast
         message={toast?.message}

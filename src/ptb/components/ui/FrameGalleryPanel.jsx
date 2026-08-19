@@ -217,6 +217,7 @@ export default function FrameGalleryPanel({
       )}
     >
       <div
+        data-ptb-tour={embedded ? undefined : "frames"}
         className={cn(
           "mb-2 flex shrink-0 gap-1 border border-[#F1E4EC] bg-[#FFF7FB] p-1",
           embedded && "sticky top-0 z-[1]",

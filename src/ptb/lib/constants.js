@@ -3,7 +3,13 @@ export const TEt = "#e6e6e6";
 export const pF = "rgba(95, 95, 95, 0.7)";
 export const _Et = "rgba(55, 55, 55, 0.1)";
 
-export const STRIP_WIDTH_MM = 50;
+/**
+ * DNP DS-RX1HS — in 2×6" strip từ media 4×6" + 2" cut.
+ * Sheet: 4×6" (101.6×152.4 mm), 2 strip cạnh nhau mỗi tấm 2×6".
+ */
+export const DNP_PAGE = { wIn: 4, hIn: 6, wMm: 101.6, hMm: 152.4 };
+export const DNP_STRIP = { wIn: 2, hIn: 6, wMm: 50.8, hMm: 152.4 };
+
 export const PREVIEW_WIDTH = 220;
 export const EXPORT_DPI = 2;
 /** Chuyển mm → pixel canvas export (300 DPI × EXPORT_DPI). */
@@ -11,6 +17,8 @@ export const mmToPx = (mm) => mm * (300 / 25.4) * EXPORT_DPI;
 export const DEFAULT_SLOT_GAP_MM = 1.2;
 
 export const FREE_PRINT_QUOTA = 2;
+/** Giá mỗi ảnh in vượt quota — khớp PtbCollectionService.PAID_PRINT_PRICE_VND. */
+export const PAID_PRINT_PRICE_VND = 10000;
 
 /** Tỉ lệ demo-frame (height / width). 1×4 = 2×6", còn lại = 4×6". */
 export const PLAIN_FRAME_ASPECT = {

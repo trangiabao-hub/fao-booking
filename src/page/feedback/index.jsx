@@ -700,12 +700,19 @@ export default function FeedbackPage() {
   }, [parentTabCategories, selectedCategory]);
 
   const categoryFilteredRows = useMemo(() => {
+    /** groupDeviceIds là Set nên duyệt bằng for..of, không dùng method của Array. */
+    const rowHasDeviceIn = (row, deviceIds) => {
+      if (!deviceIds) return false;
+      for (const gid of row?.groupDeviceIds || []) {
+        if (deviceIds.has(normalizeId(gid))) return true;
+      }
+      return false;
+    };
+
     const rowInAllowedBrand = (row) => {
       for (const opt of categoryOptions) {
-        if (!allowedParentCategoryKeys.has(opt.key) || !opt.deviceIds) continue;
-        for (const gid of row.groupDeviceIds || []) {
-          if (opt.deviceIds.has(normalizeId(gid))) return true;
-        }
+        if (!allowedParentCategoryKeys.has(opt.key)) continue;
+        if (rowHasDeviceIn(row, opt.deviceIds)) return true;
       }
       return isAllowedFeedbackBrandLine(
         row.line || detectLineFromName(row.displayName),
@@ -717,14 +724,9 @@ export default function FeedbackPage() {
         ? null
         : categoryOptions.find((c) => c.key === selectedCategory);
 
-    const rows =
-      active?.deviceIds
-        ? modelRows.filter((row) =>
-            (row.groupDeviceIds || []).some((gid) =>
-              active.deviceIds.has(normalizeId(gid)),
-            ),
-          )
-        : modelRows.filter(rowInAllowedBrand);
+    const rows = active?.deviceIds
+      ? modelRows.filter((row) => rowHasDeviceIn(row, active.deviceIds))
+      : modelRows.filter(rowInAllowedBrand);
 
     return rows.filter((row) => !isFeedbackInternalTestName(row.displayName));
   }, [
