@@ -82,6 +82,7 @@ import BookingPrefsForm, {
   computeAvailabilityRange,
   getAvailabilityRangeError,
 } from "./BookingPrefsForm";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 /** Đồng bộ fao-booking với trang /booking (noteVoucher). */
 function buildQuickBookNoteVoucher({
@@ -1381,6 +1382,8 @@ export default function QuickBookModal({
     contentScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
   }, [step]);
 
+  useBodyScrollLock(isOpen && effectiveDevices.length > 0);
+
   const persistMergedCustomer = useCallback((next, fallbackPlatform) => {
     const detected = detectSocialPlatformFromLink(next.ig);
     const snap = buildCustomerInfoSnapshot(
@@ -1995,7 +1998,7 @@ export default function QuickBookModal({
           {/* Content */}
           <div
             ref={contentScrollRef}
-            className="min-h-0 flex-1 min-w-0 overflow-y-auto overflow-x-hidden bg-[#f3f1ef] px-4 py-3 sm:py-4"
+            className="min-h-0 flex-1 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-[#f3f1ef] px-4 py-3 sm:py-4 [-webkit-overflow-scrolling:touch]"
           >
             {step === 1 && (
               <div>

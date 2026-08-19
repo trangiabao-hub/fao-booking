@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import { SITE_NAV, GUIDE_LINKS } from "../config/siteNav";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 /**
  * Thanh điều hướng — đồng bộ với header trang blog/SEO tĩnh.
@@ -20,12 +21,7 @@ export default function SiteTopBar({ ctaTo = "/catalog", ctaLabel = "Đặt máy
     setMenuOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {
-    document.body.style.overflow = menuOpen ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [menuOpen]);
+  useBodyScrollLock(menuOpen);
 
   const navLinks = SITE_NAV.filter((item) => item.href !== "/catalog");
 

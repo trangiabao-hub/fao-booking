@@ -74,6 +74,7 @@ import { useCartLines } from "../../hooks/useCartLines";
 import { useAvailabilityCheck } from "../../hooks/useAvailabilityCheck";
 import { useStaffAccess } from "../../hooks/useStaffAccess";
 import { useCatalogFilters } from "../../hooks/useCatalogFilters";
+import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import {
   FALLBACK_IMG,
   MORNING_PICKUP_TIME,
@@ -387,6 +388,8 @@ export default function DeviceCatalogPage() {
     handleCartDecrement,
     handleCartRemoveLine,
   } = useCartLines();
+
+  useBodyScrollLock(showCartDrawer && cartLines.length > 0);
 
   const [cartCheckoutError, setCartCheckoutError] = useState("");
   const [conflictInfo, setConflictInfo] = useState(null);
@@ -3002,7 +3005,7 @@ export default function DeviceCatalogPage() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 space-y-3 [-webkit-overflow-scrolling:touch]">
                 {isStaffUser ? (
                   <>
                     <p className="text-xs text-[#666] leading-relaxed">

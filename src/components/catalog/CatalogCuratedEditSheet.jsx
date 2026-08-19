@@ -5,6 +5,7 @@ import BookingPrefsForm, {
   computeAvailabilityRange,
   getAvailabilityRangeError,
 } from "../BookingPrefsForm";
+import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 
 /**
  * Sheet gọn cho khách đã có lịch shop gửi — chỉ sửa giờ hoặc chi nhánh, không mở gate đầy đủ.
@@ -78,6 +79,8 @@ export default function CatalogCuratedEditSheet({
     onConfirm();
   }, [isComplete, onConfirm]);
 
+  useBodyScrollLock(isOpen);
+
   const MotionDiv = motion.div;
 
   return (
@@ -117,7 +120,7 @@ export default function CatalogCuratedEditSheet({
               </button>
             </div>
 
-            <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-4">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-5 py-4 [-webkit-overflow-scrolling:touch]">
               <BookingPrefsForm
                 sections={mode === "branch" ? "branch" : "time"}
                 branchId={branchId}

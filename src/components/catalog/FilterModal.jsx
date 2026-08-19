@@ -2,6 +2,7 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { PRICE_RANGES } from "../../constants/catalog";
+import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 
 export default function FilterModal({
   isOpen,
@@ -9,6 +10,8 @@ export default function FilterModal({
   priceRange,
   setPriceRange,
 }) {
+  useBodyScrollLock(isOpen);
+
   return (
     <AnimatePresence>
       {isOpen && (

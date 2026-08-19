@@ -3,6 +3,7 @@ import { XMarkIcon } from "@heroicons/react/24/solid";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Autoplay, Pagination } from "swiper/modules";
 import api from "../config/axios";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import "swiper/css";
 import "swiper/css/pagination";
 
@@ -58,6 +59,8 @@ export default function BookingPromoBanners() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, dismiss]);
+
+  useBodyScrollLock(open && items.length > 0);
 
   if (!open || !items.length) return null;
 

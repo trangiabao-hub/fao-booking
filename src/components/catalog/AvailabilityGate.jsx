@@ -4,6 +4,7 @@ import BookingPrefsForm, {
   computeAvailabilityRange,
   getAvailabilityRangeError,
 } from "../../components/BookingPrefsForm";
+import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 
 export default function AvailabilityGate({
   isOpen,
@@ -70,6 +71,8 @@ export default function AvailabilityGate({
     if (isComplete) onConfirm();
   }, [isComplete, onConfirm]);
 
+  useBodyScrollLock(isOpen);
+
   const MotionDiv = motion.div;
 
   return (
@@ -98,7 +101,7 @@ export default function AvailabilityGate({
               </h3>
             </div>
 
-            <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-5 min-w-0">
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-5 py-5 min-w-0 [-webkit-overflow-scrolling:touch]">
               <BookingPrefsForm
                 branchId={branchId}
                 date={date}
