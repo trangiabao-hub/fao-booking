@@ -16,6 +16,7 @@ import {
   isPlainFrame,
   loadImage,
 } from "./utils";
+import { applyBwGradeToRegion } from "./bwGrade";
 
 export function drawCover(ctx, img, x, y, w, h, position, zoom = 1, rotateDeg = 0) {
   const naturalW = img.naturalWidth || img.width;
@@ -60,7 +61,7 @@ export function drawCover(ctx, img, x, y, w, h, position, zoom = 1, rotateDeg = 
   ctx.drawImage(img, drawX, drawY, drawW, drawH);
 }
 
-async function renderPlainStripCanvas(strip, widthMm) {
+async function renderPlainStripCanvas(strip, widthMm, bwPhotos = false) {
   const layoutType = strip.layoutType ?? "1x4";
   const approxPreviewW = Math.max(120, Math.round((widthMm / 50.8) * 200));
   const metrics = getPlainFrameMetrics(layoutType, approxPreviewW, {
@@ -165,6 +166,7 @@ async function renderPlainStripCanvas(strip, widthMm) {
         is1x1 ? -90 : 0,
       );
       ctx.restore();
+      if (bwPhotos) applyBwGradeToRegion(ctx, slotX, slotY, cellW, cellH);
     } else {
       ctx.fillStyle = "#f0f0f0";
       ctx.fillRect(slotX, slotY, cellW, cellH);
@@ -197,9 +199,11 @@ export async function renderStripCanvas(
   theme,
   frameOverlaySrc,
   layoutOptions = {},
+  options = {},
 ) {
+  const bwPhotos = options.bwPhotos === true;
   if (isPlainFrame(strip) && !frameOverlaySrc) {
-    return renderPlainStripCanvas(strip, widthMm);
+    return renderPlainStripCanvas(strip, widthMm, bwPhotos);
   }
 
   const layout = getLayoutDef(strip.layoutType);
@@ -335,6 +339,7 @@ export async function renderStripCanvas(
         position.zoom ?? 1,
       );
       ctx.restore();
+      if (bwPhotos) applyBwGradeToRegion(ctx, photoX, photoY, photoW, photoH);
 
       if (borderPx > 0 && !activeTheme.photoBorderPreviewOnly) {
         ctx.save();

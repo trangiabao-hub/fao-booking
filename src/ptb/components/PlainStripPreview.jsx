@@ -7,6 +7,7 @@ import {
   getSlotCount,
   pinchDistance,
 } from "../lib/utils";
+import { BW_PREVIEW_FILTER } from "../lib/bwGrade";
 
 /**
  * Frame trơn — layout theo demo-frame; đổi màu nền + chữ brand.
@@ -25,6 +26,7 @@ export default function PlainStripPreview({
   onPinchZoom,
   readOnly = false,
   showShadow = true,
+  bwPhotos = false,
 }) {
   const fileInputRefs = useRef({});
   const pinchRef = useRef(null);
@@ -301,8 +303,8 @@ export default function PlainStripPreview({
                     alt=""
                     draggable={false}
                     className="pointer-events-none select-none"
-                    style={
-                      is1x1
+                    style={{
+                      ...(is1x1
                         ? {
                             position: "absolute",
                             top: "50%",
@@ -322,8 +324,9 @@ export default function PlainStripPreview({
                             objectPosition: `${position.x}% ${position.y}%`,
                             transform: `scale(${zoom})`,
                             transformOrigin: `${position.x}% ${position.y}%`,
-                          }
-                    }
+                          }),
+                      ...(bwPhotos ? { filter: BW_PREVIEW_FILTER } : null),
+                    }}
                   />
                   {!readOnly ? (
                     <>

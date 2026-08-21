@@ -54,21 +54,21 @@ export function getPlainFrameMetrics(layoutType, frameWidthPx = 200, opts = {}) 
   const is1x1 = type === "1x1";
   const is2x2 = type === "2x2";
   const is3x3 = type === "3x3";
-  // 3×3: gap 4px, viền ngoài 16px; có chữ → footer 46px (chữ giữa).
+  // 3×3: gap 4px, viền trên/trái/phải = gap + 2px; có chữ → footer 46px (chữ giữa).
   // Ẩn chữ: viền dưới = viền ngoài (đều 4 cạnh).
+  const gapPx = is3x3
+    ? 4
+    : Math.max(4, Math.round(heightPx * PLAIN_GAP_RATIO));
   const padPx = is3x3
-    ? 16
+    ? gapPx + 2
     : Math.max(6, Math.round(heightPx * PLAIN_PAD_RATIO));
-  const padY = is3x3 ? 16 : padPx + 2;
+  const padY = is3x3 ? gapPx + 2 : padPx + 2;
   const footerPx = showBrand
     ? is3x3
       ? 46
       : brandPx + padY
     : 0;
   const padBottom = showBrand ? 0 : is3x3 ? padPx : padY;
-  const gapPx = is3x3
-    ? 4
-    : Math.max(4, Math.round(heightPx * PLAIN_GAP_RATIO));
   const slotCount = getLayoutDef(type).slots;
 
   let boxesW;

@@ -4,36 +4,81 @@ import { Gift, ImagePlus, LayoutGrid, Printer, X } from "lucide-react";
 import { FREE_PRINT_QUOTA } from "../../lib/constants";
 import { useBodyScrollLock } from "../../../hooks/useBodyScrollLock";
 
-const STEPS = [
-  {
-    icon: LayoutGrid,
-    title: "Chọn kiểu ảnh và frame",
-    body: "Strip dọc 1×4, lưới 2×2, ảnh đơn 1×1 hoặc 9 ô trắng đen — rồi chọn frame trong kho theo chủ đề.",
+const VARIANTS = {
+  album: {
+    icon: Gift,
+    title: `Nhận ${FREE_PRINT_QUOTA} ảnh Photobooth miễn phí`,
+    intro:
+      "Ghép ảnh chuyến đi của bạn thành strip photobooth ngay trên điện thoại. Shop in thật và giao khi bạn trả máy.",
+    steps: [
+      {
+        icon: LayoutGrid,
+        title: "Chọn kiểu ảnh và frame",
+        body: "Strip dọc 1×4, lưới 2×2, ảnh đơn 1×1 hoặc 9 ô trắng đen — rồi chọn frame trong kho theo chủ đề.",
+      },
+      {
+        icon: ImagePlus,
+        title: "Thêm ảnh của bạn",
+        body: "Chạm vào từng ô trống để tải ảnh lên. Kéo để dời, chụm hai ngón để phóng to cho vừa khung.",
+      },
+      {
+        icon: Printer,
+        title: "Lưu rồi gửi in",
+        body: "Lưu strip vào Album và chọn ảnh muốn in. Shop in sẵn, giao cho bạn khi trả máy.",
+      },
+    ],
+    quotaLeft: (remaining) =>
+      `Đơn này còn ${remaining}/${FREE_PRINT_QUOTA} ảnh in miễn phí. Ghép bao nhiêu strip cũng được, chỉ tính khi bạn gửi in.`,
+    quotaOut:
+      "Đơn này đã dùng hết lượt in miễn phí. Bạn vẫn ghép và lưu ảnh thoải mái, in thêm thì trả phí tại shop.",
   },
-  {
-    icon: ImagePlus,
-    title: "Thêm ảnh của bạn",
-    body: "Chạm vào từng ô trống để tải ảnh lên. Kéo để dời, chụm hai ngón để phóng to cho vừa khung.",
-  },
-  {
+  instant: {
     icon: Printer,
-    title: "Lưu rồi gửi in",
-    body: "Lưu strip vào Album và chọn ảnh muốn in. Shop in sẵn, giao cho bạn khi trả máy.",
+    title: "Ghép ảnh Photobooth, in ngay tại shop",
+    intro:
+      "Chọn frame, thêm ảnh rồi bấm In ngay — máy in ở shop nhận liền, bạn không cần lưu Album hay đăng nhập.",
+    steps: [
+      {
+        icon: LayoutGrid,
+        title: "Chọn kiểu ảnh và frame",
+        body: "Strip dọc 1×4, lưới 2×2, ảnh đơn 1×1 hoặc 9 ô trắng đen — rồi chọn frame trong kho theo chủ đề.",
+      },
+      {
+        icon: ImagePlus,
+        title: "Thêm ảnh của bạn",
+        body: "Chạm vào từng ô trống để tải ảnh lên. Kéo để dời, chụm hai ngón để phóng to cho vừa khung.",
+      },
+      {
+        icon: Printer,
+        title: "Bấm In ngay",
+        body: "Ảnh vào thẳng hàng in của shop. Ghép tấm khác rồi in tiếp cũng được, miễn là link còn hạn.",
+      },
+    ],
+    quotaLeft: (remaining) =>
+      `Link này còn ${remaining}/${FREE_PRINT_QUOTA} ảnh in miễn phí. Ghép bao nhiêu tấm cũng được, chỉ tính khi bạn bấm In ngay.`,
+    quotaOut:
+      "Link này đã dùng hết lượt in miễn phí. Bạn vẫn ghép ảnh thoải mái, in thêm thì trả phí tại shop.",
   },
-];
+};
 
 /**
- * Màn chào khi khách mở album lần đầu — nói rõ quyền lợi trước, cách dùng sau.
+ * Màn chào khi khách mở editor — nói rõ quyền lợi trước, cách dùng sau.
  * onStartTour mở coach-mark; onStart vào thẳng editor.
+ *
+ * `variant` chọn giữa album chuyến đi (lưu rồi gửi in) và link tạm tại shop
+ * (bấm In ngay), vì hai luồng có bước cuối và cách tính lượt in khác nhau.
  */
 export default function PtbOnboardingModal({
   isOpen,
   freeRemaining,
+  variant = "album",
   onStart,
   onStartTour,
 }) {
   useBodyScrollLock(isOpen);
 
+  const copy = VARIANTS[variant] ?? VARIANTS.album;
+  const HeaderIcon = copy.icon;
   const remaining = Number.isFinite(freeRemaining)
     ? freeRemaining
     : FREE_PRINT_QUOTA;
@@ -69,23 +114,22 @@ export default function PtbOnboardingModal({
                 <X size={18} />
               </button>
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#D9488A] shadow-[0_2px_8px_rgba(217,72,138,0.18)]">
-                <Gift size={20} aria-hidden />
+                <HeaderIcon size={20} aria-hidden />
               </span>
               <h2
                 id="ptb-onboarding-title"
                 className="mt-3 pr-8 text-[19px] font-bold leading-tight text-[#3D2430]"
               >
-                Nhận {FREE_PRINT_QUOTA} ảnh Photobooth miễn phí
+                {copy.title}
               </h2>
               <p className="mt-1.5 text-[13px] font-medium leading-relaxed text-[#6E5360]">
-                Ghép ảnh chuyến đi của bạn thành strip photobooth ngay trên
-                điện thoại. Shop in thật và giao khi bạn trả máy.
+                {copy.intro}
               </p>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 [-webkit-overflow-scrolling:touch]">
               <ol className="space-y-3.5">
-                {STEPS.map((step, i) => {
+                {copy.steps.map((step, i) => {
                   const Icon = step.icon;
                   return (
                     <li key={step.title} className="flex gap-3">
@@ -110,13 +154,11 @@ export default function PtbOnboardingModal({
 
               {remaining > 0 ? (
                 <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-emerald-900">
-                  Đơn này còn {remaining}/{FREE_PRINT_QUOTA} ảnh in miễn phí.
-                  Ghép bao nhiêu strip cũng được, chỉ tính khi bạn gửi in.
+                  {copy.quotaLeft(remaining)}
                 </p>
               ) : (
                 <p className="mt-4 rounded-xl border border-[#F3D4E4] bg-[#FFF6FA] px-3.5 py-2.5 text-[12.5px] font-semibold leading-relaxed text-[#6E5360]">
-                  Đơn này đã dùng hết lượt in miễn phí. Bạn vẫn ghép và lưu ảnh
-                  thoải mái, in thêm trả phí tại shop.
+                  {copy.quotaOut}
                 </p>
               )}
             </div>

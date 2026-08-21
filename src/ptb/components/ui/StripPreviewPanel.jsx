@@ -8,6 +8,7 @@ import {
   LAYOUT_DEFS,
 } from "../../lib/constants";
 import { isPlainFrame } from "../../lib/utils";
+import BwGradeFilterDefs from "./BwGradeFilterDefs";
 import { cn } from "../../lib/theme";
 
 const LAYOUT_SIZES = ["1x4", "2x2", "1x1", "3x3"];
@@ -401,6 +402,7 @@ export default function StripPreviewPanel({
     onDragEnd,
     onPinchZoom,
     dragState,
+    bwPhotos: printBw,
   };
 
   const panelWidth = isMobile
@@ -500,8 +502,8 @@ export default function StripPreviewPanel({
               dualPreview && "shadow-[0_2px_10px_rgba(16,24,40,0.08)]",
               !previewReady && "invisible",
             )}
-            style={printBw ? { filter: "grayscale(1)" } : undefined}
           >
+            {printBw ? <BwGradeFilterDefs /> : null}
             {previewReady && previewWidth > 0 ? (
               <>
                 <StripPreview {...previewProps} showShadow={!dualPreview} />

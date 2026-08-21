@@ -8,6 +8,7 @@ import {
   isPlainFrame,
   pinchDistance,
 } from "../lib/utils";
+import { BW_PREVIEW_FILTER } from "../lib/bwGrade";
 import PlainStripPreview from "./PlainStripPreview";
 
 export default function StripPreview(props) {
@@ -32,6 +33,7 @@ function OverlayStripPreview({
   dragState,
   readOnly = false,
   showShadow = true,
+  bwPhotos = false,
 }) {
   const fileInputRefs = useRef({});
   const pinchRef = useRef(null);
@@ -223,6 +225,7 @@ function OverlayStripPreview({
                       objectPosition: `${position.x}% ${position.y}%`,
                       transform: `scale(${position.zoom ?? 1})`,
                       transformOrigin: `${position.x}% ${position.y}%`,
+                      ...(bwPhotos ? { filter: BW_PREVIEW_FILTER } : null),
                     }}
                     draggable={false}
                   />

@@ -330,32 +330,16 @@ export default function StripEditor({
         exportTheme,
         strip.frameOverlaySrc,
         layoutOptions,
+        { bwPhotos: printBw },
       );
-      let out = canvas;
-      if (printBw) {
-        const g = document.createElement("canvas");
-        g.width = canvas.width;
-        g.height = canvas.height;
-        const ctx = g.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(canvas, 0, 0);
-          const imageData = ctx.getImageData(0, 0, g.width, g.height);
-          const { data } = imageData;
-          for (let i = 0; i < data.length; i += 4) {
-            const y =
-              (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
-            data[i] = y;
-            data[i + 1] = y;
-            data[i + 2] = y;
-          }
-          ctx.putImageData(imageData, 0, 0);
-          out = g;
-        }
-      }
-      const blob = await canvasToBlob(out, { type: "image/jpeg", quality: 0.92 });
+      const blob = await canvasToBlob(canvas, {
+        type: "image/jpeg",
+        quality: 0.92,
+      });
       await onInstantPrint(blob, {
         layoutType: strip.layoutType || "1x4",
         printBw,
+        bwBaked: printBw,
         printNoCrop,
       });
     })().catch((err) => {

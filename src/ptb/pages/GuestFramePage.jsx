@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { CircleHelp } from "lucide-react";
 import {
   ensureSession,
   fetchAlbumByToken,
@@ -7,7 +8,10 @@ import {
 } from "../api/ptbApi";
 import StripEditor from "../components/StripEditor";
 import AlbumPageLayout from "../components/ui/AlbumPageLayout";
+import PtbOnboardingModal from "../components/ui/PtbOnboardingModal";
 import PtbToast from "../components/ui/PtbToast";
+import PtbTour from "../components/ui/PtbTour";
+import { PTB_INSTANT_TOUR_STEPS } from "../lib/onboarding";
 import { buildPtbPrintNote } from "../lib/printOptions";
 import { cn, ptb } from "../lib/theme";
 
@@ -38,6 +42,12 @@ export default function GuestFramePage() {
   const [toast, setToast] = useState(null);
   const [galleryTab, setGalleryTab] = useState("frames");
   const [frameDrawerOpen, setFrameDrawerOpen] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const introShownRef = useRef(false);
+  const tourTimerRef = useRef(null);
+
+  useEffect(() => () => window.clearTimeout(tourTimerRef.current), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,8 +86,25 @@ export default function GuestFramePage() {
     };
   }, [shareToken]);
 
+  // Chào mỗi lần mở link. Chốt bằng ref để lần refetch album sau khi in
+  // không bật lại modal giữa lúc khách đang ghép tấm tiếp theo.
+  useEffect(() => {
+    if (loading || !album) return;
+    if (introShownRef.current) return;
+    introShownRef.current = true;
+    setShowIntro(true);
+  }, [loading, album]);
+
   const showToast = (message, type = "success") => {
     setToast({ message, type });
+  };
+
+  const dismissIntro = () => setShowIntro(false);
+
+  const startTour = () => {
+    dismissIntro();
+    // Chờ modal trượt xuống xong rồi mới khoét sáng, tránh hai lớp overlay chồng nhau.
+    tourTimerRef.current = window.setTimeout(() => setTourOpen(true), 260);
   };
 
   const handleInstantPrint = async (blob, meta = {}) => {
@@ -92,6 +119,7 @@ export default function GuestFramePage() {
         buildPtbPrintNote({
           printBw: meta.printBw ?? printBw,
           printNoCrop: meta.printNoCrop ?? printNoCrop,
+          bwBaked: Boolean(meta.bwBaked),
           extra: "In link tạm",
         }) || "In link tạm";
       form.append("note", note);
@@ -153,13 +181,23 @@ export default function GuestFramePage() {
 
   return (
     <AlbumPageLayout reserveNav={false}>
-      <header className={cn(ptb.card, "shrink-0 px-3 py-1.5")}>
-        <p className="m-0 text-[13px] font-semibold leading-snug text-[#172033]">
+      <header
+        className={cn(ptb.card, "flex shrink-0 items-center gap-2 px-3 py-1.5")}
+      >
+        <p className="m-0 min-w-0 flex-1 truncate text-[13px] font-semibold leading-snug text-[#172033]">
           Ghép frame · in ngay
           {remain ? (
             <span className="ml-1.5 font-medium text-[#E6007E]">({remain})</span>
           ) : null}
         </p>
+        <button
+          type="button"
+          onClick={() => setShowIntro(true)}
+          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#F3D4E4] px-2.5 py-1 text-[11px] font-bold text-[#D9488A] transition-colors hover:bg-[#FDE8F0]/70"
+        >
+          <CircleHelp size={14} aria-hidden />
+          Hướng dẫn
+        </button>
       </header>
 
       <StripEditor
@@ -181,10 +219,24 @@ export default function GuestFramePage() {
         onFrameDrawerOpenChange={setFrameDrawerOpen}
       />
 
+      <PtbOnboardingModal
+        isOpen={showIntro}
+        variant="instant"
+        freeRemaining={album?.freePrintRemaining ?? 0}
+        onStart={dismissIntro}
+        onStartTour={startTour}
+      />
+
+      <PtbTour
+        open={tourOpen}
+        steps={PTB_INSTANT_TOUR_STEPS}
+        onClose={() => setTourOpen(false)}
+      />
+
       <PtbToast
         message={toast?.message}
         type={toast?.type}
-        onClose={() => setToast(null)}
+        onDismiss={() => setToast(null)}
       />
     </AlbumPageLayout>
   );
