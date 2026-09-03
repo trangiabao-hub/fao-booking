@@ -6,6 +6,7 @@ import {
   ZALO_LINK,
   PHONE_NUMBER,
 } from "../data/contactConfig";
+import { trackMetaContact } from "../lib/metaPixel";
 
 export default function FloatingContactButton() {
   const [isExpanded, setIsExpanded] = React.useState(false);
@@ -23,6 +24,7 @@ export default function FloatingContactButton() {
             href={MESSENGER_LINK}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => trackMetaContact("messenger_floating")}
             className="flex items-center gap-2 bg-[#0084FF] text-white px-4 py-3 rounded-full shadow-lg shadow-blue-500/30 hover:bg-[#006edc] transition-all active:scale-95"
           >
             <ChatBubbleLeftRightIcon className="w-5 h-5" />
@@ -33,6 +35,7 @@ export default function FloatingContactButton() {
             href={ZALO_LINK}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => trackMetaContact("zalo_floating")}
             className="flex items-center gap-2 bg-blue-500 text-white px-4 py-3 rounded-full shadow-lg shadow-blue-500/30 hover:bg-blue-600 transition-all active:scale-95"
           >
             <ChatBubbleLeftRightIcon className="w-5 h-5" />
@@ -41,6 +44,7 @@ export default function FloatingContactButton() {
 
           <a
             href={`tel:${PHONE_NUMBER}`}
+            onClick={() => trackMetaContact("phone_floating")}
             className="flex items-center gap-2 bg-green-500 text-white px-4 py-3 rounded-full shadow-lg shadow-green-500/30 hover:bg-green-600 transition-all active:scale-95"
           >
             <PhoneIcon className="w-5 h-5" />

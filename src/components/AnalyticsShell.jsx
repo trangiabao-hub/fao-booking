@@ -7,9 +7,10 @@ import {
   captureTrafficAttribution,
   trackContentToCatalog,
 } from "../lib/bookingAnalytics";
+import { initMetaPixelIfConfigured, trackMetaPageView } from "../lib/metaPixel";
 
 /**
- * Bọc toàn bộ route fao-booking: gửi PAGE_VIEW mỗi khi đổi URL.
+ * Bọc toàn bộ route fao-booking: gửi PAGE_VIEW mỗi khi đổi URL (và PageView cho Meta Pixel).
  */
 export default function AnalyticsShell() {
   const location = useLocation();
@@ -23,6 +24,8 @@ export default function AnalyticsShell() {
     if (location.pathname === "/catalog") {
       trackContentToCatalog();
     }
+    initMetaPixelIfConfigured();
+    trackMetaPageView();
   }, [location.pathname, location.search]);
 
   useEffect(() => {

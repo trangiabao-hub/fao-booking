@@ -399,9 +399,9 @@ function renderMiniChip(label, original) {
   return `<div class="price-mini-chip"><em>${escapeHtml(label)}</em><span class="price-was">${escapeHtml(formatVnd(original))}</span><strong>${escapeHtml(formatVnd(sale))}</strong></div>`;
 }
 
-function renderPriceCardImage(m, tilt = 0) {
+function renderPriceCardImage(m) {
   if (!m.image) return "";
-  return `<div class="price-card-photo" style="--img-tilt:${tilt}deg" aria-hidden="true"><img src="${escapeHtml(m.image)}" alt="" loading="lazy" decoding="async" width="160" height="120" /></div>`;
+  return `<div class="price-card-photo" aria-hidden="true"><img src="${escapeHtml(m.image)}" alt="" loading="lazy" decoding="async" width="160" height="120" /></div>`;
 }
 
 function renderModelThumb(m) {
@@ -413,12 +413,16 @@ function renderPricePageScript() {
   return `<script>
 (function(){
   var search=document.getElementById("price-search");
+  var sortBtn=document.getElementById("price-sort");
+  var emptyState=document.getElementById("price-empty");
   var chips=document.querySelectorAll(".brand-jump [data-brand]");
   var sections=document.querySelectorAll(".brand-section");
   function norm(s){return (s||"").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"");}
   var activeBrand="all";
+  var sortMode="default";
   function filter(){
     var q=norm(search?search.value:"");
+    var anyVisibleTotal=false;
     sections.forEach(function(sec){
       var secBrand=sec.dataset.brand||"";
       var secMatch=!activeBrand||activeBrand==="all"||secBrand===activeBrand;
@@ -430,6 +434,26 @@ function renderPricePageScript() {
         if(show)anyVisible=true;
       });
       sec.style.display=anyVisible?"":"none";
+      if(anyVisible)anyVisibleTotal=true;
+    });
+    if(emptyState)emptyState.hidden=anyVisibleTotal;
+  }
+  function sortSection(container,selector){
+    var items=Array.prototype.slice.call(container.querySelectorAll(selector));
+    if(!items.length)return;
+    items.sort(function(a,b){
+      var pa=parseInt(a.dataset.price,10)||0;
+      var pb=parseInt(b.dataset.price,10)||0;
+      return sortMode==="desc"?pb-pa:pa-pb;
+    });
+    items.forEach(function(el){container.appendChild(el);});
+  }
+  function applySort(){
+    sections.forEach(function(sec){
+      var cardsWrap=sec.querySelector(".price-cards");
+      var tbody=sec.querySelector("tbody");
+      if(cardsWrap)sortSection(cardsWrap,".price-card");
+      if(tbody)sortSection(tbody,"tr");
     });
   }
   chips.forEach(function(chip){
@@ -444,6 +468,12 @@ function renderPricePageScript() {
     });
   });
   if(search)search.addEventListener("input",filter);
+  if(sortBtn)sortBtn.addEventListener("click",function(){
+    sortMode=sortMode==="asc"?"desc":"asc";
+    sortBtn.textContent=sortMode==="asc"?"Giá ↑":"Giá ↓";
+    sortBtn.classList.add("active");
+    applySort();
+  });
 })();
 </script>`;
 }
@@ -502,32 +532,40 @@ function renderPriceIndexPage(models) {
         `${m.displayName} ${m.brandLabel || ""} ${m.categoryName || ""}`.toLowerCase();
 
       const mobileCards = list
-        .map((m, i) => {
-          const tilt = i % 2 === 0 ? -7 : 5;
-          return `<a class="price-card${m.image ? " has-img" : ""}" href="/${escapeHtml(m.slug)}/" data-search="${escapeHtml(searchKey(m))}">
-            <div class="price-card-inner">
-              ${renderPriceCardImage(m, tilt)}
-              <div class="price-card-body">
-                <div class="price-card-top">
-                  <span class="price-card-name">${escapeHtml(m.displayName)}</span>
-                  <span class="price-disc-badge">-20%</span>
-                </div>
-                <div class="price-card-hero">${renderPriceHero(m.priceOneDay)}</div>
-                <div class="price-chip-row">
-                  ${renderMiniChip("6 tiếng", m.priceSixHours)}
-                  ${renderMiniChip("2 ngày", m.priceTwoDay)}
-                  ${renderMiniChip("3 ngày", m.priceThreeDay)}
+        .map((m) => {
+          const bookHref = deviceBookHref(m, "bang-gia-thue-may-anh");
+          const salePrice = discountPrice(m.priceOneDay);
+          return `<div class="price-card${m.image ? " has-img" : ""}" data-search="${escapeHtml(searchKey(m))}" data-price="${salePrice || m.priceOneDay || 0}">
+            <a class="price-card-link" href="/${escapeHtml(m.slug)}/">
+              <div class="price-card-inner">
+                ${renderPriceCardImage(m)}
+                <div class="price-card-body">
+                  <div class="price-card-top">
+                    <span class="price-card-name">${escapeHtml(m.displayName)}</span>
+                    <span class="price-disc-badge">-20%</span>
+                  </div>
+                  <div class="price-card-hero">${renderPriceHero(m.priceOneDay)}</div>
+                  <div class="price-chip-row">
+                    ${renderMiniChip("6 tiếng", m.priceSixHours)}
+                    ${renderMiniChip("2 ngày", m.priceTwoDay)}
+                    ${renderMiniChip("3 ngày", m.priceThreeDay)}
+                  </div>
                 </div>
               </div>
+            </a>
+            <div class="price-card-actions">
+              <a class="price-card-detail" href="/${escapeHtml(m.slug)}/">Chi tiết</a>
+              <a class="price-card-book" href="${escapeHtml(bookHref)}" data-catalog-book="1">Đặt lịch →</a>
             </div>
-          </a>`;
+          </div>`;
         })
         .join("");
 
       const rows = list
         .map((m) => {
           const bookHref = deviceBookHref(m, "bang-gia-thue-may-anh");
-          return `<tr data-search="${escapeHtml(searchKey(m))}">
+          const salePrice = discountPrice(m.priceOneDay);
+          return `<tr data-search="${escapeHtml(searchKey(m))}" data-price="${salePrice || m.priceOneDay || 0}">
               <td class="model-cell"><a href="/${escapeHtml(m.slug)}/" class="model-link">${renderModelThumb(m)}<span>${escapeHtml(m.displayName)}</span></a></td>
               <td class="price">${renderPriceCell(m.priceSixHours)}</td>
               <td class="price">${renderPriceCell(m.priceOneDay)}</td>
@@ -593,12 +631,16 @@ function renderPriceIndexPage(models) {
         </div>
         <p class="price-meta-line">${models.length} model · <strong>${escapeHtml(formatVnd(minSale))} – ${escapeHtml(formatVnd(maxSale))}/ngày</strong> <span style="opacity:.75">(giá gốc ${escapeHtml(formatVnd(minPrice))} – ${escapeHtml(formatVnd(maxPrice))})</span></p>
         <div class="price-toolbar" id="price-toolbar">
-          <input type="search" id="price-search" placeholder="Tìm model (VD: G7X, X100V, R50)…" autocomplete="off" enterkeyhint="search" />
+          <div class="price-toolbar-row">
+            <input type="search" id="price-search" placeholder="Tìm model (VD: G7X, X100V, R50)…" autocomplete="off" enterkeyhint="search" />
+            <button type="button" id="price-sort" class="price-sort-btn" data-sort="default" aria-label="Sắp xếp theo giá">Giá ↕</button>
+          </div>
           <div class="brand-jump" role="tablist" aria-label="Lọc theo hãng">
             <button type="button" class="active" data-brand="all">Tất cả</button>
             ${brandJump}
           </div>
         </div>
+        <p class="price-empty-state" id="price-empty" hidden>Không tìm thấy model phù hợp. Thử từ khóa khác hoặc <a href="/catalog">xem toàn bộ catalog</a>.</p>
         ${brandSections}
         <details class="price-seo-extra">
           <summary>Thông tin thêm · chi nhánh · chính sách</summary>

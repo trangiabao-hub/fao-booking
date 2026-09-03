@@ -4,6 +4,7 @@ import {
   captureTrafficAttribution,
   loadTrafficAttribution,
 } from "./trafficAttribution";
+import { trackMetaInitiateCheckout, trackMetaPurchase } from "./metaPixel";
 
 const VISITOR_KEY = "fao_booking_visitor_id";
 
@@ -103,6 +104,11 @@ export function trackCatalogBookClick(device, source) {
     deviceLabel: device.displayName || device.name || "",
     metaJson: JSON.stringify({ source: source || "catalog" }),
   });
+  trackMetaInitiateCheckout({
+    content_name: device.displayName || device.name || "",
+    content_category: "camera_rental",
+    content_ids: device.id != null ? [String(device.id)] : undefined,
+  });
 }
 
 export function trackBookingCheckoutStart(device, meta) {
@@ -130,6 +136,20 @@ export function trackBookingOrderPaid(details = {}) {
       deviceCount: details.deviceCount ?? null,
     },
   });
+
+  // eventId trùng với sự kiện Purchase server-side bắn từ webhook PayOS (PaymentService) để
+  // Meta tự dedup — không đếm trùng nếu cả hai đường cùng tới.
+  const orderRef = details.orderIdNew || details.orderCode;
+  trackMetaPurchase(
+    {
+      value: details.total ?? undefined,
+      currency: "VND",
+      content_ids: orderRef != null ? [String(orderRef)] : undefined,
+      content_category: "camera_rental",
+      num_items: details.deviceCount || 1,
+    },
+    orderRef != null ? { eventId: `purchase_${orderRef}` } : {},
+  );
 }
 
 /** User từ trang nội dung (SEO/blog) vào catalog — có thể gọi khi detect utm trên /catalog. */

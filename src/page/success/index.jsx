@@ -18,6 +18,7 @@ import SlideNav from "../../components/SlideNav";
 import PhotoboothGiftBlock from "../../components/PhotoboothGiftBlock";
 import { saveRecentOrder, loadCustomerInfo } from "../../utils/storage";
 import { trackBookingOrderPaid } from "../../lib/bookingAnalytics";
+import { trackMetaContact } from "../../lib/metaPixel";
 import {
   inferOrderBookingBranchId,
   normalizeBookingBranchId,
@@ -129,6 +130,7 @@ function SuccessCard({ details }) {
 
   const handleMessengerClick = async () => {
     if (!details) return;
+    trackMetaContact("messenger_post_purchase");
     const message = buildOrderSummaryText(details);
     try {
       await navigator.clipboard.writeText(message);
@@ -404,6 +406,7 @@ function OrderCreationFailCard({ details }) {
   const amount = details?.amount;
 
   const handleMessengerClick = async () => {
+    trackMetaContact("messenger_order_issue");
     const lines = [
       "Xin chào shop,",
       "",
