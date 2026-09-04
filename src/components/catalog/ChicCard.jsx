@@ -49,6 +49,12 @@ function ChicCardInner({
           .trim()
       : "";
 
+  /**
+   * Đã chốt khung giờ nhưng chưa có kết quả trống/bận.
+   * Không phải "hết máy" — chỉ là chưa biết, nên card đứng yên ở trạng thái
+   * kiểm tra thay vì mời khách bấm đặt.
+   */
+  const availabilityUnknown = device.availabilityUnknown === true;
   const isAvailable = device.isAvailable !== false;
   const blockedBeforeRelease = device.blockedBeforeRelease === true;
   const releaseDay = blockedBeforeRelease
@@ -94,10 +100,10 @@ function ChicCardInner({
   const handleQuickBook = useCallback(
     (e) => {
       e.stopPropagation();
-      if (!isAvailable) return;
+      if (!isAvailable || availabilityUnknown) return;
       onQuickBook(device);
     },
-    [device, isAvailable, onQuickBook],
+    [device, isAvailable, availabilityUnknown, onQuickBook],
   );
 
   const handleSuggestedQuickBook = useCallback(
@@ -122,10 +128,10 @@ function ChicCardInner({
   const handleToggleSelect = useCallback(
     (e) => {
       e.stopPropagation();
-      if (!isAvailable) return;
+      if (!isAvailable || availabilityUnknown) return;
       onToggleSelect?.(device);
     },
-    [device, isAvailable, onToggleSelect],
+    [device, isAvailable, availabilityUnknown, onToggleSelect],
   );
 
   const handleNotifyWaitlistClick = useCallback(
@@ -222,7 +228,10 @@ function ChicCardInner({
           />
 
           <div className="absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2 p-2.5">
-            {isAvailable && onToggleSelect && !device.crossBranchOnly ? (
+            {isAvailable &&
+            !availabilityUnknown &&
+            onToggleSelect &&
+            !device.crossBranchOnly ? (
               <button
                 type="button"
                 onClick={handleToggleSelect}
@@ -337,7 +346,15 @@ function ChicCardInner({
           </div>
 
           <div className="flex flex-col gap-2.5">
-            {!isAvailable &&
+            {availabilityUnknown ? (
+              <div
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#f5d7e6] bg-[#fdf2f8] px-3 py-3 text-xs font-black uppercase leading-tight tracking-[0.07em] text-[#b07a97] sm:text-[13px]"
+                aria-live="polite"
+              >
+                <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[#f0c3da] border-t-[#E85C9C]" />
+                Đang kiểm tra…
+              </div>
+            ) : !isAvailable &&
             !hasSixHourChoices &&
             !hasSuggestedSlot &&
             !blockedBeforeRelease &&
@@ -426,6 +443,8 @@ function chicPropsEqual(prev, next) {
   if (prev.priceFootnote !== next.priceFootnote) return false;
   if (prev.cardAnchorId !== next.cardAnchorId) return false;
   if (prev.device?.isAvailable !== next.device?.isAvailable) return false;
+  if (prev.device?.availabilityUnknown !== next.device?.availabilityUnknown)
+    return false;
   if (prev.device?.blockedBeforeRelease !== next.device?.blockedBeforeRelease)
     return false;
   if (prev.device?.displayName !== next.device?.displayName) return false;

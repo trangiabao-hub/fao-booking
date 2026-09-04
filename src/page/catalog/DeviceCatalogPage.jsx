@@ -280,6 +280,7 @@ export default function DeviceCatalogPage() {
     availabilityError,
     setAvailabilityError,
     availabilityLoading,
+    availabilityReady,
     busyDeviceIds,
     otherBranchesBusyIds,
     deviceBookingsById,
@@ -657,6 +658,12 @@ export default function DeviceCatalogPage() {
     return `từ ${formatTimeVi(from)} ${dm(from)} đến ${formatTimeVi(to)} ${dm(to)}`;
   }, [availabilityRange]);
 
+  /**
+   * Đã xác nhận khung giờ nhưng chưa có kết quả trống/bận → trạng thái "chưa biết".
+   * Không được render như còn trống (khách bấm đặt nhầm máy đã có người thuê).
+   */
+  const availabilityPending = availabilityConfirmed && !availabilityReady;
+
   // Process devices: group by modelKey, keep 1 representative per model
   // Trống trong khung giờ: theo máy vật lý tại chi nhánh đã chọn (booking API có branchId).
   // model-availability-suggestions không gắn chi nhánh — không dùng available:true của API để báo trống khi totalAvailable === 0.
@@ -826,6 +833,7 @@ export default function DeviceCatalogPage() {
         bookingCount: totalBookingCount,
         availableCount: totalAvailable,
         isAvailable,
+        availabilityUnknown: availabilityPending,
         availabilitySuggestion,
         groupDeviceIds: new Set(
           group
@@ -842,6 +850,7 @@ export default function DeviceCatalogPage() {
     busyDeviceIds,
     modelAvailabilitySuggestions,
     availabilityConfirmed,
+    availabilityPending,
     availabilityPrefs,
     deviceBookingsById,
     deviceRawBookingsById,

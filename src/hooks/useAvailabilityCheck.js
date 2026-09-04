@@ -22,6 +22,11 @@ export function useAvailabilityCheck({
 }) {
   const [availabilityError, setAvailabilityError] = useState("");
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  /**
+   * Đã có dữ liệu trống/bận khớp với prefs hiện tại chưa.
+   * Chưa ready = "chưa biết" — không được render như "còn trống".
+   */
+  const [availabilityReady, setAvailabilityReady] = useState(false);
   const [busyDeviceIds, setBusyDeviceIds] = useState([]);
   const [otherBranchesBusyIds, setOtherBranchesBusyIds] = useState({});
   const [deviceBookingsById, setDeviceBookingsById] = useState({});
@@ -35,6 +40,8 @@ export function useAvailabilityCheck({
     async ({ silent = false } = {}) => {
       if (!availabilityConfirmed) return;
       const gen = ++fetchGeneration.current;
+      // Prefs đổi → dữ liệu cũ không còn khớp khung giờ mới.
+      if (!silent) setAvailabilityReady(false);
 
       const { fromDateTime, toDateTime } =
         computeAvailabilityRange(availabilityPrefs);
@@ -104,6 +111,9 @@ export function useAvailabilityCheck({
         setDeviceBookingsById(bookingMap);
         setDeviceRawBookingsById(rawBookingMap);
         setModelAvailabilitySuggestions(suggestionResp.data || {});
+        // Đủ dữ liệu chi nhánh đang chọn → card hiện trống/bận đúng ngay,
+        // không cần chờ vòng cross-branch bên dưới.
+        setAvailabilityReady(true);
 
         const pickupDay = normalizeDate(fromDateTime);
         const currentBid = normalizeBookingBranchId(availabilityPrefs.branchId);
@@ -158,6 +168,9 @@ export function useAvailabilityCheck({
           setDeviceRawBookingsById({});
           setModelAvailabilitySuggestions({});
           setOtherBranchesBusyIds({});
+          // Lỗi thì thôi không giữ card ở trạng thái skeleton — đã có
+          // availabilityError hiển thị cho khách.
+          setAvailabilityReady(true);
         }
       } finally {
         if (gen === fetchGeneration.current && !silent) {
@@ -171,6 +184,7 @@ export function useAvailabilityCheck({
   useEffect(() => {
     if (!availabilityConfirmed) {
       setAvailabilityLoading(false);
+      setAvailabilityReady(false);
       return;
     }
     fetchAvailability();
@@ -180,6 +194,7 @@ export function useAvailabilityCheck({
     availabilityError,
     setAvailabilityError,
     availabilityLoading,
+    availabilityReady,
     busyDeviceIds,
     setBusyDeviceIds,
     otherBranchesBusyIds,
