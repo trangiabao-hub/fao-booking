@@ -2328,14 +2328,22 @@ export default function QuickBookModal({
       return;
     }
 
-    const nextAgreementErrors = {
-      noScamElsewhere: !agreeNoScamElsewhere,
-      pickupInPersonAtBranch: !agreePickupInPersonAtBranch,
-      depositMethod: !isShopPartner && !selectedDepositMethod,
-      cccdPerDevice:
-        effectiveDevices.length >= 2 && !agreeCccdPerDevice,
-      rentalRules: !agreeRentalRules,
-    };
+    const nextAgreementErrors = isShopPartner
+      ? {
+          noScamElsewhere: false,
+          pickupInPersonAtBranch: false,
+          depositMethod: false,
+          cccdPerDevice: false,
+          rentalRules: false,
+        }
+      : {
+          noScamElsewhere: !agreeNoScamElsewhere,
+          pickupInPersonAtBranch: !agreePickupInPersonAtBranch,
+          depositMethod: !selectedDepositMethod,
+          cccdPerDevice:
+            effectiveDevices.length >= 2 && !agreeCccdPerDevice,
+          rentalRules: !agreeRentalRules,
+        };
     if (
       nextAgreementErrors.noScamElsewhere ||
       nextAgreementErrors.pickupInPersonAtBranch ||
@@ -3263,8 +3271,11 @@ export default function QuickBookModal({
                   </div>
                 </div>
 
-                <PhotoboothGiftBlock branchId={selectedBranch} variant="compact" />
+                {!isShopPartner && (
+                  <PhotoboothGiftBlock branchId={selectedBranch} variant="compact" />
+                )}
 
+                {!isShopPartner && (
                 <div
                   ref={agreementSectionRef}
                   className="space-y-2 rounded-2xl bg-white px-4 py-3.5 ring-1 ring-black/[0.06]"
@@ -3411,6 +3422,7 @@ export default function QuickBookModal({
                     </span>
                   </label>
                 </div>
+                )}
                 {error && (
                   <div className="p-3.5 bg-red-50 text-red-800 rounded-xl text-[13px] font-semibold leading-relaxed border border-red-200/90">
                     {error}
