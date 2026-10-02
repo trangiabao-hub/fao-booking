@@ -287,6 +287,41 @@ function calculateTetComboPrice(basePrice, start, end, userVoucher) {
   return totalCost;
 }
 
+/** Shop đối tác: T2–T6 −25%, T7/CN −5%, ngày lễ không giảm, Tết −30% như khách thường. */
+export const SHOP_PARTNER_VOUCHER = "SHOP_PARTNER";
+
+function shopPartnerDayMultiplier(day) {
+  if (TET_DAYS.includes(day.format("YYYY-MM-DD"))) return 0.7;
+  if (isHoliday(day)) return 1;
+  const dow = day.day();
+  if (dow === 0 || dow === 6) return 0.95;
+  return 0.75;
+}
+
+function calculateShopPartnerPrice(basePrice, start, end) {
+  if (end.diff(start, "hour") < 23) {
+    return basePrice * shopPartnerDayMultiplier(start);
+  }
+  const range = getAdjustedRange(start, end);
+  if (!range) return basePrice;
+  const [adjStart, adjEnd] = range;
+  if (!adjStart?.isValid?.() || !adjEnd?.isValid?.() || adjEnd.isBefore(adjStart)) {
+    return basePrice;
+  }
+  let days = 0;
+  let multiplierSum = 0;
+  let cur = adjStart.clone();
+  let safety = 0;
+  while (!cur.isAfter(adjEnd)) {
+    multiplierSum += shopPartnerDayMultiplier(cur);
+    days++;
+    cur = cur.add(1, "day");
+    if (++safety > 10000) break;
+  }
+  if (days === 0) return basePrice;
+  return (basePrice / days) * multiplierSum;
+}
+
 /**
  * Giống fao calculateFinalPrice — basePrice đã round nghìn (như original sau computePricing).
  */
@@ -301,6 +336,10 @@ export function calculateFinalPrice(basePrice, rentalPeriod, voucher) {
 
   if (!start?.isValid() || !end?.isValid() || !end.isAfter(start)) {
     return roundDownToThousand(basePrice);
+  }
+
+  if (voucher === SHOP_PARTNER_VOUCHER) {
+    return roundDownToThousand(calculateShopPartnerPrice(basePrice, start, end));
   }
 
   let finalPrice;
@@ -438,6 +477,25 @@ export function computePricing({
 
   const final = calculateFinalPrice(original, validPeriod, voucher);
   return { chargeableDays, original, final };
+}
+
+/** Giá shop đối tác cho một máy — cùng shape với computeDiscountBreakdown. */
+export function computeShopPartnerBreakdown(basePrice, startDateTime, endDateTime) {
+  if (basePrice == null || isNaN(basePrice) || basePrice <= 0) return null;
+  const start = dayjs(startDateTime);
+  const end = dayjs(endDateTime);
+  const original = roundDownToThousand(basePrice);
+  if (!start.isValid() || !end.isValid() || !end.isAfter(start)) {
+    return { original, discount: 0, discounted: original, discountLabel: null };
+  }
+  const discounted = calculateFinalPrice(original, [start, end], SHOP_PARTNER_VOUCHER);
+  const discount = Math.max(0, original - discounted);
+  return {
+    original,
+    discount,
+    discounted,
+    discountLabel: discount > 0 ? "Giá đối tác shop (T2–T6 −25%, T7/CN −5%)" : null,
+  };
 }
 
 /**

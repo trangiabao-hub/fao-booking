@@ -25,6 +25,8 @@ import {
   parsePayOsCodeFromNote,
 } from "../../utils/orderSummary";
 import { inferBookingBranchId } from "../../utils/deviceBranch";
+import { useShopMembership } from "../../hooks/useShopMembership";
+import ShopPartnerOrders from "./ShopPartnerOrders";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -190,6 +192,8 @@ export default function AccountBookingsPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const hasSession = !!loadCustomerSession()?.token;
+  const { shop, loading: shopLoading } = useShopMembership(hasSession);
+  const isShopView = hasSession && !!shop;
 
   const tabCounts = useMemo(() => {
     return {
@@ -308,6 +312,23 @@ export default function AccountBookingsPage() {
     pendingOrder?.orderIdNew,
     pendingOrder?.failed,
   ]);
+
+  if (hasSession && (shopLoading || isShopView)) {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff8fb_0%,_#fdf2f7_35%,_#f8efe8_100%)] px-3 py-5 pb-32 md:px-4 md:py-6 md:pb-36 lg:pb-28">
+        <SlideNav />
+        <div className="mx-auto max-w-6xl lg:max-w-7xl">
+          {isShopView ? (
+            <ShopPartnerOrders shop={shop} />
+          ) : (
+            <div className="mt-5 rounded-[28px] border border-white/70 bg-white/85 p-5 text-sm text-[#666] shadow-[0_10px_30px_rgba(20,20,20,0.05)]">
+              Đang tải đơn hàng...
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fff8fb_0%,_#fdf2f7_35%,_#f8efe8_100%)] px-3 py-5 pb-32 md:px-4 md:py-6 md:pb-36 lg:pb-28">

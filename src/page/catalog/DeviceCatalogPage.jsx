@@ -36,10 +36,12 @@ import BookingPrefsForm, {
   STALE_AVAILABILITY_SLOT_MESSAGE,
 } from "../../components/BookingPrefsForm";
 import {
-  computeDiscountBreakdown,
+  computeDiscountBreakdown as computeDiscountBreakdownForCustomer,
+  computeShopPartnerBreakdown,
   calculateRentalInfo,
   roundDownToThousand,
 } from "../../utils/pricing";
+import { useShopMembership } from "../../hooks/useShopMembership";
 import { formatPriceK, computeQ9BranchFlatDiscountVnd, isQ9MayPromoEligible } from "../../utils/bookingHelpers";
 import { BRANCHES, isBranchBookable } from "../../data/bookingConstants";
 import {
@@ -1305,7 +1307,13 @@ export default function DeviceCatalogPage() {
     };
   }, [availabilityPrefs]);
 
+  const { shop: shopPartner } = useShopMembership(
+    !!loadCustomerSession()?.token,
+  );
+  const isShopPartner = !!shopPartner;
+
   const catalogPriceFootnote = useMemo(() => {
+    if (isShopPartner) return `Giá đối tác ${shopPartner.shopName} · trả sau`;
     if (normalizeBookingBranchId(availabilityPrefs.branchId) !== "Q9") {
       return "Giá đã áp dụng ưu đãi trong tuần";
     }
@@ -1313,11 +1321,14 @@ export default function DeviceCatalogPage() {
     return isQ9MayPromoEligible(fromDateTime, toDateTime)
       ? "Giảm sốc mừng khai trương"
       : "Giá đã áp dụng ưu đãi trong tuần";
-  }, [availabilityPrefs.branchId, pricingContext]);
+  }, [availabilityPrefs.branchId, pricingContext, isShopPartner, shopPartner]);
 
   const getDevicePricing = useCallback(
     (device, opts = {}) => {
-      const skipQ9 = opts.skipQ9BranchPromo === true;
+      const computeDiscountBreakdown = isShopPartner
+        ? computeShopPartnerBreakdown
+        : computeDiscountBreakdownForCustomer;
+      const skipQ9 = isShopPartner || opts.skipQ9BranchPromo === true;
       const branchNorm = normalizeBookingBranchId(availabilityPrefs.branchId);
       const applyQ9ListPrice = (row) => {
         const o = row.original ?? 0;
@@ -1447,7 +1458,7 @@ export default function DeviceCatalogPage() {
         billableDays,
       });
     },
-    [pricingContext, availabilityPrefs.branchId],
+    [pricingContext, availabilityPrefs.branchId, isShopPartner],
   );
 
   // Build merged categories: builtin + API dynamic categories
@@ -2741,7 +2752,11 @@ export default function DeviceCatalogPage() {
                               pricing={getDevicePricing(device, {
                                 skipQ9BranchPromo: true,
                               })}
-                              priceFootnote="Giá đã áp dụng ưu đãi trong tuần"
+                              priceFootnote={
+                                isShopPartner
+                                  ? catalogPriceFootnote
+                                  : "Giá đã áp dụng ưu đãi trong tuần"
+                              }
                               onQuickBook={handleQuickBook}
                               onSuggestedQuickBook={handleSuggestedQuickBook}
                               onNotifyWaitlist={handleNotifyWaitlistClick}

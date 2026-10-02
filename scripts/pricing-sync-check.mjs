@@ -109,6 +109,41 @@ const CASES = [
     voucher: "50_PERCENT_WEEKDAY",
     expect: { original: 640000, final: 400000, days: 4 },
   },
+  {
+    name: "Shop đối tác 3 ngày T4–T6 (−25%)",
+    start: "2026-06-16T19:00:00+07:00",
+    end: "2026-06-19T19:00:00+07:00",
+    voucher: "SHOP_PARTNER",
+    expect: { original: 490000, final: 367000, days: 3 },
+  },
+  {
+    name: "Shop đối tác 4 ngày có T7 (3×−25% + 1×−5%)",
+    start: "2026-06-16T19:00:00+07:00",
+    end: "2026-06-20T19:00:00+07:00",
+    voucher: "SHOP_PARTNER",
+    expect: { original: 640000, final: 512000, days: 4 },
+  },
+  {
+    name: "Shop đối tác thuê ngắn T4 (−25%)",
+    start: "2026-06-17T10:00:00+07:00",
+    end: "2026-06-17T20:00:00+07:00",
+    voucher: "SHOP_PARTNER",
+    expect: { original: 150000, final: 112000, days: 0.5 },
+  },
+  {
+    name: "Shop đối tác thuê ngắn T7 (−5%)",
+    start: "2026-06-20T10:00:00+07:00",
+    end: "2026-06-20T20:00:00+07:00",
+    voucher: "SHOP_PARTNER",
+    expect: { original: 150000, final: 142000, days: 0.5 },
+  },
+  {
+    name: "Shop đối tác ngày lễ 2/9 (không giảm)",
+    start: "2026-09-02T09:00:00+07:00",
+    end: "2026-09-03T09:00:00+07:00",
+    voucher: "SHOP_PARTNER",
+    expect: { original: 180000, final: 180000, days: 1 },
+  },
 ];
 
 let failed = 0;

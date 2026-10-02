@@ -73,7 +73,12 @@ import {
   computeTotalSpentFromBookings,
   memberTierKeyFromTotalSpent,
 } from "../utils/loyaltyEarn";
-import { calculateRentalInfo, roundDownToThousand } from "../utils/pricing";
+import {
+  calculateRentalInfo,
+  computeShopPartnerBreakdown,
+  roundDownToThousand,
+} from "../utils/pricing";
+import { useShopMembership } from "../hooks/useShopMembership";
 import { getStrictestReleaseDate } from "../utils/deviceReleaseDate";
 import {
   formatPickupMomentVi,
@@ -631,6 +636,21 @@ function CheckoutSection({ title, subtitle, badge, children, error = false }) {
       </div>
       {children}
     </section>
+  );
+}
+
+function ShopPartnerNotice({ shopName }) {
+  return (
+    <CheckoutSection
+      title={`Đối tác · ${shopName}`}
+      subtitle="Không cần cọc — đặt lịch giữ máy, thanh toán sau."
+    >
+      <ul className="space-y-1.5 px-4 pb-3.5 pt-3 text-[12.5px] leading-snug text-[#55504b]">
+        <li>• Giá đối tác: T2–T6 giảm 25%, T7/CN giảm 5% (ngày lễ giữ giá gốc).</li>
+        <li>• Lịch được giữ ngay sau khi đặt, đơn hiện ở mục “Chưa thanh toán”.</li>
+        <li>• Thanh toán gộp nhiều đơn online trong trang Đơn của tôi.</li>
+      </ul>
+    </CheckoutSection>
   );
 }
 
@@ -1339,6 +1359,8 @@ export default function QuickBookModal({
   const [memberTotalSpent, setMemberTotalSpent] = useState(0);
   const [memberPoint, setMemberPoint] = useState(0);
   const [pointToUse, setPointToUse] = useState(0);
+  const { shop: shopPartner } = useShopMembership(isOpen && hasGoogleSession);
+  const isShopPartner = hasGoogleSession && !!shopPartner;
   const [isMemberDataLoading, setIsMemberDataLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1568,6 +1590,12 @@ export default function QuickBookModal({
   }, [hasInitialPrefs, pricing?.discounted, pricing?.original, price]);
 
   const discountedTotal = useMemo(() => {
+    if (isShopPartner) {
+      return rentalInfoPerDevice.reduce((sum, r) => {
+        const b = computeShopPartnerBreakdown(r?.price || 0, t1, t2);
+        return sum + (b ? b.discounted : 0);
+      }, 0);
+    }
     if (
       selectedBranch === "Q9" &&
       price > 0 &&
@@ -1586,6 +1614,7 @@ export default function QuickBookModal({
     if (catalogPricingStillValid) return pricing.discounted;
     return computeDiscountedPrice(price, t1, t2);
   }, [
+    isShopPartner,
     selectedBranch,
     isMulti,
     catalogPricingStillValid,
@@ -1613,7 +1642,22 @@ export default function QuickBookModal({
     const savingVsRetail = Math.max(0, retailPrice - packagePrice);
 
     let base = null;
-    if (selectedBranch === "Q9" && price > 0 && isValidDateRange(t1, t2)) {
+    if (isShopPartner && price > 0 && isValidDateRange(t1, t2)) {
+      const original = rentalInfoPerDevice.reduce(
+        (s, r) => s + roundDownToThousand(r?.price || 0),
+        0,
+      );
+      const discount = Math.max(0, original - discountedTotal);
+      base = {
+        original,
+        discount,
+        discounted: discountedTotal,
+        discountLabel:
+          discount > 0
+            ? `Giá đối tác ${shopPartner.shopName} (T2–T6 −25%, T7/CN −5%)`
+            : null,
+      };
+    } else if (selectedBranch === "Q9" && price > 0 && isValidDateRange(t1, t2)) {
       base = computeQ9BranchDiscountBreakdown(price, t1, t2);
     } else if (catalogPricingStillValid) {
       const discount = Math.max(0, pricing.original - pricing.discounted);
@@ -1647,6 +1691,9 @@ export default function QuickBookModal({
     rentalInfoPerDevice,
     chargeableDays,
     selectedBranch,
+    isShopPartner,
+    shopPartner,
+    discountedTotal,
   ]);
 
   const durationDays = chargeableDays;
@@ -2200,12 +2247,12 @@ export default function QuickBookModal({
     [price, basePromotionDiscount, upsellTotal],
   );
   const maxPointToUse = useMemo(() => {
-    if (!hasGoogleSession) return 0;
+    if (!hasGoogleSession || isShopPartner) return 0;
     return Math.max(
       0,
       Math.min(Math.floor(payableBeforePoint / 1000), Math.floor(memberPoint)),
     );
-  }, [hasGoogleSession, payableBeforePoint, memberPoint]);
+  }, [hasGoogleSession, isShopPartner, payableBeforePoint, memberPoint]);
   const suggestedHalfPoints = useMemo(
     () =>
       Math.max(
@@ -2284,7 +2331,7 @@ export default function QuickBookModal({
     const nextAgreementErrors = {
       noScamElsewhere: !agreeNoScamElsewhere,
       pickupInPersonAtBranch: !agreePickupInPersonAtBranch,
-      depositMethod: !selectedDepositMethod,
+      depositMethod: !isShopPartner && !selectedDepositMethod,
       cccdPerDevice:
         effectiveDevices.length >= 2 && !agreeCccdPerDevice,
       rentalRules: !agreeRentalRules,
@@ -2346,6 +2393,41 @@ export default function QuickBookModal({
       };
       saveCustomerInfo(normalizedCustomer);
       setSavedCustomer(normalizedCustomer);
+
+      if (isShopPartner) {
+        try {
+          await api.put("/customer/profile", {
+            fullName: normalizedCustomer.fullName,
+            phone: normalizedCustomer.phone,
+            email: normalizedCustomer.gmail || shopPartner.email,
+            ig: normalizedCustomer.ig || null,
+            fb: normalizedCustomer.fb || null,
+          });
+        } catch (profileErr) {
+          console.warn("Không thể cập nhật hồ sơ shop, tiếp tục đặt lịch.", profileErr);
+        }
+        const fmtShop = (d) => formatDateForAPIPayload(d);
+        const shopNote = upsellNoteLines.join("\n").slice(0, 250);
+        const shopUpsell = isMulti ? 0 : upsellTotal;
+        const bookingRequests = rentalInfoPerDevice.map((r, idx) => {
+          const devPrice = roundDownToThousand(r?.price || 0);
+          const b = computeShopPartnerBreakdown(devPrice, t1, t2);
+          const extra = idx === 0 ? shopUpsell : 0;
+          return {
+            deviceId: r.device.id,
+            bookingFrom: fmtShop(t1),
+            bookingTo: fmtShop(t2),
+            total: (b ? b.discounted : devPrice) + extra,
+            originalPrice: devPrice + extra,
+            note: shopNote,
+            dayOfRent: chargeableDays,
+            location: apiLocationFromBranchId(selectedBranch),
+          };
+        });
+        await api.post("/v1/shop/bookings", { bookingRequests });
+        window.location.href = "/my-bookings?shopBooked=1";
+        return;
+      }
 
       const phone = normalizedCustomer.phone;
       let customerId = null;
@@ -2944,6 +3026,9 @@ export default function QuickBookModal({
                   </CheckoutSection>
                 )}
 
+                {isShopPartner ? (
+                  <ShopPartnerNotice shopName={shopPartner.shopName} />
+                ) : (
                 <div ref={depositSectionRef}>
                   <DepositMethodPicker
                     devices={effectiveDevices}
@@ -2958,6 +3043,7 @@ export default function QuickBookModal({
                     error={showStep2Errors && !selectedDepositMethod}
                   />
                 </div>
+                )}
               </div>
             )}
 
@@ -3002,6 +3088,13 @@ export default function QuickBookModal({
                       }`}
                     />
                   )}
+                  {isShopPartner ? (
+                    <CheckoutRow
+                      label="Thanh toán"
+                      value="Đặt trước – thanh toán sau"
+                      hint={`Không cọc · ${shopPartner.shopName}`}
+                    />
+                  ) : (
                   <CheckoutRow
                     label="Hình thức cọc"
                     value={selectedDepositLabel || "Chưa chọn"}
@@ -3016,6 +3109,7 @@ export default function QuickBookModal({
                       </button>
                     }
                   />
+                  )}
                   <CheckoutRow
                     label="Khách hàng"
                     value={customer.fullName?.trim() || "-"}
@@ -3056,7 +3150,7 @@ export default function QuickBookModal({
                   />
                 )}
 
-                {isLoggedInUser && (
+                {isLoggedInUser && !isShopPartner && (
                   <div className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3.5 ring-1 ring-black/[0.06]">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
                       <Gift size={14} />
@@ -3330,7 +3424,11 @@ export default function QuickBookModal({
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <div className="text-[11.5px] font-medium text-[#8a8580]">
-                  {step === 3 ? "Tổng thanh toán" : "Tạm tính"}
+                  {isShopPartner
+                    ? `Giá đối tác · ${shopPartner.shopName}`
+                    : step === 3
+                      ? "Tổng thanh toán"
+                      : "Tạm tính"}
                 </div>
                 <div className="text-[19px] font-bold tabular-nums leading-tight text-[#1f1f1f]">
                   {payableTotal.toLocaleString("vi-VN")}đ
@@ -3383,7 +3481,7 @@ export default function QuickBookModal({
                           scrollToField(socialInputRef);
                           return;
                         }
-                        if (!selectedDepositMethod) {
+                        if (!isShopPartner && !selectedDepositMethod) {
                           setAgreementErrors((prev) => ({
                             ...prev,
                             depositMethod: true,
@@ -3459,6 +3557,8 @@ export default function QuickBookModal({
                       </>
                     ) : isCheckingAvailability ? (
                       "Đang kiểm tra"
+                    ) : isShopPartner ? (
+                      "Đặt lịch · trả sau"
                     ) : (
                       "Thanh toán"
                     )}
