@@ -9,7 +9,11 @@ import {
   saveCustomerSession,
 } from "../../utils/storage";
 import { computeTotalSpentFromBookings } from "../../utils/loyaltyEarn";
-import { resolveGoogleSignInError } from "../../utils/googleSignInEnvironment";
+import {
+  GOOGLE_LOGIN_EMBEDDED_BROWSER_HINT_VI,
+  isLikelyEmbeddedBrowser,
+  resolveGoogleSignInError,
+} from "../../utils/googleSignInEnvironment";
 import EmbeddedBrowserGoogleHint from "../../components/EmbeddedBrowserGoogleHint";
 
 function getMemberTier(totalSpent = 0) {
@@ -148,6 +152,10 @@ export default function AccountPage() {
     setError("");
 
     try {
+      if (isLikelyEmbeddedBrowser()) {
+        setError(GOOGLE_LOGIN_EMBEDDED_BROWSER_HINT_VI);
+        return;
+      }
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
 

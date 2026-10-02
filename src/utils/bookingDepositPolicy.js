@@ -105,6 +105,25 @@ export function getDepositMethodOptions(devices) {
   ];
 }
 
+/** 2000000 → "2tr", 1500000 → "1.5tr", 60000 → "60k". */
+export function formatCompactVnd(amount) {
+  const n = Math.round(Number(amount) || 0);
+  if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(2)}tr`;
+  if (n >= 1_000) return `${+(n / 1_000).toFixed(1)}k`;
+  return `${n}đ`;
+}
+
+/** Dòng cọc ngắn gọn cho booking note — VD "Cọc 2tr". */
+export function formatDepositNoteLine(id, devices) {
+  if (id === "HT1") return "Cọc 0đ (HSSV)";
+  if (id === "HT3") return "Cọc tài sản";
+  if (id === "HT2") {
+    const total = resolveDevicesLegDepositTotalVnd(devices);
+    return total ? `Cọc ${formatCompactVnd(total)}` : "Cọc tiền mặt";
+  }
+  return id ? `Cọc ${id}` : "";
+}
+
 export function getDepositMethodSummaryLabel(id, devices) {
   const option = getDepositMethodOptions(devices).find((item) => item.id === id);
   if (!option) return "";

@@ -11,8 +11,9 @@ export function hasPhotoboothGift(branchId) {
 /**
  * Khối quà 2 frame photobooth — dùng ở bước xác nhận đơn (QuickBookModal)
  * và trang sau thanh toán. Nội dung giữ nguyên ở cả hai chỗ, chỉ khác dáng:
- * `stack` xếp dọc cho cột hẹp trong modal, `banner` xoay ngang từ sm trở lên
- * để không ăn hết chiều cao màn hình sau thanh toán.
+ * `stack` xếp dọc cho cột hẹp, `compact` một hàng thấp cho modal đặt máy,
+ * `banner` xoay ngang từ sm trở lên để không ăn hết chiều cao màn hình sau
+ * thanh toán.
  */
 const VARIANTS = {
   stack: {
@@ -21,6 +22,7 @@ const VARIANTS = {
     images: "justify-center",
     sideImage: "h-[167px] w-[106px]",
     centerImage: "h-[189px] w-[117px]",
+    overlap: "-mx-[18px]",
     text: "mt-4 text-center",
     badgeRow: "justify-center",
     title: "text-[15px]",
@@ -32,10 +34,23 @@ const VARIANTS = {
     images: "justify-center sm:shrink-0",
     sideImage: "h-[150px] w-[95px]",
     centerImage: "h-[170px] w-[105px]",
+    overlap: "-mx-[18px]",
     text: "mt-4 text-center sm:mt-0 sm:text-left",
     badgeRow: "justify-center sm:justify-start",
     title: "text-base sm:text-[17px]",
     desc: "mx-auto mt-1.5 max-w-[34ch] text-[13px] sm:mx-0",
+  },
+  compact: {
+    container: "rounded-xl px-3.5 py-3",
+    body: "flex items-center gap-3.5",
+    images: "shrink-0 pl-1",
+    sideImage: "h-[54px] w-[34px]",
+    centerImage: "h-[62px] w-[38px]",
+    overlap: "-mx-[7px]",
+    text: "min-w-0 flex-1",
+    badgeRow: "",
+    title: "text-[13px]",
+    desc: "mt-0.5 text-[11.5px]",
   },
 };
 
@@ -70,7 +85,7 @@ export default function PhotoboothGiftBlock({
           <img
             src="/home/fao-photobooth-gift-3.png"
             alt="Frame photobooth FAO Booth bản hồng ren"
-            className={`relative z-10 -mx-[18px] object-cover object-left shadow-[0_12px_26px_rgba(180,50,110,0.28)] ${s.centerImage}`}
+            className={`relative z-10 ${s.overlap} object-cover object-left shadow-[0_12px_26px_rgba(180,50,110,0.28)] ${s.centerImage}`}
           />
           <img
             src="/home/fao-photobooth-gift-2.png"

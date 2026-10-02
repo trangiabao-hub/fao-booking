@@ -1,5 +1,11 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import {
+  initializeAuth,
+  getAuth,
+  indexedDBLocalPersistence,
+  browserPopupRedirectResolver,
+  GoogleAuthProvider,
+} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB4KXxNX7sZrBsIlKnPEJDLPPi1JoqvcV4",
@@ -12,5 +18,18 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+
+// indexedDB trụ tốt hơn sessionStorage mặc định của getAuth() — tránh lỗi
+// "missing initial state" khi Safari / in-app browser phân vùng storage.
+let auth;
+try {
+  auth = initializeAuth(app, {
+    persistence: indexedDBLocalPersistence,
+    popupRedirectResolver: browserPopupRedirectResolver,
+  });
+} catch {
+  // HMR / hot reload: app đã init Auth rồi.
+  auth = getAuth(app);
+}
+export { auth };
 export const googleProvider = new GoogleAuthProvider();

@@ -154,6 +154,15 @@ const PinkTapeMarquee = () => (
   </div>
 );
 
+/** Ưu tiên máy (1) như ảnh catalog; máy (1) chưa nhập len thì lấy máy khác trong nhóm. */
+const pickGroupLens = (sortedGroup) => {
+  for (const { device } of sortedGroup) {
+    const lens = String(device?.lens ?? "").trim();
+    if (lens) return lens;
+  }
+  return "";
+};
+
 // Main Component
 export default function DeviceCatalogPage() {
   const location = useLocation();
@@ -827,6 +836,7 @@ export default function DeviceCatalogPage() {
         orderNumber: minOrderNumber,
         modelKey,
         displayName: normalizedName,
+        lens: pickGroupLens(sortedGroup),
         brand: inferBrand(device.name),
         img: cover,
         unitCount: group.length,
@@ -1045,6 +1055,7 @@ export default function DeviceCatalogPage() {
         orderNumber: minOrderNumber,
         modelKey: mk,
         displayName: normalizedName,
+        lens: pickGroupLens(sortedGroup),
         brand: inferBrand(device.name),
         img: cover,
         unitCount: group.length,

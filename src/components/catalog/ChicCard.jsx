@@ -2,7 +2,7 @@ import React, { useCallback } from "react";
 import { format, isValid } from "date-fns";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { MapPin, Star, Clock3, Check, Bell } from "lucide-react";
+import { MapPin, Star, Clock3, Check, Bell, ShoppingCart } from "lucide-react";
 import { BRANCHES } from "../../data/bookingConstants";
 import { formatPriceK } from "../../utils/bookingHelpers";
 import { parseDeviceReleaseDate } from "../../utils/deviceReleaseDate";
@@ -228,29 +228,7 @@ function ChicCardInner({
           />
 
           <div className="absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2 p-2.5">
-            {isAvailable &&
-            !availabilityUnknown &&
-            onToggleSelect &&
-            !device.crossBranchOnly ? (
-              <button
-                type="button"
-                onClick={handleToggleSelect}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border shadow-sm backdrop-blur-md transition-all duration-200 ${
-                  isSelected
-                    ? "border-[#E85C9C] bg-[#E85C9C] text-white"
-                    : "border-white/70 bg-white/90 text-[#E85C9C] hover:border-[#E85C9C]"
-                }`}
-                aria-label={isSelected ? selectRemoveLabel : selectAddLabel}
-              >
-                {isSelected ? (
-                  <Check size={17} strokeWidth={3} />
-                ) : (
-                  <span className="text-base font-black leading-none">+</span>
-                )}
-              </button>
-            ) : (
-              <div />
-            )}
+            <div />
 
             <div className="flex flex-col items-end gap-1.5">
               {savingLabel ? (
@@ -316,6 +294,12 @@ function ChicCardInner({
             <h3 className="line-clamp-2 text-[13px] font-black uppercase leading-snug tracking-[0.04em] text-[#171717] sm:text-sm lg:text-[15px]">
               {device.displayName}
             </h3>
+
+            {device.lens ? (
+              <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-gray-500 sm:text-xs">
+                {device.lens}
+              </p>
+            ) : null}
 
             {branchShort ? (
               <p className="mt-1.5 text-[10px] font-black uppercase tracking-[0.08em] text-sky-700">
@@ -400,22 +384,45 @@ function ChicCardInner({
             ) : !isAvailable && hasSuggestedSlot ? (
               renderSuggestionButtons()
             ) : (
-              <button
-                type="button"
-                onClick={handleQuickBook}
-                disabled={!isAvailable}
-                className={`w-full rounded-xl px-3 py-3 text-xs font-black uppercase leading-tight tracking-[0.07em] transition-all duration-200 sm:text-[13px] ${
-                  isAvailable
-                    ? "bg-gradient-to-r from-[#f1469d] via-[#df4eb2] to-[#b65bff] text-white shadow-[0_14px_26px_rgba(225,69,154,0.34)] hover:-translate-y-0.5 hover:shadow-[0_18px_32px_rgba(225,69,154,0.42)]"
-                    : "cursor-not-allowed bg-gray-200 text-gray-500"
-                }`}
-              >
-                {isAvailable
-                  ? branchShort
-                    ? `Đặt tại ${branchShort}`
-                    : "Đặt ngay"
-                  : "Tạm hết máy"}
-              </button>
+              <div className="flex items-stretch gap-2">
+                <button
+                  type="button"
+                  onClick={handleQuickBook}
+                  disabled={!isAvailable}
+                  className={`min-w-0 flex-1 rounded-xl px-3 py-3 text-xs font-black uppercase leading-tight tracking-[0.07em] transition-all duration-200 sm:text-[13px] ${
+                    isAvailable
+                      ? "bg-gradient-to-r from-[#f1469d] via-[#df4eb2] to-[#b65bff] text-white shadow-[0_14px_26px_rgba(225,69,154,0.34)] hover:-translate-y-0.5 hover:shadow-[0_18px_32px_rgba(225,69,154,0.42)]"
+                      : "cursor-not-allowed bg-gray-200 text-gray-500"
+                  }`}
+                >
+                  {isAvailable
+                    ? branchShort
+                      ? `Đặt tại ${branchShort}`
+                      : "Đặt ngay"
+                    : "Tạm hết máy"}
+                </button>
+                {isAvailable && onToggleSelect && !device.crossBranchOnly ? (
+                  <button
+                    type="button"
+                    onClick={handleToggleSelect}
+                    title={isSelected ? selectRemoveLabel : selectAddLabel}
+                    aria-label={isSelected ? selectRemoveLabel : selectAddLabel}
+                    aria-pressed={isSelected}
+                    className={`relative flex w-12 shrink-0 items-center justify-center rounded-xl border transition-all duration-200 ${
+                      isSelected
+                        ? "border-[#E85C9C] bg-[#E85C9C] text-white"
+                        : "border-[#ffd3e7] bg-white text-[#E85C9C] hover:bg-[#fff1f7]"
+                    }`}
+                  >
+                    <ShoppingCart size={18} strokeWidth={2.4} />
+                    {isSelected ? (
+                      <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-white">
+                        <Check size={9} strokeWidth={4} />
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
+              </div>
             )}
 
             <Link
@@ -448,6 +455,7 @@ function chicPropsEqual(prev, next) {
   if (prev.device?.blockedBeforeRelease !== next.device?.blockedBeforeRelease)
     return false;
   if (prev.device?.displayName !== next.device?.displayName) return false;
+  if (prev.device?.lens !== next.device?.lens) return false;
   if (prev.device?.img !== next.device?.img) return false;
   if (prev.device?.bookingCount !== next.device?.bookingCount) return false;
   if (prev.device?.priceOneDay !== next.device?.priceOneDay) return false;
