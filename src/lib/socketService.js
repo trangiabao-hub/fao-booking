@@ -6,9 +6,7 @@ const WS_ENDPOINT = resolveWsEndpoint();
 
 let stompClient = null;
 let subscriptions = {};
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 10;
-const RECONNECT_DELAY_BASE = 2000;
+let pendingConnects = [];
 
 const eventListeners = {
   onBookingEvent: [],
@@ -21,48 +19,48 @@ export const connectSocket = () => {
     return Promise.resolve();
   }
 
-  return new Promise((resolve, reject) => {
-    try {
-      const socket = new SockJS(WS_ENDPOINT);
+  return new Promise((resolve) => {
+    pendingConnects.push(resolve);
+    if (stompClient?.active) return;
 
-      stompClient = new Client({
-        webSocketFactory: () => socket,
-        debug: (str) => {
-          if (import.meta.env.DEV) {
-            console.log("[WS]", str);
-          }
-        },
-        reconnectDelay: 5000,
-        heartbeatIncoming: 10000,
-        heartbeatOutgoing: 10000,
+    // stompjs gọi webSocketFactory mỗi lần reconnect nên phải tạo SockJS mới,
+    // tái sử dụng socket đã đóng sẽ khiến client treo ở trạng thái connecting.
+    stompClient = new Client({
+      webSocketFactory: () => new SockJS(WS_ENDPOINT),
+      debug: (str) => {
+        if (import.meta.env.DEV) {
+          console.log("[WS]", str);
+        }
+      },
+      reconnectDelay: 2000,
+      connectionTimeout: 10000,
+      heartbeatIncoming: 10000,
+      heartbeatOutgoing: 10000,
 
-        onConnect: () => {
-          console.log("[WS] Connected");
-          reconnectAttempts = 0;
-          subscribeToBookings();
-          eventListeners.onConnect.forEach((cb) => cb());
-          resolve();
-        },
+      onConnect: () => {
+        console.log("[WS] Connected");
+        // Subscription của kết nối trước đã chết theo socket cũ
+        subscriptions = {};
+        subscribeToBookings();
+        eventListeners.onConnect.forEach((cb) => cb());
+        pendingConnects.forEach((done) => done());
+        pendingConnects = [];
+      },
 
-        onStompError: (frame) => {
-          console.error("[WS] STOMP Error:", frame);
-        },
+      onStompError: (frame) => {
+        console.error("[WS] STOMP Error:", frame);
+      },
 
-        onWebSocketClose: () => {
-          eventListeners.onDisconnect.forEach((cb) => cb());
-          handleReconnect();
-        },
+      onWebSocketClose: () => {
+        eventListeners.onDisconnect.forEach((cb) => cb());
+      },
 
-        onWebSocketError: (error) => {
-          console.error("[WS] Error:", error);
-        },
-      });
+      onWebSocketError: (error) => {
+        console.error("[WS] Error:", error);
+      },
+    });
 
-      stompClient.activate();
-    } catch (error) {
-      console.error("[WS] Connection error:", error);
-      reject(error);
-    }
+    stompClient.activate();
   });
 };
 
@@ -86,22 +84,6 @@ const subscribeToBookings = () => {
       console.error("[WS] Parse error:", error);
     }
   });
-};
-
-const handleReconnect = () => {
-  if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
-
-  reconnectAttempts++;
-  const delay = Math.min(
-    RECONNECT_DELAY_BASE * Math.pow(2, reconnectAttempts - 1),
-    30000,
-  );
-
-  setTimeout(() => {
-    if (!stompClient?.connected) {
-      connectSocket().catch(() => {});
-    }
-  }, delay);
 };
 
 export const disconnectSocket = () => {
@@ -143,7 +125,6 @@ export const onDisconnect = (callback) => {
 
 export const reconnect = () => {
   disconnectSocket();
-  reconnectAttempts = 0;
   return connectSocket();
 };
 

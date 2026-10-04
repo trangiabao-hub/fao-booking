@@ -88,32 +88,30 @@ export const useBookingSocket = (options = {}) => {
 
   // Connect + subscribe
   useEffect(() => {
-    let unsubEvent = null;
-    let unsubConnect = null;
-    let unsubDisconnect = null;
+    let hasConnected = socketService.isConnected();
 
-    const setup = async () => {
-      try {
-        await socketService.connect();
-        setIsConnected(true);
-      } catch {
-        setIsConnected(false);
+    const unsubEvent = socketService.onBookingEvent(handleBookingEvent);
+    const unsubConnect = socketService.onConnect(() => {
+      setIsConnected(true);
+      // Event phát ra lúc mất kết nối (deploy, mạng chập chờn) không được gửi lại
+      if (hasConnected) {
+        lastRefreshRef.current = 0;
+        debouncedRefresh();
       }
+      hasConnected = true;
+    });
+    const unsubDisconnect = socketService.onDisconnect(() => setIsConnected(false));
 
-      unsubEvent = socketService.onBookingEvent(handleBookingEvent);
-      unsubConnect = socketService.onConnect(() => setIsConnected(true));
-      unsubDisconnect = socketService.onDisconnect(() => setIsConnected(false));
-    };
-
-    setup();
+    setIsConnected(hasConnected);
+    socketService.connect();
 
     return () => {
       if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
-      unsubEvent?.();
-      unsubConnect?.();
-      unsubDisconnect?.();
+      unsubEvent();
+      unsubConnect();
+      unsubDisconnect();
     };
-  }, [handleBookingEvent]);
+  }, [handleBookingEvent, debouncedRefresh]);
 
   const forceRefresh = useCallback(() => {
     lastRefreshRef.current = 0;
