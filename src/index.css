@@ -25,6 +25,36 @@
   to { transform: translateY(0); }
 }
 
+@keyframes fao-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* Khối skeleton: nền hồng nhạt + vệt sáng quét ngang. */
+.fao-skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: #fbe9f1;
+}
+.fao-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.75) 50%,
+    transparent 100%
+  );
+  animation: fao-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fao-skeleton::after {
+    animation: none;
+  }
+}
+
 .ptb-plain-brand {
   font-family: "Pinyon Script", "Great Vibes", cursive !important;
   font-style: normal;

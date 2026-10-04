@@ -52,7 +52,7 @@ export function filterAndSortCatalogRows(
 
   const activeCat = mergedCategories.find((c) => c.key === selectedCategory);
   if (selectedCategory === "available") {
-    filtered = filtered.filter((d) => d.isAvailable);
+    filtered = filtered.filter((d) => d.isAvailable || d.availabilityUnknown);
   } else if (activeCat?.apiCategoryId) {
     const catDeviceIds = activeCat.deviceIds;
     const brandHint = inferBrandHintFromCategoryLabel(activeCat.label || "");
@@ -106,7 +106,7 @@ export function filterAndSortCatalogRows(
   }
 
   const availPriority = (d) => {
-    if (d.isAvailable) return 0;
+    if (d.isAvailable || d.availabilityUnknown) return 0;
     if (d.blockedBeforeRelease) return 0;
     if (d.availabilitySuggestion) return 1;
     return 2;

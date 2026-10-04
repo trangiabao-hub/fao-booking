@@ -41,7 +41,10 @@ export function useAvailabilityCheck({
       if (!availabilityConfirmed) return;
       const gen = ++fetchGeneration.current;
       // Prefs đổi → dữ liệu cũ không còn khớp khung giờ mới.
-      if (!silent) setAvailabilityReady(false);
+      if (!silent) {
+        setAvailabilityReady(false);
+        setOtherBranchesBusyIds({});
+      }
 
       const { fromDateTime, toDateTime } =
         computeAvailabilityRange(availabilityPrefs);

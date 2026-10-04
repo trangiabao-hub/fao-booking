@@ -26,6 +26,7 @@ function ChicCardInner({
   priceFootnote = "Giá đã áp dụng ưu đãi trong tuần",
   selectAddLabel = "Thêm vào đơn",
   selectRemoveLabel = "Bỏ chọn",
+  pickedLabel,
 }) {
   const originalLabel = formatPriceK(pricing?.original || 0);
   const discountedLabel = formatPriceK(pricing?.discounted || 0);
@@ -55,13 +56,16 @@ function ChicCardInner({
    * kiểm tra thay vì mời khách bấm đặt.
    */
   const availabilityUnknown = device.availabilityUnknown === true;
-  const isAvailable = device.isAvailable !== false;
+  /** Lúc đang kiểm tra không được vẽ trạng thái hết máy từ dữ liệu cũ. */
+  const isAvailable = availabilityUnknown || device.isAvailable !== false;
   const blockedBeforeRelease = device.blockedBeforeRelease === true;
   const releaseDay = blockedBeforeRelease
     ? parseDeviceReleaseDate(device)
     : null;
 
-  const suggestedSlot = device.availabilitySuggestion || null;
+  const suggestedSlot = availabilityUnknown
+    ? null
+    : device.availabilitySuggestion || null;
   const sixHourChoicesList = suggestedSlot?.sixHourChoices || [];
   const hasSixHourChoices = sixHourChoicesList.length > 0;
 
@@ -203,7 +207,7 @@ function ChicCardInner({
         className={`relative flex h-fit flex-col overflow-hidden rounded-xl border bg-[#fffdfb] shadow-[0_12px_32px_rgba(15,23,42,0.08)] transition-all duration-200 ${
           isSoldOutNoSuggestion ? "opacity-90" : ""
         } ${
-          isFocused
+          isFocused || pickedLabel
             ? "border-[#E85C9C] ring-2 ring-[#ffb6d7]/70"
             : "border-[#f5d7e6]"
         } ${
@@ -248,6 +252,13 @@ function ChicCardInner({
               ) : null}
             </div>
           </div>
+
+          {pickedLabel && isAvailable ? (
+            <div className="absolute bottom-2 left-2 z-20 inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-[#E85C9C] py-[3px] pl-1.5 pr-2 text-[9px] font-black uppercase tracking-[0.05em] text-white shadow-[0_4px_12px_rgba(232,92,156,0.35)] sm:bottom-2.5 sm:left-2.5 sm:py-1 sm:pl-2 sm:pr-2.5 sm:text-[10px]">
+              <Check size={10} strokeWidth={3.5} className="shrink-0" />
+              {pickedLabel}
+            </div>
+          ) : null}
 
           {!isAvailable && (
             <div
@@ -332,11 +343,11 @@ function ChicCardInner({
           <div className="flex flex-col gap-2.5">
             {availabilityUnknown ? (
               <div
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#f5d7e6] bg-[#fdf2f8] px-3 py-3 text-xs font-black uppercase leading-tight tracking-[0.07em] text-[#b07a97] sm:text-[13px]"
+                className="fao-skeleton flex w-full items-center justify-center gap-2 rounded-xl border border-[#f5d7e6] px-3 py-3 text-xs font-black uppercase leading-tight tracking-[0.07em] text-[#b07a97] sm:text-[13px]"
                 aria-live="polite"
               >
-                <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[#f0c3da] border-t-[#E85C9C]" />
-                Đang kiểm tra…
+                <span className="relative z-10 h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[#f0c3da] border-t-[#E85C9C]" />
+                <span className="relative z-10">Đang kiểm tra lịch trống</span>
               </div>
             ) : !isAvailable &&
             !hasSixHourChoices &&
@@ -448,6 +459,7 @@ function chicPropsEqual(prev, next) {
   if (prev.index !== next.index) return false;
   if (prev.feedbackHref !== next.feedbackHref) return false;
   if (prev.priceFootnote !== next.priceFootnote) return false;
+  if (prev.pickedLabel !== next.pickedLabel) return false;
   if (prev.cardAnchorId !== next.cardAnchorId) return false;
   if (prev.device?.isAvailable !== next.device?.isAvailable) return false;
   if (prev.device?.availabilityUnknown !== next.device?.availabilityUnknown)

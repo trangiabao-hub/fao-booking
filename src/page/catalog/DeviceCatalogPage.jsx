@@ -15,7 +15,6 @@ import {
   SlidersHorizontal,
   Check,
   ShoppingBag,
-  MessageSquare,
   Trash2,
   Minus,
   Plus,
@@ -63,6 +62,7 @@ import useBookingSocket from "../../lib/useBookingSocket";
 import "react-datepicker/dist/react-datepicker.css";
 
 import ChicCard from "../../components/catalog/ChicCard";
+import ChicCardSkeleton from "../../components/catalog/ChicCardSkeleton";
 import StylishTabs from "../../components/catalog/StylishTabs";
 import FilterModal from "../../components/catalog/FilterModal";
 import AvailabilityGate from "../../components/catalog/AvailabilityGate";
@@ -91,9 +91,10 @@ import {
   compactSearchText,
 } from "../../utils/catalogFilters";
 import {
-  buildCuratedModelsSummary,
   parseModelsParam,
 } from "../../utils/catalogShareLink";
+import { clearBookingDraft, loadBookingDraft } from "../../utils/bookingDraft";
+import BookingDraftBanner from "../../components/catalog/BookingDraftBanner";
 import {
   parseLocalDateParam,
   isValidTimeParam,
@@ -290,7 +291,6 @@ export default function DeviceCatalogPage() {
   const {
     availabilityError,
     setAvailabilityError,
-    availabilityLoading,
     availabilityReady,
     busyDeviceIds,
     otherBranchesBusyIds,
@@ -592,12 +592,24 @@ export default function DeviceCatalogPage() {
     setShowQuickBookModal(true);
   }, []);
 
+  /** Đơn đặt dở (QuickBookModal tự lưu) — gợi ý "Đặt tiếp" ở đầu catalog. */
+  const [bookingDraft, setBookingDraft] = useState(() => loadBookingDraft());
+  /** Nháp đang được mở lại trong modal — truyền qua initialPrefs.draft. */
+  const [quickBookDraft, setQuickBookDraft] = useState(null);
+
   const handleCloseQuickBook = () => {
     setShowQuickBookModal(false);
     setQuickBookDevice(null);
     setQuickBookDevices([]);
     setQuickBookBranchOverride(null);
+    setQuickBookDraft(null);
+    setBookingDraft(loadBookingDraft());
   };
+
+  const handleDismissBookingDraft = useCallback(() => {
+    clearBookingDraft();
+    setBookingDraft(null);
+  }, []);
 
   // Auto-save prefs
   useEffect(() => {
@@ -873,21 +885,23 @@ export default function DeviceCatalogPage() {
     [searchParams],
   );
 
-  const activeModelFilterKeys = useMemo(() => {
-    if (curatedModelsFromUrl.length) return curatedModelsFromUrl;
-    if (isStaffUser && cartLines.length > 0) {
-      return [
-        ...new Set(cartLines.map((l) => l.modelKey).filter(Boolean)),
-      ];
-    }
-    return [];
-  }, [curatedModelsFromUrl, isStaffUser, cartLines]);
+  /** Staff chọn máy (+) không lọc catalog — máy đã chọn chỉ hiện dấu ở nút giỏ. */
+  const activeModelFilterKeys = curatedModelsFromUrl;
 
-  const hasModelListFilter = activeModelFilterKeys.length > 0;
+  /** Link shop gửi (`models=`) hiện đủ catalog, chỉ đẩy các máy này lên đầu. */
+  const hasModelListFilter =
+    activeModelFilterKeys.length > 0 && !curatedModelsFromUrl.length;
 
-  const effectiveModelFilterKeys = catalogViewAllDevices
-    ? []
-    : activeModelFilterKeys;
+  const effectiveModelFilterKeys =
+    catalogViewAllDevices || curatedModelsFromUrl.length
+      ? []
+      : activeModelFilterKeys;
+
+  const curatedPickRank = useMemo(
+    () =>
+      new Map(curatedModelsFromUrl.map((mk, i) => [mk.toLowerCase(), i])),
+    [curatedModelsFromUrl],
+  );
 
   useEffect(() => {
     setCatalogViewAllDevices(false);
@@ -902,17 +916,6 @@ export default function DeviceCatalogPage() {
       allow.has((d.modelKey || "").trim().toLowerCase()),
     );
   }, [processedDevicesLocalBranch, effectiveModelFilterKeys]);
-
-  const curatedModelsSummary = useMemo(() => {
-    if (!curatedModelsFromUrl.length) return "";
-    const labels = curatedModelsFromUrl.map((mk) => {
-      const row = processedDevicesLocalBranch.find(
-        (d) => (d.modelKey || "").trim().toLowerCase() === mk.toLowerCase(),
-      );
-      return row?.displayName || mk;
-    });
-    return buildCuratedModelsSummary(labels);
-  }, [curatedModelsFromUrl, processedDevicesLocalBranch]);
 
   /** Model chỉ có máy vật lý ở chi nhánh khác (không có tại chi nhánh đang xem catalog). */
   const crossBranchOnlyRows = useMemo(() => {
@@ -1592,11 +1595,80 @@ export default function DeviceCatalogPage() {
     ],
   );
 
-  const filteredDevices = useMemo(
-    () =>
-      filterAndSortCatalogRows(displayDevicesLocalBranch, catalogFilterOpts),
-    [displayDevicesLocalBranch, catalogFilterOpts],
+  const filteredDevices = useMemo(() => {
+    const rows = filterAndSortCatalogRows(
+      displayDevicesLocalBranch,
+      catalogFilterOpts,
+    );
+    if (!curatedPickRank.size) return rows;
+    const rankOf = (d) =>
+      curatedPickRank.get((d.modelKey || "").trim().toLowerCase());
+    const picks = rows
+      .filter((d) => rankOf(d) !== undefined)
+      .sort((a, b) => rankOf(a) - rankOf(b));
+    if (!picks.length) return rows;
+    return [...picks, ...rows.filter((d) => rankOf(d) === undefined)];
+  }, [displayDevicesLocalBranch, catalogFilterOpts, curatedPickRank]);
+
+  const isCuratedPick = useCallback(
+    (d) => curatedPickRank.has((d.modelKey || "").trim().toLowerCase()),
+    [curatedPickRank],
   );
+
+  /** Dòng catalog cho từng modelKey trong nháp — null khi có máy không còn trên catalog. */
+  const bookingDraftRows = useMemo(() => {
+    if (!bookingDraft || isAvailabilitySlotStale(bookingDraft)) return null;
+    const rows = [...processedDevicesLocalBranch, ...crossBranchOnlyRows];
+    const byKey = new Map(
+      rows.map((r) => [(r.modelKey || "").trim().toLowerCase(), r]),
+    );
+    const uniqueKeys = [...new Set(bookingDraft.modelKeys.map((k) => k.toLowerCase()))];
+    const found = uniqueKeys.map((k) => byKey.get(k));
+    return found.every(Boolean) ? found : null;
+  }, [bookingDraft, processedDevicesLocalBranch, crossBranchOnlyRows]);
+
+  const handleResumeBookingDraft = useCallback(() => {
+    const draft = bookingDraft;
+    if (!draft || !bookingDraftRows?.length) return;
+    setAvailabilityPrefs((prev) => ({
+      ...prev,
+      branchId: draft.branchId || prev.branchId,
+      durationType: draft.durationType || prev.durationType,
+      date: draft.date ? normalizeDate(draft.date) : prev.date,
+      endDate: draft.endDate ? normalizeDate(draft.endDate) : prev.endDate,
+      timeFrom: draft.timeFrom || prev.timeFrom,
+      timeTo: draft.timeTo || prev.timeTo,
+      pickupType: draft.pickupType || prev.pickupType,
+      pickupSlot: draft.pickupSlot || prev.pickupSlot,
+    }));
+    setAvailabilityConfirmed(true);
+
+    if (bookingDraftRows.length > 1 || draft.modelKeys.length > 1) {
+      const counts = new Map();
+      for (const k of draft.modelKeys) {
+        const row = bookingDraftRows.find(
+          (r) => (r.modelKey || "").trim().toLowerCase() === k.toLowerCase(),
+        );
+        if (row) counts.set(row.modelKey, (counts.get(row.modelKey) || 0) + 1);
+      }
+      setCartLines(
+        [...counts].map(([modelKey, quantity]) => ({ modelKey, quantity })),
+      );
+      setShowCartDrawer(true);
+      return;
+    }
+
+    const row = bookingDraftRows[0];
+    setQuickBookBranchOverride(
+      row.crossBranchOnly && row.primaryBookBranchId
+        ? row.primaryBookBranchId
+        : null,
+    );
+    setQuickBookDraft(draft);
+    setQuickBookDevice(row);
+    setQuickBookDevices([row]);
+    setShowQuickBookModal(true);
+  }, [bookingDraft, bookingDraftRows, setCartLines, setShowCartDrawer]);
 
   const filteredAlternateBranchDevices = useMemo(() => {
     let rows = crossBranchOnlyRows;
@@ -1730,6 +1802,21 @@ export default function DeviceCatalogPage() {
       return { sectionKey: "other", sectionTitle: "Khác" };
     };
 
+    /**
+     * Có máy shop chọn (đã đứng đầu filteredDevices): gom theo danh mục thay vì cắt
+     * theo dãy liên tiếp, để danh mục chứa máy chọn lên đầu và máy chọn đứng đầu
+     * danh mục đó — không tách thành vùng riêng.
+     */
+    if (filteredDevices.some(isCuratedPick)) {
+      const byKey = new Map();
+      for (const d of filteredDevices) {
+        const { sectionKey: key, sectionTitle: title } = primarySectionForDevice(d);
+        if (!byKey.has(key)) byKey.set(key, { key, title, devices: [] });
+        byKey.get(key).devices.push(d);
+      }
+      return [...byKey.values()];
+    }
+
     const sections = [];
     let sectionKey = null;
     let sectionTitle = null;
@@ -1759,6 +1846,7 @@ export default function DeviceCatalogPage() {
     return sections;
   }, [
     filteredDevices,
+    isCuratedPick,
     selectedCategory,
     apiCategories,
     deviceByIdGlobal,
@@ -2060,31 +2148,207 @@ export default function DeviceCatalogPage() {
     [staffShareModelKeysList, processedDevicesLocalBranch],
   );
 
-  const cardSelectAddLabel =
-    isStaffUser && availabilityConfirmed
-      ? "Thêm vào danh sách gửi khách"
-      : "Thêm vào đơn";
-
-  const cardSelectRemoveLabel =
-    isStaffUser && availabilityConfirmed
-      ? "Bỏ khỏi danh sách gửi khách"
-      : "Bỏ chọn";
-
-  const modelFilterSelectedLabel = useMemo(() => {
-    const n = activeModelFilterKeys.length;
-    if (curatedModelsFromUrl.length && !isStaffUser) {
-      return `Máy shop gửi (${n})`;
+  const staffShareModelPrices = useMemo(() => {
+    if (!isStaffUser || !availabilityConfirmed) return {};
+    const out = {};
+    for (const mk of staffShareModelKeysList) {
+      const row = processedDevicesLocalBranch.find(
+        (d) => (d.modelKey || "").trim() === mk,
+      );
+      if (row) out[mk] = getDevicePricing(row);
     }
-    if (isStaffUser && cartLines.length > 0) {
-      return `Danh sách gửi (${n})`;
-    }
-    return `Máy đã chọn (${n})`;
+    return out;
   }, [
-    activeModelFilterKeys.length,
-    curatedModelsFromUrl.length,
     isStaffUser,
-    cartLines.length,
+    availabilityConfirmed,
+    staffShareModelKeysList,
+    processedDevicesLocalBranch,
+    getDevicePricing,
   ]);
+
+  /**
+   * Máy nổi bật cho tin nhắn full catalog: theo thứ tự catalog, mỗi hãng 1 máy trước;
+   * Pocket 3 luôn chốt cuối danh sách nếu còn trống.
+   */
+  const staffShareHotPicks = useMemo(() => {
+    if (!isStaffUser || !availabilityConfirmed) return [];
+    const MAX_PICKS = 5;
+    const isPocket3 = (d) => /pocket\s*3\b/i.test(d.displayName || d.name || "");
+    const available = filteredDevices
+      .filter(
+        (d) => d.isAvailable && !d.availabilityUnknown && !d.blockedBeforeRelease,
+      )
+      .map((d) => ({ device: d, pricing: getDevicePricing(d) }))
+      .filter((c) => (c.pricing?.discounted ?? 0) > 0);
+    const pocket3 = available.find((c) => isPocket3(c.device));
+    const candidates = available.filter((c) => c !== pocket3);
+
+    const picked = [];
+    const seenBrands = new Set();
+    for (const c of candidates) {
+      if (picked.length >= MAX_PICKS) break;
+      const brand = c.device.brand || c.device.displayName;
+      if (seenBrands.has(brand)) continue;
+      seenBrands.add(brand);
+      picked.push(c);
+    }
+    for (const c of candidates) {
+      if (picked.length >= MAX_PICKS) break;
+      if (!picked.includes(c)) picked.push(c);
+    }
+    if (pocket3) picked.push(pocket3);
+
+    return picked.map(({ device, pricing }) => ({
+      label: device.displayName || device.name,
+      original: pricing.original,
+      discounted: pricing.discounted,
+    }));
+  }, [isStaffUser, availabilityConfirmed, filteredDevices, getDevicePricing]);
+
+  /** Thẻ máy shop gửi trong banner khách — bấm "Đặt" mở thẳng modal. */
+  const curatedPickCards = useMemo(() => {
+    if (!curatedModelsFromUrl.length) return [];
+    const currentBr = normalizeBookingBranchId(availabilityPrefs.branchId);
+    const currentBranchName = String(
+      BRANCHES.find((b) => normalizeBookingBranchId(b.id) === currentBr)
+        ?.label || "chi nhánh này",
+    );
+    const sameKey = (mk) => (r) =>
+      (r.modelKey || "").trim().toLowerCase() === mk.toLowerCase();
+
+    const local = [];
+    const elsewhere = [];
+    for (const mk of curatedModelsFromUrl) {
+      const row = processedDevicesLocalBranch.find(sameKey(mk));
+      if (row) {
+        const pricing = getDevicePricing(row);
+        local.push({
+          key: row.modelKey,
+          label: row.displayName || row.name,
+          img: row.img,
+          original: pricing?.original ?? 0,
+          discounted: pricing?.discounted ?? 0,
+          checking: !!row.availabilityUnknown,
+          available:
+            row.isAvailable !== false &&
+            !row.availabilityUnknown &&
+            !row.blockedBeforeRelease,
+          onBook: () => handleQuickBook(row),
+        });
+        continue;
+      }
+
+      const remote =
+        crossBranchOnlyRows.find(sameKey(mk)) ||
+        devices.find(
+          (d) =>
+            String(d.type || "").toUpperCase() === "DEVICE" &&
+            ((d.modelKey || "").trim() || normalizeDeviceName(d.name))
+              .toLowerCase() === mk.toLowerCase(),
+        );
+      if (!remote) continue;
+      const remoteBranchId =
+        remote.primaryBookBranchId ||
+        BRANCHES.find(
+          (b) =>
+            normalizeBookingBranchId(b.id) === normalizeDeviceBranchId(remote),
+        )?.id;
+      const remoteBranch = BRANCHES.find((b) => b.id === remoteBranchId);
+      elsewhere.push({
+        key: mk,
+        label: remote.displayName || normalizeDeviceName(remote.name),
+        img: remote.img || remote.images?.[0],
+        available: false,
+        unavailableNote: `Chưa có ở ${currentBranchName}`,
+        switchLabel: remoteBranch
+          ? `Xem ở ${remoteBranch.label.replace(/^FAO\s*/i, "")}`
+          : undefined,
+        onSwitchBranch: remoteBranch
+          ? () => handleSwitchToAlternateBranch(remoteBranch.id)
+          : undefined,
+      });
+    }
+    return [...local, ...elsewhere];
+  }, [
+    curatedModelsFromUrl,
+    availabilityPrefs.branchId,
+    devices,
+    handleSwitchToAlternateBranch,
+    processedDevicesLocalBranch,
+    crossBranchOnlyRows,
+    getDevicePricing,
+    handleQuickBook,
+  ]);
+
+  const curatedMoreAvailableCount = useMemo(
+    () =>
+      filteredDevices.filter(
+        (d) =>
+          d.isAvailable &&
+          !d.availabilityUnknown &&
+          !d.blockedBeforeRelease &&
+          !isCuratedPick(d),
+      ).length,
+    [filteredDevices, isCuratedPick],
+  );
+
+  const catalogListAnchorRef = React.useRef(null);
+  const handleSeeMoreDevices = useCallback(() => {
+    catalogListAnchorRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
+
+  /** Copy theo dòng: mỗi tab danh mục CMS → các máy còn trống của dòng đó tại chi nhánh. */
+  const staffShareCategoryGroups = useMemo(() => {
+    if (!isStaffUser || !availabilityConfirmed) return [];
+    const MAX_PER_GROUP = 8;
+    const groups = [];
+    for (const cat of mergedCategories) {
+      if (!cat.apiCategoryId) continue;
+      const rows = filterAndSortCatalogRows(processedDevicesLocalBranch, {
+        ...catalogFilterOpts,
+        selectedCategory: cat.key,
+        searchQuery: "",
+        priceRange: "all",
+      });
+      const items = rows
+        .filter(
+          (d) => d.isAvailable && !d.availabilityUnknown && !d.blockedBeforeRelease,
+        )
+        .map((d) => ({ device: d, pricing: getDevicePricing(d) }))
+        .filter((c) => (c.pricing?.discounted ?? 0) > 0)
+        .slice(0, MAX_PER_GROUP)
+        .map(({ device, pricing }) => ({
+          modelKey: device.modelKey,
+          label: device.displayName || device.name,
+          original: pricing.original,
+          discounted: pricing.discounted,
+        }));
+      if (!items.length) continue;
+      const apiCat = apiCategories.find((c) => c.id === cat.apiCategoryId);
+      groups.push({
+        key: cat.key,
+        label: (apiCat?.name || cat.label || "").trim(),
+        items,
+      });
+    }
+    return groups;
+  }, [
+    isStaffUser,
+    availabilityConfirmed,
+    mergedCategories,
+    processedDevicesLocalBranch,
+    catalogFilterOpts,
+    getDevicePricing,
+    apiCategories,
+  ]);
+
+  const cardSelectAddLabel = "Thêm vào đơn";
+  const cardSelectRemoveLabel = "Bỏ chọn";
+
+  const modelFilterSelectedLabel = `Máy shop gửi (${activeModelFilterKeys.length})`;
 
   const availabilityDisplay = useMemo(() => {
     const from = availabilityRange.fromDateTime;
@@ -2236,11 +2500,25 @@ export default function DeviceCatalogPage() {
           </span>
         </div>
 
+        {bookingDraft && bookingDraftRows && !showQuickBookModal ? (
+          <BookingDraftBanner
+            draft={bookingDraft}
+            onResume={handleResumeBookingDraft}
+            onDismiss={handleDismissBookingDraft}
+          />
+        ) : null}
+
         {showCuratedCustomerBanner && (
             <CatalogCuratedScheduleBanner
               pickupReturnSummary={catalogPickupReturnSummaryVi}
               branchLabel={curatedBranchLabel}
-              modelsSummary={curatedModelsSummary}
+              branchId={availabilityPrefs.branchId}
+              rangeFrom={availabilityRange?.fromDateTime}
+              rangeTo={availabilityRange?.toDateTime}
+              picks={curatedPickCards}
+              picksLoadingCount={isLoading ? curatedModelsFromUrl.length : 0}
+              moreCount={curatedMoreAvailableCount}
+              onSeeMore={handleSeeMoreDevices}
               onChangeTime={handleOpenCuratedTimeEdit}
               onChangeBranch={handleOpenCuratedBranchEdit}
               catalogViewAllDevices={catalogViewAllDevices}
@@ -2319,7 +2597,7 @@ export default function DeviceCatalogPage() {
                 );
               })()}
             </div>
-            {isStaffUser && cartLines.length === 0 && (
+            {isStaffUser && (
               <div className="border-t border-pink-100/50 bg-[#FFFCFD]">
                 <p className="px-4 pt-3 text-[10px] font-bold uppercase tracking-wider text-[#888]">
                   Gửi cho khách
@@ -2328,12 +2606,23 @@ export default function DeviceCatalogPage() {
                   availabilityPrefs={availabilityPrefs}
                   pickupReturnSummary={catalogPickupReturnSummaryVi}
                   branchLabel={curatedBranchLabel}
-                  hint="Bấm + trên thẻ máy để chọn danh sách gửi — hoặc copy link catalog đầy đủ."
+                  modelKeys={staffShareModelKeysList}
+                  modelLabels={staffShareModelLabels}
+                  modelPrices={staffShareModelPrices}
+                  hotPicks={staffShareHotPicks}
+                  categoryGroups={staffShareCategoryGroups}
+                  hint={
+                    staffShareModelKeysList.length
+                      ? `Đang chọn: ${staffShareModelLabels.join(", ")} — tin nhắn / link gửi đúng các máy này. Xóa giỏ để gửi cả catalog.`
+                      : "Bấm giỏ trên thẻ máy để chọn máy gửi — hoặc copy link catalog đầy đủ."
+                  }
                 />
               </div>
             )}
           </div>
         )}
+
+        <div ref={catalogListAnchorRef} className="scroll-mt-4" aria-hidden />
 
         {/* Category Tabs — ẩn tab không có máy; ẩn hàng tab khi chỉ còn một tab */}
         {mergedCategories.length > 1 ? (
@@ -2360,10 +2649,17 @@ export default function DeviceCatalogPage() {
         {/* Results Info */}
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-4 sm:px-0">
           <div className="min-w-0 flex-1">
-            {isLoading ? (
-              <p className="text-sm font-medium text-[#999]">
-                Đang tải danh sách máy…
-              </p>
+            {isLoading || availabilityPending ? (
+              <div
+                className="inline-flex items-center gap-2 rounded-xl border border-[#f5d7e6] bg-[#fff6fa] px-3.5 py-2.5 text-sm font-semibold text-[#b07a97]"
+                role="status"
+                aria-live="polite"
+              >
+                <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-[#f0c3da] border-t-[#E85C9C]" />
+                {isLoading
+                  ? "Đang tìm máy cho bạn…"
+                  : `Đang kiểm tra máy trống tại ${currentBranchCatalogShortLabel}…`}
+              </div>
             ) : hasAlternateBranchCatalogResults &&
               !hasCatalogLocalResults ? null : hasAlternateBranchCatalogResults ? (
               <div className="rounded-2xl border border-black/[0.06] bg-white px-4 py-4 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.08)] sm:px-5 sm:py-4">
@@ -2484,18 +2780,13 @@ export default function DeviceCatalogPage() {
         {/* Device Grid */}
         <div className="min-h-[50vh]">
           {isLoading ? (
-            <div className="grid grid-cols-2 gap-2 sm:gap-2.5 xl:grid-cols-4 xl:gap-3 items-start">
+            <div
+              className="grid grid-cols-2 gap-2 sm:gap-2.5 xl:grid-cols-4 xl:gap-3 items-start"
+              role="status"
+              aria-label="Đang tải danh sách máy"
+            >
               {[...Array(8)].map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-white rounded-lg overflow-hidden shadow animate-pulse"
-                >
-                  <div className="aspect-square bg-[#FFE4F0]" />
-                  <div className="space-y-1.5 p-2.5 sm:p-3">
-                    <div className="h-4 bg-[#FFE4F0] rounded w-3/4" />
-                    <div className="h-5 bg-[#FFE4F0] rounded w-1/2" />
-                  </div>
-                </div>
+                <ChicCardSkeleton key={i} />
               ))}
             </div>
           ) : error ? (
@@ -2602,6 +2893,9 @@ export default function DeviceCatalogPage() {
                             device={device}
                             pricing={getDevicePricing(device)}
                             priceFootnote={catalogPriceFootnote}
+                            pickedLabel={
+                              isCuratedPick(device) ? "Máy bạn chọn" : undefined
+                            }
                             onQuickBook={handleQuickBook}
                             onSuggestedQuickBook={handleSuggestedQuickBook}
                             onNotifyWaitlist={handleNotifyWaitlistClick}
@@ -2659,6 +2953,9 @@ export default function DeviceCatalogPage() {
                       device={device}
                       pricing={getDevicePricing(device)}
                       priceFootnote={catalogPriceFootnote}
+                      pickedLabel={
+                        isCuratedPick(device) ? "Máy bạn chọn" : undefined
+                      }
                       onQuickBook={handleQuickBook}
                       onSuggestedQuickBook={handleSuggestedQuickBook}
                       onNotifyWaitlist={handleNotifyWaitlistClick}
@@ -2791,11 +3088,6 @@ export default function DeviceCatalogPage() {
             </>
           )}
         </div>
-        {availabilityConfirmed && availabilityLoading && (
-          <div className="mt-3 text-center text-xs text-[#777] font-medium">
-            Đang kiểm tra tình trạng máy...
-          </div>
-        )}
       </div>
 
       {/* Filter Modal */}
@@ -2968,20 +3260,14 @@ export default function DeviceCatalogPage() {
                 className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3 text-left rounded-lg hover:bg-white/5 transition-colors py-2 px-2 sm:px-3"
               >
                 <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#E85C9C]/30 border border-[#FF9FCA]/40 flex items-center justify-center shrink-0">
-                  {isStaffUser ? (
-                    <MessageSquare className="w-5 h-5 text-[#FF9FCA]" />
-                  ) : (
-                    <ShoppingBag className="w-5 h-5 text-[#FF9FCA]" />
-                  )}
+                  <ShoppingBag className="w-5 h-5 text-[#FF9FCA]" />
                 </div>
                 <div className="min-w-0">
                   <div className="font-black text-[#FF9FCA] text-xs uppercase tracking-wider">
-                    {isStaffUser ? "Gửi cho khách" : "Giỏ hàng"}
+                    Giỏ hàng
                   </div>
                   <div className="text-sm font-bold truncate">
-                    {isStaffUser
-                      ? `${cartLines.length} mẫu đã chọn`
-                      : `${cartTotalQty} máy · ${cartLines.length} mẫu`}
+                    {`${cartTotalQty} máy · ${cartLines.length} mẫu`}
                   </div>
                 </div>
               </button>
@@ -2994,7 +3280,7 @@ export default function DeviceCatalogPage() {
                 }}
                 className="shrink-0 rounded-lg border border-[#FF9FCA]/50 text-[#FF9FCA] text-[10px] sm:text-[11px] font-bold uppercase tracking-wide hover:bg-[#FF9FCA]/15 transition-colors py-1.5 px-2.5 sm:py-2 sm:px-3 whitespace-nowrap leading-tight"
               >
-                {isStaffUser ? "Bỏ chọn" : "Xóa giỏ"}
+                Xóa giỏ
               </button>
               </div>
             </div>
@@ -3007,7 +3293,7 @@ export default function DeviceCatalogPage() {
           <>
             <motion.button
               type="button"
-              aria-label={isStaffUser ? "Đóng danh sách gửi khách" : "Đóng giỏ hàng"}
+              aria-label="Đóng giỏ hàng"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -3028,7 +3314,7 @@ export default function DeviceCatalogPage() {
                   id="cart-drawer-title"
                   className="text-lg font-black text-[#222] uppercase tracking-tight"
                 >
-                  {isStaffUser ? "Gửi cho khách" : "Giỏ hàng"}
+                  Giỏ hàng
                 </h2>
                 <button
                   type="button"
@@ -3041,50 +3327,7 @@ export default function DeviceCatalogPage() {
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 space-y-3 [-webkit-overflow-scrolling:touch]">
-                {isStaffUser ? (
-                  <>
-                    <p className="text-xs text-[#666] leading-relaxed">
-                      Danh sách máy sẽ lọc catalog khi khách mở link. Bấm copy
-                      bên dưới để gửi Messenger/Zalo.
-                    </p>
-                    {cartLines.map((line) => {
-                      const row = processedByModelKey.get(line.modelKey);
-                      return (
-                        <div
-                          key={line.modelKey}
-                          className="rounded-xl border-2 border-[#FAD6E8] bg-white p-3 shadow-sm"
-                        >
-                          <div className="flex gap-3 items-center">
-                            <img
-                              src={row?.img || FALLBACK_IMG}
-                              alt=""
-                              className="w-14 h-14 rounded-lg object-cover shrink-0 bg-[#FFE4F0]"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="font-black text-[#222] text-sm uppercase leading-tight line-clamp-2">
-                                {row?.displayName || line.modelKey}
-                              </div>
-                              {!row && (
-                                <p className="text-xs text-amber-700 mt-1">
-                                  Không thấy trong danh sách hiện tại.
-                                </p>
-                              )}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleCartRemoveLine(line.modelKey)}
-                              className="shrink-0 p-2 rounded-lg text-[#999] hover:bg-red-50 hover:text-red-600 transition-colors"
-                              aria-label="Bỏ khỏi danh sách"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </>
-                ) : (
-                  cartLines.map((line) => {
+                {cartLines.map((line) => {
                   const row = processedByModelKey.get(line.modelKey);
                   const maxQ = row
                     ? getMaxQtyForCartLine(row, availabilityConfirmed)
@@ -3188,11 +3431,10 @@ export default function DeviceCatalogPage() {
                       )}
                     </div>
                   );
-                })
-                )}
+                })}
               </div>
 
-              {cartCheckoutError && !isStaffUser ? (
+              {cartCheckoutError ? (
                 <div className="px-4 pb-2">
                   <p className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                     {cartCheckoutError}
@@ -3201,16 +3443,7 @@ export default function DeviceCatalogPage() {
               ) : null}
 
               <div className="p-4 border-t border-[#222]/10 bg-white space-y-3">
-                {isStaffUser ? (
-                  <CatalogStaffShareActions
-                    availabilityPrefs={availabilityPrefs}
-                    pickupReturnSummary={catalogPickupReturnSummaryVi}
-                    branchLabel={curatedBranchLabel}
-                    modelKeys={staffShareModelKeysList}
-                    modelLabels={staffShareModelLabels}
-                  />
-                ) : (
-                  <>
+                <>
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-bold text-[#555] uppercase text-xs tracking-wider">
                         Tạm tính
@@ -3234,8 +3467,7 @@ export default function DeviceCatalogPage() {
                     >
                       Tiến hành đặt & thanh toán
                     </button>
-                  </>
-                )}
+                </>
               </div>
             </motion.div>
           </>
@@ -3320,7 +3552,8 @@ export default function DeviceCatalogPage() {
         initialPrefs={
           quickBookDevices.length > 0
             ? {
-                step: availabilityConfirmed ? 2 : 1,
+                step: quickBookDraft?.step || (availabilityConfirmed ? 2 : 1),
+                draft: quickBookDraft,
                 branchId:
                   quickBookBranchOverride ?? availabilityPrefs.branchId,
                 durationType: availabilityPrefs.durationType,

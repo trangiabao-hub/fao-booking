@@ -107,6 +107,52 @@ function formatScheduleLinesForShare(pickupReturnSummary = "") {
   return [s.charAt(0).toUpperCase() + s.slice(1)];
 }
 
+/** 300000 → "300k", 1250000 → "1.250k" */
+function formatPriceK(vnd) {
+  return `${Math.round(vnd / 1000).toLocaleString("vi-VN")}k`;
+}
+
+/** "Canon EOS R50 chỉ còn 300k (giá gốc 400k)" — null khi chưa có giá. */
+function formatPriceLine(name, price) {
+  const discounted = price?.discounted ?? 0;
+  const original = price?.original ?? 0;
+  if (discounted <= 0) return null;
+  if (original > discounted) {
+    return `${name} chỉ còn ${formatPriceK(discounted)} (giá gốc ${formatPriceK(original)})`;
+  }
+  return `${name} giá ${formatPriceK(discounted)}`;
+}
+
+/** Danh sách nhiều máy: 1 dòng/máy cho dễ đọc trên điện thoại — "XS10: 280k". */
+function formatCompactPriceLine(name, price) {
+  const discounted = price?.discounted ?? 0;
+  return discounted > 0 ? `${name}: ${formatPriceK(discounted)}` : name;
+}
+
+/** Gom phần "giá gốc" thành 1 dòng chung thay vì lặp ở từng máy. */
+function formatSavingsNote(prices = []) {
+  const maxSaved = Math.max(
+    0,
+    ...prices.map((p) => (p?.original ?? 0) - (p?.discounted ?? 0)),
+  );
+  return maxSaved > 0
+    ? `✅ Giá đã giảm trực tiếp, tiết kiệm tới ${formatPriceK(maxSaved)}/máy`
+    : null;
+}
+
+/** "FUJIFILM XS10" trong dòng "Fujifilm" → "XS10" (giữ nguyên nếu bỏ xong bị rỗng). */
+function stripBrandPrefix(name = "", categoryLabel = "") {
+  const words = new Set(
+    String(categoryLabel).toLowerCase().split(/\s+/).filter(Boolean),
+  );
+  if (words.has("fujifilm")) words.add("fuji");
+  if (words.has("fuji")) words.add("fujifilm");
+  const tokens = String(name).trim().split(/\s+/);
+  let i = 0;
+  while (i < tokens.length - 1 && words.has(tokens[i].toLowerCase())) i += 1;
+  return tokens.slice(i).join(" ");
+}
+
 function joinShareMessageLines(lines = []) {
   return lines
     .join("\n")
@@ -116,6 +162,9 @@ function joinShareMessageLines(lines = []) {
 
 /**
  * Tin nhắn copy-paste cho Messenger / Zalo — chia dòng, lịch và link dễ quét.
+ * Giá (`{ original, discounted }`) là tổng cả lịch thuê, giống giá trên thẻ catalog.
+ * @param {Object<string, {original:number, discounted:number}>} modelPrices — theo modelKey
+ * @param {{label:string, original:number, discounted:number}[]} hotPicks — máy nổi bật khi gửi full catalog
  */
 export function buildCatalogShareMessage({
   pickupReturnSummary = "",
@@ -123,6 +172,8 @@ export function buildCatalogShareMessage({
   url = "",
   modelKeys = [],
   modelLabels = [],
+  modelPrices = {},
+  hotPicks = [],
 }) {
   const link = String(url || "").trim();
   const branch = formatBranchLabelForShare(branchLabel);
@@ -137,10 +188,20 @@ export function buildCatalogShareMessage({
 
   if (keys.length === 1) {
     const name = labels[0] || keys[0];
+    const price = modelPrices[keys[0]];
+    const priceLine = formatPriceLine(name, price);
+    const saved = (price?.original ?? 0) - (price?.discounted ?? 0);
     return joinShareMessageLines([
       `Dạ em gửi máy ${name} ạ.`,
       "",
       ...detailLines,
+      ...(priceLine
+        ? [
+            "",
+            ...(saved > 0 ? [`Giảm trực tiếp ${formatPriceK(saved)}`] : []),
+            `🔥 ${priceLine}`,
+          ]
+        : []),
       "",
       "Anh/chị bấm đặt tại link:",
       link,
@@ -148,23 +209,84 @@ export function buildCatalogShareMessage({
   }
 
   if (keys.length > 1) {
-    const nameList = labels.length ? labels.join(", ") : keys.join(", ");
+    const names = keys.map((k, i) => labels[i] || k);
+    const prices = keys.map((k) => modelPrices[k]);
+    const hasPrice = prices.some((p) => (p?.discounted ?? 0) > 0);
+    const savingsNote = formatSavingsNote(prices);
     return joinShareMessageLines([
       `Dạ em gửi ${keys.length} máy shop còn trống ạ.`,
       "",
       ...detailLines,
       "",
-      `Máy: ${nameList}`,
+      ...(hasPrice
+        ? [
+            "🔥 Giá cả lịch thuê:",
+            ...names.map((n, i) => `• ${formatCompactPriceLine(n, prices[i])}`),
+            ...(savingsNote ? [savingsNote] : []),
+          ]
+        : [`Máy: ${names.join(", ")}`]),
       "",
       "Anh/chị chọn máy và bấm đặt tại link:",
       link,
     ]);
   }
 
+  const pricedHotPicks = hotPicks.filter((p) => (p?.discounted ?? 0) > 0);
+  const hotSavingsNote = formatSavingsNote(pricedHotPicks);
+
   return joinShareMessageLines([
     "Dạ em gửi catalog máy còn trống ạ.",
     "",
     ...detailLines,
+    ...(pricedHotPicks.length
+      ? [
+          "",
+          "🔥 Máy hot:",
+          ...pricedHotPicks.map((p) => `• ${formatCompactPriceLine(p.label, p)}`),
+          "… và nhiều máy khác trong link",
+          ...(hotSavingsNote ? [hotSavingsNote] : []),
+        ]
+      : []),
+    "",
+    "Anh/chị chọn máy và bấm đặt tại link:",
+    link,
+  ]);
+}
+
+/**
+ * Tin nhắn theo 1 dòng máy (tab danh mục) — liệt kê máy còn trống của dòng kèm giá.
+ * @param {{label:string, original:number, discounted:number}[]} items
+ */
+export function buildCatalogCategoryShareMessage({
+  pickupReturnSummary = "",
+  branchLabel = "",
+  url = "",
+  categoryLabel = "",
+  items = [],
+}) {
+  const link = String(url || "").trim();
+  const branch = formatBranchLabelForShare(branchLabel);
+  const detailLines = [
+    ...formatScheduleLinesForShare(pickupReturnSummary),
+    ...(branch ? [`Chi nhánh: ${branch}`] : []),
+  ];
+  const lines = items
+    .filter((p) => p?.label)
+    .map((p) => formatCompactPriceLine(stripBrandPrefix(p.label, categoryLabel), p));
+  const savingsNote = formatSavingsNote(items);
+
+  return joinShareMessageLines([
+    `Dạ em gửi các máy ${categoryLabel} còn trống ạ.`,
+    "",
+    ...detailLines,
+    ...(lines.length
+      ? [
+          "",
+          `🔥 ${categoryLabel}:`,
+          ...lines.map((l) => `• ${l}`),
+          ...(savingsNote ? [savingsNote] : []),
+        ]
+      : []),
     "",
     "Anh/chị chọn máy và bấm đặt tại link:",
     link,

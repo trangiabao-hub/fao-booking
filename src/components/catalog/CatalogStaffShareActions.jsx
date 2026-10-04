@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Link2, MessageSquare, Check, AlertCircle, Loader2 } from "lucide-react";
 import {
+  buildCatalogCategoryShareMessage,
   buildCatalogShareMessage,
   buildCatalogShareSearchParams,
   buildCatalogShareUrl,
@@ -18,6 +19,9 @@ export default function CatalogStaffShareActions({
   branchLabel,
   modelKeys = [],
   modelLabels = [],
+  modelPrices = {},
+  hotPicks = [],
+  categoryGroups = [],
   hint,
 }) {
   const [toast, setToast] = useState(null);
@@ -56,20 +60,55 @@ export default function CatalogStaffShareActions({
     window.setTimeout(() => setToast(null), 2600);
   }, []);
 
-  const resolveShareUrl = useCallback(async () => {
-    const cached = shortCacheRef.current.get(longUrl);
+  const shortenCached = useCallback(async (target) => {
+    const cached = shortCacheRef.current.get(target);
     if (cached) return cached;
 
     setShortening(true);
     try {
-      const short = await shortenUrl(longUrl);
-      const resolved = short || longUrl;
-      shortCacheRef.current.set(longUrl, resolved);
+      const short = await shortenUrl(target);
+      const resolved = short || target;
+      shortCacheRef.current.set(target, resolved);
       return resolved;
     } finally {
       setShortening(false);
     }
-  }, [longUrl]);
+  }, []);
+
+  const resolveShareUrl = useCallback(
+    () => shortenCached(longUrl),
+    [shortenCached, longUrl],
+  );
+
+  const [copiedGroupKey, setCopiedGroupKey] = useState(null);
+
+  const handleCopyCategory = useCallback(
+    async (group) => {
+      const url = await shortenCached(
+        buildCatalogShareUrl(availabilityPrefs, {
+          modelKeys: group.items.map((i) => i.modelKey).filter(Boolean),
+        }),
+      );
+      const text = buildCatalogCategoryShareMessage({
+        pickupReturnSummary,
+        branchLabel,
+        url,
+        categoryLabel: group.label,
+        items: group.items,
+      });
+      const ok = await copyTextToClipboard(text);
+      if (ok) {
+        setCopiedGroupKey(group.key);
+        window.setTimeout(
+          () => setCopiedGroupKey((k) => (k === group.key ? null : k)),
+          2600,
+        );
+      } else {
+        showToast("error");
+      }
+    },
+    [shortenCached, availabilityPrefs, pickupReturnSummary, branchLabel, showToast],
+  );
 
   const handleCopyMessage = useCallback(async () => {
     const url = await resolveShareUrl();
@@ -79,6 +118,8 @@ export default function CatalogStaffShareActions({
       url,
       modelKeys: hasPickedList ? pickedKeys : [],
       modelLabels: hasPickedList ? pickedLabels : [],
+      modelPrices,
+      hotPicks: hasPickedList ? [] : hotPicks,
     });
     const ok = await copyTextToClipboard(text);
     showToast(ok ? "message" : "error");
@@ -89,6 +130,8 @@ export default function CatalogStaffShareActions({
     hasPickedList,
     pickedKeys,
     pickedLabels,
+    modelPrices,
+    hotPicks,
     showToast,
   ]);
 
@@ -144,6 +187,44 @@ export default function CatalogStaffShareActions({
           {toast === "link" ? "Đã copy link!" : linkLabel}
         </button>
       </div>
+
+      {categoryGroups.length ? (
+        <div className="mt-3">
+          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-[#888]">
+            Copy theo dòng
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {categoryGroups.map((g) => {
+              const copied = copiedGroupKey === g.key;
+              return (
+                <button
+                  key={g.key}
+                  type="button"
+                  onClick={() => handleCopyCategory(g)}
+                  disabled={shortening}
+                  className={`inline-flex min-h-[34px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-bold transition-colors active:scale-[0.98] disabled:opacity-60 ${
+                    copied
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                      : "border-[#EADCE3] bg-white text-[#444] hover:border-[#E85C9C]/50 hover:bg-[#FFF5FA]"
+                  }`}
+                >
+                  {copied ? (
+                    <Check size={13} className="shrink-0" />
+                  ) : (
+                    <MessageSquare size={13} className="shrink-0 text-[#E85C9C]" />
+                  )}
+                  {g.label}
+                  <span
+                    className={`tabular-nums ${copied ? "text-emerald-600" : "text-[#aaa]"}`}
+                  >
+                    {copied ? "Đã copy" : g.items.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       {shortening ? (
         <p className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-[#aaa]">

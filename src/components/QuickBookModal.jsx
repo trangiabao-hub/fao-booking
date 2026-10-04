@@ -99,6 +99,7 @@ import BookingPrefsForm, {
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import RentalRulesModal from "./RentalRulesModal";
 import PhotoboothGiftBlock from "./PhotoboothGiftBlock";
+import { clearBookingDraft, saveBookingDraft } from "../utils/bookingDraft";
 
 /** Đồng bộ fao-booking với trang /booking (noteVoucher). */
 function buildQuickBookNoteVoucher({
@@ -1239,11 +1240,23 @@ export default function QuickBookModal({
     };
   }, [isOpen, upsellModelKey]);
 
+  /** Phụ kiện từ đơn nháp — chỉ áp được sau khi config của máy tải xong. */
+  const pendingDraftUpsellRef = useRef(null);
+
   /** Reset lựa chọn phụ kiện khi đổi sang máy có config khác (id đổi) hoặc hết config. */
   useEffect(() => {
+    const pending = pendingDraftUpsellRef.current;
+    if (pending && upsellConfig) {
+      pendingDraftUpsellRef.current = null;
+      setUpsellLensId(pending.lensId || "none");
+      setUpsellTripodId(pending.tripodId || "none");
+      setUpsellBatteryQty(pending.batteryQty || 0);
+      return;
+    }
     setUpsellLensId("none");
     setUpsellTripodId("none");
     setUpsellBatteryQty(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upsellConfig?.id]);
 
   const strictestDeviceRelease = useMemo(
@@ -1459,6 +1472,13 @@ export default function QuickBookModal({
       if (p.timeTo) setSixHourTimeTo(p.timeTo);
       if (p.pickupType) setPickupType(p.pickupType);
       if (p.pickupSlot) setPickupSlot(p.pickupSlot);
+      if (p.draft) {
+        if (p.draft.depositMethod) setSelectedDepositMethod(p.draft.depositMethod);
+        if (p.draft.sameModelQuantity > 1) {
+          setSameModelQuantity(p.draft.sameModelQuantity);
+        }
+        pendingDraftUpsellRef.current = p.draft.upsell || null;
+      }
     } else {
       const p = getInitialPrefs();
       setStep(1);
@@ -1472,6 +1492,121 @@ export default function QuickBookModal({
       setPickupSlot(p.pickupSlot);
     }
   }, [isOpen, hasInitialPrefs, initialPrefs, getInitialPrefs]);
+
+  /** true sau khi đơn đã tạo (đang chuyển trang) — không lưu nháp lại nữa. */
+  const draftSettledRef = useRef(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowExitConfirm(false);
+      return;
+    }
+    draftSettledRef.current = false;
+  }, [isOpen]);
+
+  const draftModelKeys = useMemo(
+    () =>
+      baseDevicesForProps.map(
+        (d) => (d?.modelKey || "").trim() || normalizeDeviceName(d?.name || ""),
+      ),
+    [baseDevicesForProps],
+  );
+  const draftModelKeysKey = draftModelKeys.join("\0");
+
+  useEffect(() => {
+    if (!isOpen || draftSettledRef.current || !draftModelKeys.length) return;
+    const timer = window.setTimeout(() => {
+      if (draftSettledRef.current) return;
+      const first = baseDevicesForProps[0];
+      saveBookingDraft({
+        modelKeys: draftModelKeys,
+        names: baseDevicesForProps.map(
+          (d) => d?.displayName || normalizeDeviceName(d?.name || ""),
+        ),
+        img: first?.img || first?.images?.[0] || "",
+        step,
+        branchId: selectedBranch,
+        durationType: selectedDuration,
+        date: selectedDate,
+        endDate: endDateState,
+        timeFrom: sixHourTimeFrom,
+        timeTo: sixHourTimeTo,
+        pickupType,
+        pickupSlot,
+        sameModelQuantity,
+        depositMethod: selectedDepositMethod,
+        upsell: {
+          lensId: upsellLensId,
+          tripodId: upsellTripodId,
+          batteryQty: upsellBatteryQty,
+        },
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isOpen,
+    draftModelKeysKey,
+    step,
+    selectedBranch,
+    selectedDuration,
+    selectedDate,
+    endDateState,
+    sixHourTimeFrom,
+    sixHourTimeTo,
+    pickupType,
+    pickupSlot,
+    sameModelQuantity,
+    selectedDepositMethod,
+    upsellLensId,
+    upsellTripodId,
+    upsellBatteryQty,
+  ]);
+
+  const settleDraft = useCallback(() => {
+    draftSettledRef.current = true;
+    clearBookingDraft();
+  }, []);
+
+  const requestClose = useCallback(() => {
+    if (isSubmitting || draftSettledRef.current) {
+      onClose();
+      return;
+    }
+    setShowExitConfirm(true);
+  }, [isSubmitting, onClose]);
+
+  /** Đóng tab / reload khi đơn chưa xong — trình duyệt chỉ cho hiện hộp thoại mặc định. */
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onBeforeUnload = (e) => {
+      if (draftSettledRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key !== "Escape") return;
+      if (showPointPicker || showRentalRulesModal || showCccdConfirmDialog) return;
+      if (showExitConfirm) setShowExitConfirm(false);
+      else requestClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    isOpen,
+    showExitConfirm,
+    showPointPicker,
+    showRentalRulesModal,
+    showCccdConfirmDialog,
+    requestClose,
+  ]);
 
   // Auto-save search prefs
   useEffect(() => {
@@ -2433,6 +2568,7 @@ export default function QuickBookModal({
           };
         });
         await api.post("/v1/shop/bookings", { bookingRequests });
+        settleDraft();
         window.location.href = "/my-bookings?shopBooked=1";
         return;
       }
@@ -2561,6 +2697,7 @@ export default function QuickBookModal({
         const paymentUrl =
           response.data?.deepLink || response.data?.checkoutUrl;
         if (paymentUrl) {
+          settleDraft();
           window.location.href = paymentUrl;
         } else {
           throw new Error("Không nhận được link thanh toán");
@@ -2598,6 +2735,7 @@ export default function QuickBookModal({
         const paymentUrl =
           response.data?.deepLink || response.data?.checkoutUrl;
         if (paymentUrl) {
+          settleDraft();
           window.location.href = paymentUrl;
         } else {
           throw new Error("Không nhận được link thanh toán");
@@ -2661,6 +2799,15 @@ export default function QuickBookModal({
 
   if (!isOpen || effectiveDevices.length === 0) return null;
 
+  const exitDraftSummary = [
+    isMulti
+      ? `${effectiveDevices.length} máy`
+      : effectiveDevices[0]?.displayName || effectiveDevices[0]?.name,
+    isValid(t1) && isValid(t2) ? formatPickupReturnRangeVi(t1, t2) : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   const handleCccdDialogConfirm = () => {
     cccdConfirmedRef.current = true;
     setShowCccdConfirmDialog(false);
@@ -2683,7 +2830,7 @@ export default function QuickBookModal({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[120] flex items-end justify-center bg-black/45 sm:items-center sm:p-4"
-        onClick={onClose}
+        onClick={requestClose}
       >
         <motion.div
           initial={{ y: "100%", opacity: 0 }}
@@ -2736,7 +2883,7 @@ export default function QuickBookModal({
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               aria-label="Đóng"
               className="-mr-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#77716c] transition-colors hover:bg-[#f6f5f4] active:scale-95"
             >
@@ -3644,6 +3791,83 @@ export default function QuickBookModal({
                 Đồng ý & thanh toán
               </button>
             </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+
+    <AnimatePresence>
+      {showExitConfirm && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[125] bg-black/55 backdrop-blur-[2px]"
+            onClick={() => setShowExitConfirm(false)}
+            aria-hidden
+          />
+          <motion.div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="exit-confirm-title"
+            aria-describedby="exit-confirm-desc"
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 12 }}
+            transition={{ type: "spring", damping: 26, stiffness: 320 }}
+            className="fixed left-3 right-3 top-1/2 z-[126] mx-auto max-w-sm -translate-y-1/2 rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id="exit-confirm-title"
+              className="text-base font-bold text-[#1f1f1f]"
+            >
+              Bạn chưa hoàn tất đơn
+            </h3>
+            <p
+              id="exit-confirm-desc"
+              className="mt-1.5 text-[13px] leading-relaxed text-[#55504b]"
+            >
+              Bạn có muốn thoát không? Đơn đang đặt dở đã được lưu nháp — lần
+              sau mở lại trang có thể đặt tiếp ngay.
+            </p>
+            {exitDraftSummary ? (
+              <p className="mt-3 rounded-xl bg-[#fff4f9] px-3 py-2 text-[12.5px] font-semibold leading-snug text-[#E85C9C]">
+                {exitDraftSummary}
+              </p>
+            ) : null}
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowExitConfirm(false);
+                  onClose();
+                }}
+                className="min-h-[44px] flex-1 rounded-xl border border-[#e2dfdc] text-[13px] font-semibold text-[#55504b] transition-colors hover:bg-[#faf9f8]"
+              >
+                Thoát
+              </button>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setShowExitConfirm(false)}
+                className="min-h-[44px] flex-1 rounded-xl bg-[#E85C9C] text-[13px] font-bold text-white transition-colors hover:bg-[#d94d8a]"
+              >
+                Tiếp tục đặt
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                settleDraft();
+                setShowExitConfirm(false);
+                onClose();
+              }}
+              className="mt-2 w-full rounded-lg py-2 text-[12px] font-semibold text-[#a3a09d] transition-colors hover:bg-rose-50 hover:text-rose-600"
+            >
+              Thoát & xoá đơn nháp
+            </button>
           </motion.div>
         </>
       )}
