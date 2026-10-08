@@ -11,6 +11,12 @@ import {
   Q9_BOOKING_OPENS_DATE,
 } from "../data/bookingConstants";
 import { getDefaultBranchId as getDefaultBranchIdFromHelpers } from "../utils/bookingHelpers";
+import {
+  getSixHourAutoReturnTime,
+  normalizeBookingTimePrefs,
+} from "../utils/bookingTimePrefs";
+
+export { getSixHourAutoReturnTime, normalizeBookingTimePrefs };
 
 /* ── Constants ── */
 
@@ -80,19 +86,6 @@ function combineDateWithTimeString(dateOnly, timeStr) {
   return isValid(d) ? d : null;
 }
 
-export function getSixHourAutoReturnTime(timeFrom) {
-  if (!timeFrom) return "15:00";
-  const [hStr, mStr] = timeFrom.split(":");
-  const h = parseInt(hStr, 10);
-  const m = parseInt(mStr, 10);
-  if (isNaN(h) || isNaN(m)) return "15:00";
-  const totalMinutes = h * 60 + m + 6 * 60;
-  const normalizedMinutes = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
-  const outH = Math.floor(normalizedMinutes / 60);
-  const outM = normalizedMinutes % 60;
-  return `${String(outH).padStart(2, "0")}:${String(outM).padStart(2, "0")}`;
-}
-
 function getDayPartLabel(date) {
   if (!date) return "";
   const hour = date.getHours();
@@ -151,29 +144,30 @@ function countWeekdaysInRange(startDateTime, endDateTime) {
 }
 
 export function computeAvailabilityRange(prefs) {
-  if (!prefs?.date || !prefs?.timeFrom) {
+  const n = normalizeBookingTimePrefs(prefs);
+  if (!n?.date || !n?.timeFrom) {
     return { fromDateTime: null, toDateTime: null };
   }
-  if (prefs.durationType === "SIX_HOURS") {
-    const fromDateTime = combineDateWithTimeString(prefs.date, prefs.timeFrom);
-    const toDateTime = combineDateWithTimeString(prefs.date, prefs.timeTo);
+  if (n.durationType === "SIX_HOURS") {
+    const fromDateTime = combineDateWithTimeString(n.date, n.timeFrom);
+    const toDateTime = combineDateWithTimeString(n.date, n.timeTo);
     return { fromDateTime, toDateTime };
   }
 
   const baseDate =
-    prefs.durationType === "ONE_DAY"
-      ? prefs.date
-      : prefs.pickupType === "EVENING"
-        ? addDays(prefs.date, -1)
-        : prefs.date;
-  const fromDateTime = combineDateWithTimeString(baseDate, prefs.timeFrom);
+    n.durationType === "ONE_DAY"
+      ? n.date
+      : n.pickupType === "EVENING"
+        ? addDays(n.date, -1)
+        : n.date;
+  const fromDateTime = combineDateWithTimeString(baseDate, n.timeFrom);
   if (!fromDateTime) return { fromDateTime: null, toDateTime: null };
 
-  if (prefs.durationType === "ONE_DAY") {
-    const safeEndDate = prefs.endDate || addDays(prefs.date, 1);
+  if (n.durationType === "ONE_DAY") {
+    const safeEndDate = n.endDate || addDays(n.date, 1);
     const toDateTime = combineDateWithTimeString(
       safeEndDate,
-      prefs.timeTo || prefs.timeFrom,
+      n.timeTo || n.timeFrom,
     );
     return {
       fromDateTime,
@@ -181,8 +175,8 @@ export function computeAvailabilityRange(prefs) {
     };
   }
 
-  const toDateTime = prefs.endDate
-    ? combineDateWithTimeString(prefs.endDate, prefs.timeFrom)
+  const toDateTime = n.endDate
+    ? combineDateWithTimeString(n.endDate, n.timeFrom)
     : null;
   return { fromDateTime, toDateTime };
 }

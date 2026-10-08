@@ -35,6 +35,10 @@ import BookingPrefsForm, {
   STALE_AVAILABILITY_SLOT_MESSAGE,
 } from "../../components/BookingPrefsForm";
 import {
+  bookingTimePrefsDiffer,
+  normalizeBookingTimePrefs,
+} from "../../utils/bookingTimePrefs";
+import {
   computeDiscountBreakdown as computeDiscountBreakdownForCustomer,
   computeShopPartnerBreakdown,
   calculateRentalInfo,
@@ -276,7 +280,7 @@ export default function DeviceCatalogPage() {
       endDate = durationType === "ONE_DAY" ? addDays(today, 1) : today;
     }
 
-    return {
+    return normalizeBookingTimePrefs({
       date,
       endDate,
       timeFrom: initialTimeFrom,
@@ -285,7 +289,7 @@ export default function DeviceCatalogPage() {
       pickupSlot: initialPickupSlot,
       branchId: initialBranchId || p?.branchId || getDefaultBranchId(),
       durationType,
-    };
+    });
   });
 
   const {
@@ -1630,17 +1634,19 @@ export default function DeviceCatalogPage() {
   const handleResumeBookingDraft = useCallback(() => {
     const draft = bookingDraft;
     if (!draft || !bookingDraftRows?.length) return;
-    setAvailabilityPrefs((prev) => ({
-      ...prev,
-      branchId: draft.branchId || prev.branchId,
-      durationType: draft.durationType || prev.durationType,
-      date: draft.date ? normalizeDate(draft.date) : prev.date,
-      endDate: draft.endDate ? normalizeDate(draft.endDate) : prev.endDate,
-      timeFrom: draft.timeFrom || prev.timeFrom,
-      timeTo: draft.timeTo || prev.timeTo,
-      pickupType: draft.pickupType || prev.pickupType,
-      pickupSlot: draft.pickupSlot || prev.pickupSlot,
-    }));
+    setAvailabilityPrefs((prev) =>
+      normalizeBookingTimePrefs({
+        ...prev,
+        branchId: draft.branchId || prev.branchId,
+        durationType: draft.durationType || prev.durationType,
+        date: draft.date ? normalizeDate(draft.date) : prev.date,
+        endDate: draft.endDate ? normalizeDate(draft.endDate) : prev.endDate,
+        timeFrom: draft.timeFrom || prev.timeFrom,
+        timeTo: draft.timeTo || prev.timeTo,
+        pickupType: draft.pickupType || prev.pickupType,
+        pickupSlot: draft.pickupSlot || prev.pickupSlot,
+      }),
+    );
     setAvailabilityConfirmed(true);
 
     if (bookingDraftRows.length > 1 || draft.modelKeys.length > 1) {
@@ -1941,7 +1947,7 @@ export default function DeviceCatalogPage() {
         changed = true;
       }
 
-      const merged = changed ? nextPrefs : prev;
+      const merged = normalizeBookingTimePrefs(changed ? nextPrefs : prev);
 
       if (hasAvailabilityFlag) {
         staleFromUrl = isAvailabilitySlotStale(merged);
@@ -1952,7 +1958,8 @@ export default function DeviceCatalogPage() {
       if (staleFromUrl) {
         return clampStaleAvailabilityDates(merged);
       }
-      return changed ? nextPrefs : prev;
+      if (bookingTimePrefsDiffer(merged, prev)) return merged;
+      return prev;
     });
 
     if (hasAvailabilityFlag && nextConfirmedFromUrl !== null) {
@@ -1971,9 +1978,11 @@ export default function DeviceCatalogPage() {
   // Sync state -> URL params whenever filters change
   useEffect(() => {
     const slotStale = isAvailabilitySlotStale(availabilityPrefs);
-    const prefsForUrl = slotStale
-      ? clampStaleAvailabilityDates(availabilityPrefs)
-      : availabilityPrefs;
+    const prefsForUrl = normalizeBookingTimePrefs(
+      slotStale
+        ? clampStaleAvailabilityDates(availabilityPrefs)
+        : availabilityPrefs,
+    );
     const confirmedForUrl = availabilityConfirmed && !slotStale;
     const nextParams = new URLSearchParams(searchParams);
 
@@ -3554,15 +3563,17 @@ export default function DeviceCatalogPage() {
             ? {
                 step: quickBookDraft?.step || (availabilityConfirmed ? 2 : 1),
                 draft: quickBookDraft,
-                branchId:
-                  quickBookBranchOverride ?? availabilityPrefs.branchId,
-                durationType: availabilityPrefs.durationType,
-                date: availabilityPrefs.date,
-                endDate: availabilityPrefs.endDate,
-                timeFrom: availabilityPrefs.timeFrom,
-                timeTo: availabilityPrefs.timeTo,
-                pickupType: availabilityPrefs.pickupType,
-                pickupSlot: availabilityPrefs.pickupSlot,
+                ...normalizeBookingTimePrefs({
+                  branchId:
+                    quickBookBranchOverride ?? availabilityPrefs.branchId,
+                  durationType: availabilityPrefs.durationType,
+                  date: availabilityPrefs.date,
+                  endDate: availabilityPrefs.endDate,
+                  timeFrom: availabilityPrefs.timeFrom,
+                  timeTo: availabilityPrefs.timeTo,
+                  pickupType: availabilityPrefs.pickupType,
+                  pickupSlot: availabilityPrefs.pickupSlot,
+                }),
               }
             : null
         }

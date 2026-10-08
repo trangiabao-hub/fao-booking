@@ -1,4 +1,5 @@
 import { format, isValid } from "date-fns";
+import { normalizeBookingTimePrefs } from "./bookingTimePrefs";
 
 /** `models=R50,G7X3` — danh sách modelKey shop gửi khách (không phải full catalog). */
 export function parseModelsParam(value) {
@@ -26,38 +27,39 @@ export function serializeModelsParam(modelKeys = []) {
  * @param {{ modelKeys?: string[] }} options — khi set: khách chỉ thấy các model đó.
  */
 export function buildCatalogShareSearchParams(availabilityPrefs = {}, options = {}) {
+  const prefs = normalizeBookingTimePrefs(availabilityPrefs);
   const params = new URLSearchParams();
 
-  if (availabilityPrefs.branchId) {
-    params.set("branchId", availabilityPrefs.branchId);
+  if (prefs.branchId) {
+    params.set("branchId", prefs.branchId);
   }
 
-  if (availabilityPrefs.durationType) {
-    params.set("durationType", availabilityPrefs.durationType);
+  if (prefs.durationType) {
+    params.set("durationType", prefs.durationType);
   }
 
-  if (availabilityPrefs.date && isValid(availabilityPrefs.date)) {
-    params.set("date", format(availabilityPrefs.date, "yyyy-MM-dd"));
+  if (prefs.date && isValid(prefs.date)) {
+    params.set("date", format(prefs.date, "yyyy-MM-dd"));
   }
 
-  if (availabilityPrefs.endDate && isValid(availabilityPrefs.endDate)) {
-    params.set("endDate", format(availabilityPrefs.endDate, "yyyy-MM-dd"));
+  if (prefs.endDate && isValid(prefs.endDate)) {
+    params.set("endDate", format(prefs.endDate, "yyyy-MM-dd"));
   }
 
-  if (availabilityPrefs.timeFrom) {
-    params.set("timeFrom", availabilityPrefs.timeFrom);
+  if (prefs.timeFrom) {
+    params.set("timeFrom", prefs.timeFrom);
   }
 
-  if (availabilityPrefs.timeTo) {
-    params.set("timeTo", availabilityPrefs.timeTo);
+  if (prefs.timeTo) {
+    params.set("timeTo", prefs.timeTo);
   }
 
-  if (availabilityPrefs.pickupType) {
-    params.set("pickupType", availabilityPrefs.pickupType);
+  if (prefs.pickupType) {
+    params.set("pickupType", prefs.pickupType);
   }
 
-  if (availabilityPrefs.pickupSlot) {
-    params.set("pickupSlot", availabilityPrefs.pickupSlot);
+  if (prefs.pickupSlot) {
+    params.set("pickupSlot", prefs.pickupSlot);
   }
 
   params.set("availability", "1");

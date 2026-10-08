@@ -96,6 +96,10 @@ import BookingPrefsForm, {
   computeAvailabilityRange,
   getAvailabilityRangeError,
 } from "./BookingPrefsForm";
+import {
+  PAYOS_MIN_AMOUNT_VND,
+  normalizeBookingTimePrefs,
+} from "../utils/bookingTimePrefs";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import RentalRulesModal from "./RentalRulesModal";
 import PhotoboothGiftBlock from "./PhotoboothGiftBlock";
@@ -197,9 +201,9 @@ function formatLocalDateTimeForDeviceApi(date) {
   return format(date, "yyyy-MM-dd'T'HH:mm:ss");
 }
 
-/** Invalid Date là truthy — luôn kiểm tra isValid trước khi format/submit. */
+/** Invalid Date là truthy — luôn kiểm tra isValid và trả phải sau nhận. */
 function isValidDateRange(t1, t2) {
-  return Boolean(t1 && t2 && isValid(t1) && isValid(t2));
+  return Boolean(t1 && t2 && isValid(t1) && isValid(t2) && t2 > t1);
 }
 
 function isValidEmail(email) {
@@ -309,10 +313,32 @@ function getOrderCodeFromPaymentResponse(data) {
 
 function extractApiErrorMessage(error, fallback = "Có lỗi xảy ra") {
   const data = error?.response?.data;
-  if (typeof data === "string" && data.trim()) return data;
-  if (data?.message) return data.message;
-  if (data?.error) return data.error;
-  return error?.message || fallback;
+  const detail = typeof data?.detail === "string" ? data.detail.trim() : "";
+  const raw =
+    typeof data === "string" && data.trim()
+      ? data.trim()
+      : data?.message ||
+        detail ||
+        data?.error ||
+        error?.message ||
+        "";
+  let msg = String(raw).trim();
+  if (/failed to create payment link/i.test(msg) && detail) {
+    msg = detail;
+  }
+  if (/empty token|expired token|invalid token/i.test(msg)) {
+    return "Phiên đăng nhập không hợp lệ. Hãy thử lại, hoặc chọn thanh toán không cần tài khoản.";
+  }
+  if (/số tiền.*lớn hơn 0|amount\s*=\s*0|không chấp nhận 0/i.test(msg)) {
+    return "Không tạo được thanh toán vì số tiền đang là 0đ. Hãy kiểm tra lại giờ nhận / trả, rồi thử lại.";
+  }
+  if (/không khớp với đơn/i.test(msg)) {
+    return "Số tiền thanh toán không khớp đơn hàng. Hãy tải lại trang và đặt lại.";
+  }
+  if (/failed to create payment link/i.test(msg)) {
+    return "Không tạo được link thanh toán. Máy vừa hết slot hoặc cổng thanh toán đang lỗi — thử lại hoặc chọn khung giờ khác.";
+  }
+  return msg || fallback;
 }
 
 function inferOneDayPickupType(timeFrom) {
@@ -1308,9 +1334,10 @@ export default function QuickBookModal({
     const durationId = DURATION_OPTIONS.some((d) => d.id === prefs?.durationId)
       ? prefs.durationId
       : "ONE_DAY";
-    return {
+    const raw = {
       branchId,
       durationId,
+      durationType: durationId,
       date: prefs?.date
         ? normalizeDate(new Date(prefs.date))
         : normalizeDate(new Date()),
@@ -1322,6 +1349,8 @@ export default function QuickBookModal({
       pickupType: prefs?.pickupType || "MORNING",
       pickupSlot: prefs?.pickupSlot || DEFAULT_EVENING_SLOT,
     };
+    const n = normalizeBookingTimePrefs(raw);
+    return { ...raw, ...n, durationId: n.durationType || durationId };
   }, []);
 
   const initialValues = useMemo(() => getInitialPrefs(), [getInitialPrefs]);
@@ -1462,7 +1491,7 @@ export default function QuickBookModal({
       rentalRules: false,
     });
     if (hasInitialPrefs && initialPrefs) {
-      const p = initialPrefs;
+      const p = normalizeBookingTimePrefs(initialPrefs);
       setStep(p.step || 1);
       if (p.branchId) setSelectedBranch(p.branchId);
       if (p.durationType) setSelectedDuration(p.durationType);
@@ -1635,14 +1664,31 @@ export default function QuickBookModal({
     hasInitialPrefs,
   ]);
 
-  // Defensive normalize: ONE_DAY must return at the same clock time as pickup.
-  // This also protects flows that jump straight to step 2 (bypassing BookingPrefsForm step 1).
+  // Bảo vệ mọi lối vào skip step 1: 6 tiếng phải trả sau nhận; 1 ngày trả cùng giờ ngày hôm sau.
   useEffect(() => {
-    if (!isOpen || selectedDuration !== "ONE_DAY" || !sixHourTimeFrom) return;
+    if (!isOpen || !sixHourTimeFrom || !selectedDuration) return;
 
-    if (sixHourTimeTo !== sixHourTimeFrom) {
-      setSixHourTimeTo(sixHourTimeFrom);
+    const normalized = normalizeBookingTimePrefs({
+      date: selectedDate,
+      endDate: endDateState,
+      timeFrom: sixHourTimeFrom,
+      timeTo: sixHourTimeTo,
+      durationType: selectedDuration,
+      pickupType,
+      pickupSlot,
+    });
+    if (normalized.timeTo && normalized.timeTo !== sixHourTimeTo) {
+      setSixHourTimeTo(normalized.timeTo);
     }
+    const nextEnd = normalized.endDate
+      ? normalizeDate(normalized.endDate)
+      : null;
+    const curEnd = endDateState ? normalizeDate(endDateState) : null;
+    if (nextEnd && (!curEnd || nextEnd.getTime() !== curEnd.getTime())) {
+      setEndDateState(nextEnd);
+    }
+
+    if (selectedDuration !== "ONE_DAY") return;
 
     const expectedPickupType = inferOneDayPickupType(sixHourTimeFrom);
     if (pickupType !== expectedPickupType) {
@@ -1659,6 +1705,8 @@ export default function QuickBookModal({
   }, [
     isOpen,
     selectedDuration,
+    selectedDate,
+    endDateState,
     sixHourTimeFrom,
     sixHourTimeTo,
     pickupType,
@@ -2383,9 +2431,14 @@ export default function QuickBookModal({
   );
   const maxPointToUse = useMemo(() => {
     if (!hasGoogleSession || isShopPartner) return 0;
+    const maxByBalance = Math.floor(memberPoint);
+    const maxByPrice = Math.floor(payableBeforePoint / 1000);
+    const maxLeavePayos = Math.floor(
+      Math.max(0, payableBeforePoint - PAYOS_MIN_AMOUNT_VND) / 1000,
+    );
     return Math.max(
       0,
-      Math.min(Math.floor(payableBeforePoint / 1000), Math.floor(memberPoint)),
+      Math.min(maxByBalance, maxByPrice, maxLeavePayos),
     );
   }, [hasGoogleSession, isShopPartner, payableBeforePoint, memberPoint]);
   const suggestedHalfPoints = useMemo(
@@ -2447,12 +2500,23 @@ export default function QuickBookModal({
 
   // Submit booking
   const handleSubmit = async () => {
-    if (
-      effectiveDevices.length === 0 ||
-      !isValidDateRange(t1, t2) ||
-      !isCustomerValid
-    )
+    if (effectiveDevices.length === 0 || !isCustomerValid) return;
+
+    if (!isValidDateRange(t1, t2)) {
+      setError(
+        "Thời gian trả phải sau thời gian nhận. Hãy chọn lại lịch thuê.",
+      );
+      setStep(1);
       return;
+    }
+
+    if (!isShopPartner && payableTotal < PAYOS_MIN_AMOUNT_VND) {
+      setError(
+        "Không tạo được thanh toán vì số tiền đang dưới mức tối thiểu. Hãy kiểm tra lại giờ nhận / trả, rồi thử lại.",
+      );
+      setStep(1);
+      return;
+    }
 
     if (!isAvailable || isCheckingAvailability) {
       setError(
@@ -2872,7 +2936,11 @@ export default function QuickBookModal({
               </h2>
               <div className="mt-1 flex min-w-0 items-start gap-1.5 text-[12px] leading-snug text-[#77716c]">
                 <span className="shrink-0 rounded-md bg-[#fff0f6] px-1.5 py-px text-[11px] font-bold text-[#E85C9C]">
-                  {durationDays < 1 ? "6 tiếng" : `${durationDays} ngày`}
+                  {selectedDuration === "SIX_HOURS"
+                    ? "6 tiếng"
+                    : durationDays >= 1
+                      ? `${durationDays} ngày`
+                      : "1 ngày"}
                 </span>
                 {isValid(t1) && isValid(t2) && (
                   <span className="min-w-0">

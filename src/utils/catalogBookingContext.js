@@ -1,4 +1,5 @@
 import { loadBookingPrefs } from "./storage";
+import { normalizeBookingTimePrefs } from "./bookingTimePrefs";
 
 export function parseLocalDateParam(value) {
   if (!value) return null;
@@ -58,7 +59,7 @@ export function parseCatalogBookingPrefs(fromPath = "") {
       return null;
     }
 
-    return {
+    return normalizeBookingTimePrefs({
       availabilityConfirmed,
       branchId,
       durationType,
@@ -68,7 +69,7 @@ export function parseCatalogBookingPrefs(fromPath = "") {
       timeTo: timeTo || timeFrom,
       pickupType,
       pickupSlot,
-    };
+    });
   } catch {
     return null;
   }
@@ -90,7 +91,7 @@ function buildStoredBookingPrefs(stored) {
   ) {
     return null;
   }
-  return {
+  return normalizeBookingTimePrefs({
     availabilityConfirmed: true,
     branchId: stored.branchId,
     durationType,
@@ -100,7 +101,7 @@ function buildStoredBookingPrefs(stored) {
     timeTo: stored.timeTo || stored.timeFrom,
     pickupType: stored.pickupType || null,
     pickupSlot: stored.pickupSlot || null,
-  };
+  });
 }
 
 /** Prefs cho QuickBookModal — ưu tiên context catalog, fallback localStorage. */
