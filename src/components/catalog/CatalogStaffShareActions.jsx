@@ -22,6 +22,8 @@ export default function CatalogStaffShareActions({
   modelPrices = {},
   hotPicks = [],
   categoryGroups = [],
+  durationType,
+  rentalDays,
   hint,
 }) {
   const [toast, setToast] = useState(null);
@@ -95,6 +97,8 @@ export default function CatalogStaffShareActions({
         url,
         categoryLabel: group.label,
         items: group.items,
+        durationType,
+        rentalDays,
       });
       const ok = await copyTextToClipboard(text);
       if (ok) {
@@ -107,7 +111,15 @@ export default function CatalogStaffShareActions({
         showToast("error");
       }
     },
-    [shortenCached, availabilityPrefs, pickupReturnSummary, branchLabel, showToast],
+    [
+      shortenCached,
+      availabilityPrefs,
+      pickupReturnSummary,
+      branchLabel,
+      durationType,
+      rentalDays,
+      showToast,
+    ],
   );
 
   const handleCopyMessage = useCallback(async () => {
@@ -120,6 +132,8 @@ export default function CatalogStaffShareActions({
       modelLabels: hasPickedList ? pickedLabels : [],
       modelPrices,
       hotPicks: hasPickedList ? [] : hotPicks,
+      durationType,
+      rentalDays,
     });
     const ok = await copyTextToClipboard(text);
     showToast(ok ? "message" : "error");
@@ -132,6 +146,8 @@ export default function CatalogStaffShareActions({
     pickedLabels,
     modelPrices,
     hotPicks,
+    durationType,
+    rentalDays,
     showToast,
   ]);
 

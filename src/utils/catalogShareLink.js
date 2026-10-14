@@ -142,6 +142,22 @@ function formatSavingsNote(prices = []) {
     : null;
 }
 
+/** "3 ngày" | "6 tiếng" | "" — số ngày/giờ tính tiền gửi khách. */
+export function formatShareDurationLabel(durationType, rentalDays) {
+  if (String(durationType || "") === "SIX_HOURS") return "6 tiếng";
+  const days = Number(rentalDays);
+  if (!Number.isFinite(days) || days <= 0) return "";
+  if (days === 0.5) return "6 tiếng";
+  const pretty = Number.isInteger(days) ? String(days) : String(days);
+  return `${pretty} ngày`;
+}
+
+function formatSharePriceHeading(durationLabel) {
+  return durationLabel
+    ? `🔥 Giá thuê ${durationLabel}:`
+    : "🔥 Giá thuê:";
+}
+
 /** "FUJIFILM XS10" trong dòng "Fujifilm" → "XS10" (giữ nguyên nếu bỏ xong bị rỗng). */
 function stripBrandPrefix(name = "", categoryLabel = "") {
   const words = new Set(
@@ -176,10 +192,13 @@ export function buildCatalogShareMessage({
   modelLabels = [],
   modelPrices = {},
   hotPicks = [],
+  durationType,
+  rentalDays,
 }) {
   const link = String(url || "").trim();
   const branch = formatBranchLabelForShare(branchLabel);
   const scheduleLines = formatScheduleLinesForShare(pickupReturnSummary);
+  const durationLabel = formatShareDurationLabel(durationType, rentalDays);
   const keys = modelKeys.filter(Boolean);
   const labels = modelLabels.filter(Boolean);
 
@@ -222,7 +241,7 @@ export function buildCatalogShareMessage({
       "",
       ...(hasPrice
         ? [
-            "🔥 Giá cả lịch thuê:",
+            formatSharePriceHeading(durationLabel),
             ...names.map((n, i) => `• ${formatCompactPriceLine(n, prices[i])}`),
             ...(savingsNote ? [savingsNote] : []),
           ]
@@ -243,7 +262,7 @@ export function buildCatalogShareMessage({
     ...(pricedHotPicks.length
       ? [
           "",
-          "🔥 Máy hot:",
+          durationLabel ? `🔥 Máy hot · ${durationLabel}:` : "🔥 Máy hot:",
           ...pricedHotPicks.map((p) => `• ${formatCompactPriceLine(p.label, p)}`),
           "… và nhiều máy khác trong link",
           ...(hotSavingsNote ? [hotSavingsNote] : []),
@@ -265,9 +284,12 @@ export function buildCatalogCategoryShareMessage({
   url = "",
   categoryLabel = "",
   items = [],
+  durationType,
+  rentalDays,
 }) {
   const link = String(url || "").trim();
   const branch = formatBranchLabelForShare(branchLabel);
+  const durationLabel = formatShareDurationLabel(durationType, rentalDays);
   const detailLines = [
     ...formatScheduleLinesForShare(pickupReturnSummary),
     ...(branch ? [`Chi nhánh: ${branch}`] : []),
@@ -284,7 +306,9 @@ export function buildCatalogCategoryShareMessage({
     ...(lines.length
       ? [
           "",
-          `🔥 ${categoryLabel}:`,
+          durationLabel
+            ? `🔥 ${categoryLabel} · ${durationLabel}:`
+            : `🔥 ${categoryLabel}:`,
           ...lines.map((l) => `• ${l}`),
           ...(savingsNote ? [savingsNote] : []),
         ]

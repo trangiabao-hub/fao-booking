@@ -1314,6 +1314,18 @@ export default function DeviceCatalogPage() {
     };
   }, [availabilityPrefs]);
 
+  /** Ngày/giờ tính tiền gửi khách — theo rule nhận tối / trả sáng, khớp giá trên tin. */
+  const shareRentalDays = useMemo(() => {
+    if (pricingContext.durationType === "SIX_HOURS") return 0.5;
+    const { fromDateTime, toDateTime, totalDays } = pricingContext;
+    if (!fromDateTime || !toDateTime) return totalDays || 0;
+    const { chargeableDays } = calculateRentalInfo(
+      [fromDateTime, toDateTime],
+      { priceOneDay: 1 },
+    );
+    return chargeableDays > 0 ? chargeableDays : totalDays || 0;
+  }, [pricingContext]);
+
   const { shop: shopPartner } = useShopMembership(
     !!loadCustomerSession()?.token,
   );
@@ -2620,6 +2632,8 @@ export default function DeviceCatalogPage() {
                   modelPrices={staffShareModelPrices}
                   hotPicks={staffShareHotPicks}
                   categoryGroups={staffShareCategoryGroups}
+                  durationType={pricingContext.durationType}
+                  rentalDays={shareRentalDays}
                   hint={
                     staffShareModelKeysList.length
                       ? `Đang chọn: ${staffShareModelLabels.join(", ")} — tin nhắn / link gửi đúng các máy này. Xóa giỏ để gửi cả catalog.`
