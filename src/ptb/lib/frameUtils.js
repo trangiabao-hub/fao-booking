@@ -116,6 +116,16 @@ export function mapApiFrames(items = []) {
   });
 }
 
+/** Khung thuộc danh mục "Spotlight" (admin) được ghim lên đầu thư viện. */
+export const SPOTLIGHT_CATEGORY = "spotlight";
+
+export function isSpotlightFrame(frame) {
+  return (
+    String(frame?.frameCategoryName || "").trim().toLowerCase() ===
+    SPOTLIGHT_CATEGORY
+  );
+}
+
 export const FRAME_SIZE_ORDER = ["1x4", "2x2", "1x1"];
 
 export const FRAME_SIZE_LABELS = {

@@ -2,12 +2,17 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownTrayIcon,
   PrinterIcon,
+  SparklesIcon,
 } from "@heroicons/react/24/solid";
 import FrameCard from "./FrameCard";
 import SkeletonFrameCard from "./SkeletonFrameCard";
 import EmptyState from "./EmptyState";
 import { FREE_PRINT_QUOTA } from "../../lib/constants";
-import { groupFramesBySize, resolveMediaUrl } from "../../lib/frameUtils";
+import {
+  groupFramesBySize,
+  isSpotlightFrame,
+  resolveMediaUrl,
+} from "../../lib/frameUtils";
 import { buildPtbPrintNote } from "../../lib/printOptions";
 import { cn, ptb } from "../../lib/theme";
 
@@ -90,6 +95,15 @@ export default function FrameGalleryPanel({
   onGalleryTabChange,
 }) {
   const groups = useMemo(() => groupFramesBySize(frames), [frames]);
+  const spotlightFrames = useMemo(
+    () => frames.filter(isSpotlightFrame),
+    [frames],
+  );
+  const regularGroups = useMemo(
+    () =>
+      groupFramesBySize(frames.filter((frame) => !isSpotlightFrame(frame))),
+    [frames],
+  );
   const [sizeFilter, setSizeFilter] = useState(ALL_SIZES);
   const [internalTab, setInternalTab] = useState("frames");
   const [selectedPrintIds, setSelectedPrintIds] = useState(() => new Set());
@@ -135,9 +149,20 @@ export default function FrameGalleryPanel({
   };
 
   const visibleGroups = useMemo(() => {
-    if (sizeFilter === ALL_SIZES) return groups;
-    return groups.filter((g) => g.size === sizeFilter);
-  }, [groups, sizeFilter]);
+    if (sizeFilter === ALL_SIZES) return regularGroups;
+    return regularGroups.filter((g) => g.size === sizeFilter);
+  }, [regularGroups, sizeFilter]);
+
+  const visibleSpotlight = useMemo(() => {
+    if (sizeFilter === ALL_SIZES) return spotlightFrames;
+    return spotlightFrames.filter(
+      (frame) => (frame.sizeType || frame.layoutType) === sizeFilter,
+    );
+  }, [spotlightFrames, sizeFilter]);
+
+  const showGroupLabels =
+    sizeFilter === ALL_SIZES &&
+    (regularGroups.length > 1 || visibleSpotlight.length > 0);
 
   const printedIds = useMemo(
     () => collectPrintedImageIds(printRequests),
@@ -387,9 +412,32 @@ export default function FrameGalleryPanel({
               />
             ) : (
               <div className="space-y-3">
+                {visibleSpotlight.length ? (
+                  <section className="border border-[#F9C6E0] bg-gradient-to-b from-[#FFF1F8] to-white p-1.5">
+                    <h3 className="mb-1.5 flex items-center justify-end gap-1 text-[11px] font-bold uppercase tracking-wide text-[#E6007E]">
+                      <SparklesIcon className="h-3.5 w-3.5" aria-hidden />
+                      Spotlight
+                    </h3>
+                    <div
+                      role="radiogroup"
+                      aria-label="Khung Spotlight"
+                      className={FRAME_GRID}
+                    >
+                      {visibleSpotlight.map((frame) => (
+                        <FrameCard
+                          key={frame.id}
+                          frame={frame}
+                          selected={selectedFrameId === frame.id}
+                          onSelect={onSelect}
+                          sizeType={frame.sizeType}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
                 {visibleGroups.map((group) => (
                   <section key={group.size}>
-                    {sizeFilter === ALL_SIZES && groups.length > 1 ? (
+                    {showGroupLabels ? (
                       <h3 className="mb-1.5 text-right text-[11px] font-bold uppercase tracking-wide text-[#98A2B3]">
                         {group.label}
                       </h3>
