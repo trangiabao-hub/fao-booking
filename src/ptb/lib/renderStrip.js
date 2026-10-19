@@ -27,23 +27,22 @@ export function drawCover(ctx, img, x, y, w, h, position, zoom = 1, rotateDeg = 
   const anchorY = (position?.y ?? 50) / 100;
   const z = zoom ?? 1;
 
+  // Khớp CSS preview: object-fit cover + object-position x%/y%, rồi scale(zoom).
   if (rotateDeg) {
     const cx = x + w / 2;
     const cy = y + h / 2;
     const rw = Math.abs(rotateDeg) % 180 === 90 ? h : w;
     const rh = Math.abs(rotateDeg) % 180 === 90 ? w : h;
-    const scale = Math.max(rw / naturalW, rh / naturalH) * z;
-    const drawW = naturalW * scale;
-    const drawH = naturalH * scale;
-    let drawX = -anchorX * drawW;
-    let drawY = -anchorY * drawH;
-    drawX = clamp(drawX, rw / 2 - drawW, -rw / 2);
-    drawY = clamp(drawY, rh / 2 - drawH, -rh / 2);
+    const baseScale = Math.max(rw / naturalW, rh / naturalH);
+    const baseW = naturalW * baseScale;
+    const baseH = naturalH * baseScale;
+    const drawX = z * (-rw / 2 + anchorX * (rw - baseW));
+    const drawY = z * (-rh / 2 + anchorY * (rh - baseH));
 
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate((rotateDeg * Math.PI) / 180);
-    ctx.drawImage(img, drawX, drawY, drawW, drawH);
+    ctx.drawImage(img, drawX, drawY, baseW * z, baseH * z);
     ctx.restore();
     return;
   }
@@ -52,8 +51,8 @@ export function drawCover(ctx, img, x, y, w, h, position, zoom = 1, rotateDeg = 
   const drawW = naturalW * scale;
   const drawH = naturalH * scale;
 
-  let drawX = x + w / 2 - anchorX * drawW;
-  let drawY = y + h / 2 - anchorY * drawH;
+  let drawX = x + anchorX * (w - drawW);
+  let drawY = y + anchorY * (h - drawH);
 
   drawX = clamp(drawX, x + w - drawW, x);
   drawY = clamp(drawY, y + h - drawH, y);
