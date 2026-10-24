@@ -11,7 +11,8 @@ import {
   X,
 } from "lucide-react";
 import api from "../config/axios";
-import { loadCustomerSession, loadRecentOrder } from "../utils/storage";
+import { loadRecentOrder } from "../utils/storage";
+import { useCustomerSession } from "../hooks/useCustomerSession";
 
 function getMemberTier(point = 0) {
   const p = Number(point) || 0;
@@ -27,7 +28,7 @@ export default function SlideNav({ mobileOnly = false }) {
   const MotionButton = motion.button;
   const MotionAside = motion.aside;
 
-  const hasSession = !!loadCustomerSession()?.token;
+  const hasSession = !!useCustomerSession();
   const recentOrder = loadRecentOrder();
   const orderLink = recentOrder?.orderIdNew
     ? `/order/${recentOrder.orderIdNew}`

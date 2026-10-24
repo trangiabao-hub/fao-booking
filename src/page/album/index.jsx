@@ -26,7 +26,7 @@ import { PTB_EVENTS, trackPtbEvent } from "../../ptb/lib/ptbAnalytics";
 import { savePhotosToDevice } from "../../ptb/lib/savePhotos";
 import { cn } from "../../ptb/lib/theme";
 import useBodyScrollLock from "../../hooks/useBodyScrollLock";
-import { loadCustomerSession } from "../../utils/storage";
+import { useCustomerSession } from "../../hooks/useCustomerSession";
 
 dayjs.locale("vi");
 
@@ -166,7 +166,7 @@ function buildPrintPlan(photos) {
 }
 
 export default function AlbumPage() {
-  const hasSession = !!loadCustomerSession()?.token;
+  const hasSession = !!useCustomerSession();
 
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(true);

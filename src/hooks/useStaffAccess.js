@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../config/axios";
-import { loadCustomerSession } from "../utils/storage";
+import { useCustomerSession } from "./useCustomerSession";
 import { isStaffAccount } from "../utils/staffAccess";
 
 /**
@@ -8,7 +8,7 @@ import { isStaffAccount } from "../utils/staffAccess";
  * Vãng lai và khách hàng thường → false.
  */
 export function useStaffAccess() {
-  const hasSession = !!loadCustomerSession()?.token;
+  const hasSession = !!useCustomerSession();
   const [isStaff, setIsStaff] = useState(false);
   const [loading, setLoading] = useState(hasSession);
 

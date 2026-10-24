@@ -8,7 +8,6 @@ import React, {
 } from "react";
 import { format, addDays, isValid } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { signInWithPopup } from "firebase/auth";
 import {
   X,
   Clock,
@@ -38,9 +37,8 @@ import {
 } from "../utils/storage";
 import { auth, googleProvider } from "../config/firebase";
 import {
-  GOOGLE_LOGIN_EMBEDDED_BROWSER_HINT_VI,
-  isLikelyEmbeddedBrowser,
   resolveGoogleSignInError,
+  signInWithGoogle,
 } from "../utils/googleSignInEnvironment";
 import EmbeddedBrowserGoogleHint from "./EmbeddedBrowserGoogleHint";
 import GoogleSignInButton from "./GoogleSignInButton";
@@ -2267,6 +2265,22 @@ export default function QuickBookModal({
     [slotBookingRows, selectedBranch],
   );
 
+  /** Lens/chân máy upsell phải giữ một thiết bị cụ thể trên lịch như máy chính, nên cần id thật. */
+  const pickFreeUpsellDeviceId = useCallback(
+    (modelKey) => {
+      if (!Array.isArray(slotBookingRows)) return null;
+      const key = String(modelKey || "").trim().toLowerCase();
+      const row = slotBookingRows.find(
+        (r) =>
+          String(r?.modelKey || "").trim().toLowerCase() === key &&
+          r?.branch === selectedBranch &&
+          !(Array.isArray(r?.bookingDtos) && r.bookingDtos.length > 0),
+      );
+      return row?.id ?? null;
+    },
+    [slotBookingRows, selectedBranch],
+  );
+
   const upsellLensOptions = useMemo(() => {
     if (!upsellConfig) return [];
     const priceField = `price${upsellDurationTierKey}`;
@@ -2274,6 +2288,7 @@ export default function QuickBookModal({
       { id: "none", label: "Lens kit", price: 0 },
       ...(upsellConfig.lenses || []).filter((l) => isUpsellModelFree(l.modelKey)).map((l) => ({
         id: `lens-${l.modelKey}`,
+        modelKey: l.modelKey,
         label: l.deviceName,
         price: Number(l[priceField]) || 0,
       })),
@@ -2287,6 +2302,7 @@ export default function QuickBookModal({
       { id: "none", label: "Không thuê thêm chân máy", price: 0 },
       ...(upsellConfig.tripods || []).filter((t) => isUpsellModelFree(t.modelKey)).map((t) => ({
         id: `tripod-${t.modelKey}`,
+        modelKey: t.modelKey,
         label: t.deviceName,
         price: Number(t[priceField]) || 0,
       })),
@@ -2409,20 +2425,20 @@ export default function QuickBookModal({
         `+ ${upsellBatteryQty} pin (+${formatCompactVnd(upsellBatteryQty * upsellBatteryUnitPrice)})`,
       );
     }
-    for (const opt of [selectedLensUpsell, selectedTripodUpsell]) {
-      if (opt && opt.id !== "none") {
-        lines.push(`+ ${opt.label} (+${formatCompactVnd(opt.price)})`);
-      }
-    }
     return lines;
   }, [
     upsellEnabled,
     batteryUpsellEnabled,
     upsellBatteryQty,
     upsellBatteryUnitPrice,
-    selectedLensUpsell,
-    selectedTripodUpsell,
   ]);
+  /** Lens/chân máy đi thành booking riêng trong cùng đơn (không ghi vào note) để lịch thấy thiết bị đã có người thuê. */
+  const upsellAccessoryItems = useMemo(() => {
+    if (!upsellEnabled) return [];
+    return [selectedLensUpsell, selectedTripodUpsell].filter(
+      (opt) => opt && opt.id !== "none",
+    );
+  }, [upsellEnabled, selectedLensUpsell, selectedTripodUpsell]);
   const payableBeforePoint = useMemo(
     () =>
       Math.max(0, Math.round((price || 0) - basePromotionDiscount)) +
@@ -2590,6 +2606,17 @@ export default function QuickBookModal({
     setError("");
 
     try {
+      const upsellAccessories = upsellAccessoryItems.map((opt) => {
+        const deviceId = pickFreeUpsellDeviceId(opt.modelKey);
+        if (!deviceId) {
+          throw new Error(
+            `${opt.label} vừa hết trong khung giờ này, vui lòng chọn lại phụ kiện.`,
+          );
+        }
+        return { deviceId, label: opt.label, price: Math.max(0, Math.round(opt.price || 0)) };
+      });
+      const upsellAccessoryTotal = upsellAccessories.reduce((sum, a) => sum + a.price, 0);
+
       const socialLink = (customer.ig || "").trim();
       const normalizedCustomer = {
         fullName: (customer.fullName || "").trim(),
@@ -2615,7 +2642,7 @@ export default function QuickBookModal({
         }
         const fmtShop = (d) => formatDateForAPIPayload(d);
         const shopNote = upsellNoteLines.join("\n").slice(0, 250);
-        const shopUpsell = isMulti ? 0 : upsellTotal;
+        const shopUpsell = isMulti ? 0 : Math.max(0, upsellTotal - upsellAccessoryTotal);
         const bookingRequests = rentalInfoPerDevice.map((r, idx) => {
           const devPrice = roundDownToThousand(r?.price || 0);
           const b = computeShopPartnerBreakdown(devPrice, t1, t2);
@@ -2631,6 +2658,18 @@ export default function QuickBookModal({
             location: apiLocationFromBranchId(selectedBranch),
           };
         });
+        for (const acc of upsellAccessories) {
+          bookingRequests.push({
+            deviceId: acc.deviceId,
+            bookingFrom: fmtShop(t1),
+            bookingTo: fmtShop(t2),
+            total: acc.price,
+            originalPrice: acc.price,
+            note: shopNote,
+            dayOfRent: chargeableDays,
+            location: apiLocationFromBranchId(selectedBranch),
+          });
+        }
         await api.post("/v1/shop/bookings", { bookingRequests });
         settleDraft();
         window.location.href = "/my-bookings?shopBooked=1";
@@ -2768,28 +2807,62 @@ export default function QuickBookModal({
         }
       } else {
         const dev = effectiveDevices[0];
-        const bookingRequest = {
+        const baseRequest = {
           customerId,
-          deviceId: dev.id,
           bookingFrom: fmt(t1),
           bookingTo: fmt(t2),
-          total: payableTotal,
           note,
           dayOfRent: chargeableDays,
-          originalPrice: price,
           noteVoucher: noteVoucherForRequests,
           usedPoint: pointToUse,
           location: apiLocationFromBranchId(selectedBranch),
           depositApplicable: true,
         };
-
-        const payload = {
-          amount: payableTotal,
-          description: `Thue ${(dev.name || dev.displayName || "").slice(0, 15)}`,
-          bookingRequest,
+        const description = `Thue ${(dev.name || dev.displayName || "").slice(0, 15)}`;
+        const returnUrls = {
           returnSuccessUrl: `${window.location.origin}/payment-status`,
           returnFailUrl: `${window.location.origin}/payment-status`,
         };
+
+        let payload;
+        if (upsellAccessories.length > 0) {
+          const mainBeforePoint = Math.max(0, payableBeforePoint - upsellAccessoryTotal);
+          const pointShares = allocateDiscountByRatio(
+            [mainBeforePoint, ...upsellAccessories.map((a) => a.price)],
+            pointDiscountAmount,
+          );
+          payload = {
+            amount: payableTotal,
+            description,
+            bookingRequests: [
+              {
+                ...baseRequest,
+                deviceId: dev.id,
+                total: mainBeforePoint - pointShares[0],
+                originalPrice: price,
+              },
+              ...upsellAccessories.map((acc, idx) => ({
+                ...baseRequest,
+                deviceId: acc.deviceId,
+                total: acc.price - pointShares[idx + 1],
+                originalPrice: acc.price,
+              })),
+            ],
+            ...returnUrls,
+          };
+        } else {
+          payload = {
+            amount: payableTotal,
+            description,
+            bookingRequest: {
+              ...baseRequest,
+              deviceId: dev.id,
+              total: payableTotal,
+              originalPrice: price,
+            },
+            ...returnUrls,
+          };
+        }
 
         const response = await api.post("/create-payment-link", payload);
         const orderCode = getOrderCodeFromPaymentResponse(response.data);
@@ -2818,11 +2891,8 @@ export default function QuickBookModal({
     setIsMemberDataLoading(true);
     setError("");
     try {
-      if (isLikelyEmbeddedBrowser()) {
-        setError(GOOGLE_LOGIN_EMBEDDED_BROWSER_HINT_VI);
-        return;
-      }
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithGoogle(auth, googleProvider);
+      if (!result?.user) return;
       const googleUser = result.user;
       const res = await api.post("/login-gg", {
         email: googleUser?.email,

@@ -60,7 +60,7 @@ import {
   parseDeviceReleaseDate,
 } from "../../utils/deviceReleaseDate";
 import { saveBookingPrefs, loadCustomerSession, saveCustomerSession } from "../../utils/storage";
-import { signInWithPopup } from "firebase/auth";
+import { resolveGoogleSignInError, signInWithGoogle } from "../../utils/googleSignInEnvironment";
 import { auth, googleProvider } from "../../config/firebase";
 import useBookingSocket from "../../lib/useBookingSocket";
 import "react-datepicker/dist/react-datepicker.css";
@@ -436,7 +436,8 @@ export default function DeviceCatalogPage() {
       if (!token) {
         try {
           setIsNotifyLoading(true);
-          const result = await signInWithPopup(auth, googleProvider);
+          const result = await signInWithGoogle(auth, googleProvider);
+          if (!result?.user) return;
           const user = result.user;
           const response = await api.post("/login-gg", {
             email: user?.email,
@@ -449,7 +450,8 @@ export default function DeviceCatalogPage() {
           saveCustomerSession({ token: newToken });
           await proceedWithWaitlist(device, newToken);
         } catch (err) {
-          console.error("Lỗi đăng nhập Google hoặc API", err);
+          const message = resolveGoogleSignInError(err, "Không đăng nhập Google được.");
+          if (message) window.alert(message);
         } finally {
           setIsNotifyLoading(false);
         }

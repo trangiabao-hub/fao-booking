@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { signInWithPopup } from "firebase/auth";
 import SlideNav from "../../components/SlideNav";
 import { auth, googleProvider } from "../../config/firebase";
 import api from "../../config/axios";
@@ -7,12 +6,12 @@ import {
   clearCustomerSession,
   loadCustomerSession,
   saveCustomerSession,
+  SESSION_EVENT,
 } from "../../utils/storage";
 import { computeTotalSpentFromBookings } from "../../utils/loyaltyEarn";
 import {
-  GOOGLE_LOGIN_EMBEDDED_BROWSER_HINT_VI,
-  isLikelyEmbeddedBrowser,
   resolveGoogleSignInError,
+  signInWithGoogle,
 } from "../../utils/googleSignInEnvironment";
 import EmbeddedBrowserGoogleHint from "../../components/EmbeddedBrowserGoogleHint";
 
@@ -104,6 +103,11 @@ export default function AccountPage() {
   const [hasSession, setHasSession] = useState(
     () => !!loadCustomerSession()?.token,
   );
+  useEffect(() => {
+    const sync = () => setHasSession(!!loadCustomerSession()?.token);
+    window.addEventListener(SESSION_EVENT, sync);
+    return () => window.removeEventListener(SESSION_EVENT, sync);
+  }, []);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [account, setAccount] = useState(null);
   const [error, setError] = useState("");
@@ -152,11 +156,8 @@ export default function AccountPage() {
     setError("");
 
     try {
-      if (isLikelyEmbeddedBrowser()) {
-        setError(GOOGLE_LOGIN_EMBEDDED_BROWSER_HINT_VI);
-        return;
-      }
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithGoogle(auth, googleProvider);
+      if (!result?.user) return;
       const user = result.user;
 
       const response = await api.post("/login-gg", {

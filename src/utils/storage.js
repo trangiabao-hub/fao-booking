@@ -71,38 +71,85 @@ export function clearCustomerInfo() {
   }
 }
 
-export function saveCustomerSession(session) {
+export const SESSION_EVENT = "fao-session-changed";
+const SESSION_COOKIE = "fao_customer_session";
+
+function notifySession() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(SESSION_EVENT));
+}
+
+function writeSessionCookie(data) {
+  if (typeof document === "undefined") return;
+  const maxAge = Math.floor(CUSTOMER_SESSION_TTL_MS / 1000);
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${SESSION_COOKIE}=${encodeURIComponent(JSON.stringify(data))}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
+}
+
+function clearSessionCookie() {
+  if (typeof document === "undefined") return;
+  document.cookie = `${SESSION_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+function readSessionCookie() {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${SESSION_COOKIE}=([^;]*)`));
+  if (!match) return null;
   try {
-    const data = {
-      token: session?.token || "",
-      savedAt: new Date().toISOString(),
-    };
+    return JSON.parse(decodeURIComponent(match[1]));
+  } catch {
+    return null;
+  }
+}
+
+function validSession(data) {
+  if (!data?.token) return null;
+  const savedAt = new Date(data.savedAt);
+  if (Number.isNaN(savedAt.getTime())) return null;
+  if (Date.now() - savedAt.getTime() > CUSTOMER_SESSION_TTL_MS) return null;
+  return { token: data.token };
+}
+
+export function saveCustomerSession(session) {
+  const data = {
+    token: session?.token || "",
+    savedAt: new Date().toISOString(),
+  };
+  try {
     localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify(data));
-    if (data.token) {
-      localStorage.setItem("token", JSON.stringify(data.token));
-    }
+    if (data.token) localStorage.setItem("token", JSON.stringify(data.token));
   } catch (e) {
     console.warn("Failed to save customer session:", e);
   }
+  if (data.token) writeSessionCookie(data);
+  else clearSessionCookie();
+  notifySession();
 }
 
 export function loadCustomerSession() {
   try {
     const stored = localStorage.getItem(CUSTOMER_SESSION_KEY);
-    if (!stored) return null;
-    const data = JSON.parse(stored);
-    const savedAt = new Date(data.savedAt);
-    if (Number.isNaN(savedAt.getTime())) return null;
-    if (Date.now() - savedAt.getTime() > CUSTOMER_SESSION_TTL_MS) {
+    if (stored) {
+      const parsed = validSession(JSON.parse(stored));
+      if (parsed) return parsed;
       localStorage.removeItem(CUSTOMER_SESSION_KEY);
       localStorage.removeItem("token");
-      return null;
     }
-    return { token: data.token || "" };
   } catch (e) {
     console.warn("Failed to load customer session:", e);
+  }
+  const fromCookie = validSession(readSessionCookie());
+  if (!fromCookie) {
+    clearSessionCookie();
     return null;
   }
+  try {
+    localStorage.setItem(CUSTOMER_SESSION_KEY, JSON.stringify({ ...fromCookie, savedAt: new Date().toISOString() }));
+    localStorage.setItem("token", JSON.stringify(fromCookie.token));
+  } catch {
+    /* cookie vẫn dùng được khi localStorage bị chặn */
+  }
+  return fromCookie;
 }
 
 export function clearCustomerSession() {
@@ -112,6 +159,8 @@ export function clearCustomerSession() {
   } catch (e) {
     console.warn("Failed to clear customer session:", e);
   }
+  clearSessionCookie();
+  notifySession();
 }
 
 export function saveRecentOrder(payload) {

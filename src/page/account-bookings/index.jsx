@@ -12,9 +12,9 @@ import {
 import { FREE_PRINT_QUOTA } from "../../ptb/lib/constants";
 import api from "../../config/axios";
 import SlideNav from "../../components/SlideNav";
+import { useCustomerSession } from "../../hooks/useCustomerSession";
 import {
   loadRecentOrder,
-  loadCustomerSession,
   saveRecentOrder,
   clearRecentOrder,
 } from "../../utils/storage";
@@ -54,8 +54,8 @@ const STATUS_STYLES = {
   TEST: "border-slate-200 bg-slate-50 text-slate-700",
 };
 
-const COMPLETED_STATUSES = new Set(["DONE"]);
-const CANCELLED_STATUSES = new Set(["CANCEL", "REFUNDED"]);
+const COMPLETED_STATUSES = new Set(["DONE", "REFUNDED"]);
+const CANCELLED_STATUSES = new Set(["CANCEL"]);
 /** Không còn ở tab Sắp nhận / Sắp trả */
 const CLOSED_FOR_PICKUP_RETURN = new Set([
   "DONE",
@@ -78,12 +78,12 @@ const MAIN_TABS = [
   {
     id: "completed",
     label: "Đã hoàn thành",
-    hint: "Đã trả máy xong (hoàn tất thuê).",
+    hint: "Đã trả máy xong, kể cả đơn đã hoàn cọc.",
   },
   {
     id: "cancelled",
     label: "Đã hủy",
-    hint: "Đơn đã hủy hoặc đã hoàn cọc.",
+    hint: "Đơn đã hủy.",
   },
 ];
 
@@ -191,7 +191,7 @@ export default function AccountBookingsPage() {
   const [sortBy, setSortBy] = useState("newest");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const hasSession = !!loadCustomerSession()?.token;
+  const hasSession = !!useCustomerSession();
   const { shop, loading: shopLoading } = useShopMembership(hasSession);
   const isShopView = hasSession && !!shop;
 
@@ -556,13 +556,13 @@ export default function AccountBookingsPage() {
                           ? "Chưa có đơn cần trả máy"
                           : mainTab === "completed"
                             ? "Chưa có đơn đã hoàn thành"
-                            : "Chưa có đơn đã hủy / hoàn cọc"}
+                            : "Chưa có đơn đã hủy"}
                   </p>
                   <p className="mx-auto mt-2 max-w-sm text-sm text-[#777]">
                     {searchQuery.trim()
                       ? "Thử đổi từ khóa hoặc chọn tab khác."
                       : mainTab === "cancelled"
-                        ? "Đơn bị hủy hoặc đã hoàn cọc sẽ nằm ở tab này."
+                        ? "Đơn bị hủy sẽ nằm ở tab này. Đơn đã hoàn cọc nằm ở Đã hoàn thành."
                         : "Đơn mới ở tab Sắp nhận; đang giữ máy xem Sắp trả; trả xong xem Đã hoàn thành."}
                   </p>
                   {searchQuery.trim() ? (

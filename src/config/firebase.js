@@ -3,6 +3,7 @@ import {
   initializeAuth,
   getAuth,
   indexedDBLocalPersistence,
+  browserLocalPersistence,
   browserPopupRedirectResolver,
   GoogleAuthProvider,
 } from "firebase/auth";
@@ -24,7 +25,7 @@ const app = initializeApp(firebaseConfig);
 let auth;
 try {
   auth = initializeAuth(app, {
-    persistence: indexedDBLocalPersistence,
+    persistence: [indexedDBLocalPersistence, browserLocalPersistence],
     popupRedirectResolver: browserPopupRedirectResolver,
   });
 } catch {
