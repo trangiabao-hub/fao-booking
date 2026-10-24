@@ -1,28 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowRight, ChevronDown, Search } from "lucide-react";
-import { format, addDays } from "date-fns";
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Columns2,
+  Link2,
+  MessageSquare,
+  Search,
+  X,
+} from "lucide-react";
 import api from "../../config/axios";
 import SlideNav from "../../components/SlideNav";
 import FloatingContactButton from "../../components/FloatingContactButton";
-import QuickBookModal from "../../components/QuickBookModal";
-import CatalogCuratedScheduleBanner from "../../components/catalog/CatalogCuratedScheduleBanner";
+import { useStaffAccess } from "../../hooks/useStaffAccess";
+import { copyTextToClipboard } from "../../utils/clipboard";
+import { shortenUrl } from "../../utils/shortLink";
 import {
-  computeAvailabilityRange,
-  getAvailabilityRangeError,
-} from "../../components/BookingPrefsForm";
-import {
-  buildQuickBookInitialPrefs,
-  parseCatalogBookingPrefs,
-} from "../../utils/catalogBookingContext";
-import { BRANCHES } from "../../data/bookingConstants";
-import { formatTimeVi } from "../../utils/formatTimeVi";
-import { MESSENGER_LINK } from "../../data/contactConfig";
-import { filterBookingsOverlappingSlot } from "../../utils/bookingOverlap";
-import {
-  devicesForBookingBranch,
-  normalizeDevicesListResponse,
-} from "../../utils/deviceBranch";
+  buildFeedbackShareMessage,
+  buildFeedbackViewUrl,
+} from "../../utils/feedbackShareLink";
+import { normalizeDevicesListResponse } from "../../utils/deviceBranch";
 import deviceSeoSnapshot from "../../data/deviceSeoSnapshot.json";
 
 const FALLBACK_IMG =
@@ -269,15 +267,6 @@ function resolveModelIdentityFromItem(item, deviceById) {
   return (String(device?.modelKey || "").trim() || normalizeDeviceName(device?.name || "") || null);
 }
 
-function modelKeyForAvailability(deviceOrKey) {
-  if (typeof deviceOrKey === "string") {
-    return String(deviceOrKey).trim();
-  }
-  const mk = String(deviceOrKey?.modelKey || "").trim();
-  if (mk) return mk;
-  return normalizeDeviceName(deviceOrKey?.name || "");
-}
-
 function buildModelFeedbackMap(items = []) {
   const grouped = new Map();
   for (const item of items) {
@@ -488,6 +477,192 @@ function getAspectRatioByIndex(index = 0) {
   return ASPECT_RATIO_SEQUENCE[index % ASPECT_RATIO_SEQUENCE.length];
 }
 
+const COMPARE_PAGE_SIZE = 6;
+const COMPARE_SIDE_STYLES = [
+  { tag: "A", tint: "bg-[#fff3f8]", badge: "bg-[#E85C9C] text-white" },
+  { tag: "B", tint: "bg-[#eef6ff]", badge: "bg-[#1E88E5] text-white" },
+];
+const MAX_COMPARE_MODELS = 2;
+
+/** Tải ảnh feedback theo trang cho 1 dòng máy (dùng trong chế độ so sánh). */
+function useCompareGallery(name, modelKey) {
+  const [items, setItems] = useState([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setItems([]);
+    setPage(0);
+    setTotalPages(1);
+    setTotal(0);
+  }, [name]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    api
+      .get("/v1/feedback/gallery", {
+        params: {
+          category: DEFAULT_CATEGORY_KEY,
+          model: name,
+          page,
+          size: COMPARE_PAGE_SIZE,
+        },
+      })
+      .then((res) => {
+        if (cancelled) return;
+        const content = Array.isArray(res.data?.content) ? res.data.content : [];
+        setItems((prev) => {
+          const seen = new Set(prev.map((i) => i.id));
+          return [...prev, ...content.filter((i) => !seen.has(i.id))];
+        });
+        setTotalPages(Math.max(1, res.data?.totalPages ?? 1));
+        setTotal(res.data?.totalElements ?? content.length);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Không tải được ảnh. Thử lại sau.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [name, page]);
+
+  const visible = useMemo(() => {
+    const key = String(modelKey || "").trim().toLowerCase();
+    if (!key) return items;
+    return items.filter(
+      (i) => String(i.modelKey || "").trim().toLowerCase() === key,
+    );
+  }, [items, modelKey]);
+
+  return {
+    items: visible,
+    total,
+    loading,
+    error,
+    hasMore: page < totalPages - 1,
+    loadMore: () => setPage((p) => p + 1),
+  };
+}
+
+function CompareCell({ item, name }) {
+  return (
+    <div className="flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-md border border-[#eadfd3] bg-white/70">
+      <img
+        src={item.image || FALLBACK_IMG}
+        alt={`${formatFeedbackModelTitle(name)} thực tế`}
+        loading="lazy"
+        decoding="async"
+        className="h-full w-full object-contain"
+      />
+    </div>
+  );
+}
+
+/**
+ * So sánh 2 máy: mỗi máy một nửa màn hình (nền màu + nhãn A/B), tên máy dính trên cùng khi cuộn.
+ * Mỗi bên chia 1 / 2 / 3 ảnh mỗi hàng theo chiều rộng màn hình; ô cùng tỉ lệ nên hàng hai bên thẳng nhau.
+ */
+function ComparePanel({ models, onRemove }) {
+  const left = useCompareGallery(models[0].name, models[0].modelKey);
+  const right = useCompareGallery(models[1].name, models[1].modelKey);
+  const sides = [left, right];
+  const loading = left.loading || right.loading;
+  const error = left.error || right.error;
+  const hasMore = left.hasMore || right.hasMore;
+  const empty = left.items.length === 0 && right.items.length === 0;
+
+  return (
+    <div className="rounded-xl border border-[#e5d8cc] bg-[#fffdf9] shadow-sm">
+      <div className="sticky top-0 z-20 grid grid-cols-2 divide-x divide-[#e5d8cc] overflow-hidden rounded-t-xl border-b border-[#e5d8cc] shadow-sm">
+        {models.map((m, idx) => {
+          const style = COMPARE_SIDE_STYLES[idx];
+          return (
+            <div
+              key={m.name}
+              className={`flex min-w-0 items-center justify-between gap-2 px-2 py-2 sm:px-4 ${style.tint}`}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black ${style.badge}`}
+                >
+                  {style.tag}
+                </span>
+                <div className="min-w-0">
+                  <h3 className="font-feedback-ui line-clamp-2 text-sm font-bold leading-snug text-[#8b2848] sm:text-base">
+                    {formatFeedbackModelTitle(m.name)}
+                  </h3>
+                  <p className="text-[11px] font-semibold text-[#9a8478]">
+                    {sides[idx].total} ảnh thực tế
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onRemove(m.name)}
+                aria-label={`Bỏ ${formatFeedbackModelTitle(m.name)}`}
+                className="shrink-0 rounded-full border border-[#e5d5c8] bg-white p-1 text-[#8a6f62] hover:text-[#b03060]"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 divide-x divide-[#e5d8cc]">
+        {models.map((m, idx) => (
+          <div
+            key={m.name}
+            className={`min-w-0 p-1.5 sm:p-3 ${COMPARE_SIDE_STYLES[idx].tint}`}
+          >
+            <div className="grid grid-cols-1 gap-1.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {sides[idx].items.map((item) => (
+                <CompareCell key={item.id} item={item} name={m.name} />
+              ))}
+              {sides[idx].loading &&
+                Array.from({ length: 3 }).map((_, n) => (
+                  <div
+                    key={`sk-${n}`}
+                    className="aspect-[3/4] w-full animate-pulse rounded-md bg-gradient-to-br from-[#f0e4dc] via-[#faf3ee] to-[#e8ddd4]"
+                  />
+                ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {error && <p className="px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
+      {!loading && !error && empty && (
+        <p className="py-6 text-center text-xs text-[#8a7468]">
+          Chưa có ảnh feedback cho hai máy này.
+        </p>
+      )}
+      {!loading && hasMore && (
+        <div className="p-2 sm:p-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (left.hasMore) left.loadMore();
+              if (right.hasMore) right.loadMore();
+            }}
+            className="w-full rounded-lg border border-[#d4c4b0] bg-white py-2 text-xs font-bold text-[#6b3d4a] hover:bg-[#fff5f0]"
+          >
+            Xem thêm ảnh
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FeedbackPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [devices, setDevices] = useState([]);
@@ -505,14 +680,21 @@ export default function FeedbackPage() {
   const [selectedModelKey, setSelectedModelKey] = useState("");
   const [modelQuery, setModelQuery] = useState("");
   const [showAllModels, setShowAllModels] = useState(false);
-  const [quickBookDevice, setQuickBookDevice] = useState(null);
-  const [showQuickBookModal, setShowQuickBookModal] = useState(false);
   const [galleryPage, setGalleryPage] = useState(0);
   const [galleryPayload, setGalleryPayload] = useState(null);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryError, setGalleryError] = useState("");
-  const [slotModelAvailability, setSlotModelAvailability] = useState(null);
-  const [slotAvailabilityLoading, setSlotAvailabilityLoading] = useState(false);
+  const { isStaff } = useStaffAccess();
+  const initialCompare = useMemo(
+    () => searchParams.getAll("compare").filter(Boolean).slice(0, MAX_COMPARE_MODELS),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  /** null | "compare" (so sánh 2 máy) | "send" (staff chọn nhiều máy để copy tin nhắn). */
+  const [pickMode, setPickMode] = useState(initialCompare.length ? "compare" : null);
+  const [pickedModels, setPickedModels] = useState(initialCompare);
+  const [copyState, setCopyState] = useState(null);
+  const [copyBusy, setCopyBusy] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -899,15 +1081,12 @@ export default function FeedbackPage() {
   const galleryItems = useMemo(() => {
     const rows = Array.isArray(galleryPayload?.content) ? galleryPayload.content : [];
     const mapped = rows.map((row) => {
-      const bid = row.bookDeviceId != null ? normalizeId(row.bookDeviceId) : "";
-      const bookDevice = bid ? deviceById.get(bid) || null : null;
       return {
         id: row.id,
         modelKey: row.modelKey,
         modelName: row.modelName,
         line: row.line,
         image: row.image || FALLBACK_IMG,
-        bookDevice,
       };
     });
     if (selectedModelKey && selectedModel !== DEFAULT_MODEL) {
@@ -917,7 +1096,7 @@ export default function FeedbackPage() {
       );
     }
     return mapped;
-  }, [galleryPayload, deviceById, selectedModelKey, selectedModel]);
+  }, [galleryPayload, selectedModelKey, selectedModel]);
 
   const galleryTotal = galleryPayload?.totalElements ?? 0;
   const galleryTotalPages = Math.max(1, galleryPayload?.totalPages ?? 1);
@@ -947,159 +1126,6 @@ export default function FeedbackPage() {
     deviceById,
   ]);
 
-  const selectedModelBookDevice = useMemo(() => {
-    if (!selectedModel || selectedModel === DEFAULT_MODEL) return null;
-    if (selectedModelRow?.representativeDevice) return selectedModelRow.representativeDevice;
-    return null;
-  }, [selectedModel, selectedModelRow]);
-
-  const catalogSlotPrefs = useMemo(
-    () => parseCatalogBookingPrefs(fromCatalogPath),
-    [fromCatalogPath],
-  );
-
-  const catalogSlotSummaryVi = useMemo(() => {
-    if (!catalogSlotPrefs) return "";
-    const { fromDateTime, toDateTime } = computeAvailabilityRange({
-      date: catalogSlotPrefs.date,
-      endDate: catalogSlotPrefs.endDate,
-      timeFrom: catalogSlotPrefs.timeFrom,
-      timeTo: catalogSlotPrefs.timeTo,
-      durationType: catalogSlotPrefs.durationType,
-      pickupType: catalogSlotPrefs.pickupType,
-      pickupSlot: catalogSlotPrefs.pickupSlot,
-    });
-    if (!fromDateTime || !toDateTime) return "";
-    const dm = (d) => `${d.getDate()}/${d.getMonth() + 1}`;
-    return `nhận ${formatTimeVi(fromDateTime)} ${dm(fromDateTime)}, trả ${formatTimeVi(toDateTime)} ${dm(toDateTime)}`;
-  }, [catalogSlotPrefs]);
-
-  const catalogSlotBranchLabel = useMemo(() => {
-    if (!catalogSlotPrefs?.branchId) return "";
-    const branch = BRANCHES.find((b) => b.id === catalogSlotPrefs.branchId);
-    return String(branch?.label || "")
-      .replace(/^FAO\s*/i, "")
-      .trim();
-  }, [catalogSlotPrefs]);
-
-  const quickBookInitialPrefs = useMemo(
-    () => buildQuickBookInitialPrefs(fromCatalogPath),
-    [fromCatalogPath],
-  );
-
-  useEffect(() => {
-    if (!catalogSlotPrefs || devices.length === 0) {
-      setSlotModelAvailability(null);
-      setSlotAvailabilityLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    const load = async () => {
-      setSlotAvailabilityLoading(true);
-      try {
-        const prefs = {
-          date: catalogSlotPrefs.date,
-          endDate: catalogSlotPrefs.endDate,
-          timeFrom: catalogSlotPrefs.timeFrom,
-          timeTo: catalogSlotPrefs.timeTo,
-          durationType: catalogSlotPrefs.durationType,
-          pickupType: catalogSlotPrefs.pickupType,
-          pickupSlot: catalogSlotPrefs.pickupSlot,
-        };
-        const { fromDateTime, toDateTime } = computeAvailabilityRange(prefs);
-        const rangeError = getAvailabilityRangeError(
-          prefs,
-          fromDateTime,
-          toDateTime,
-        );
-        if (rangeError || !fromDateTime || !toDateTime) {
-          if (!cancelled) setSlotModelAvailability(null);
-          return;
-        }
-
-        const fromStr = format(fromDateTime, "yyyy-MM-dd'T'HH:mm:ss");
-        const lookupTo =
-          catalogSlotPrefs.durationType === "ONE_DAY"
-            ? addDays(toDateTime, 1)
-            : toDateTime;
-        const toStr = format(lookupTo, "yyyy-MM-dd'T'HH:mm:ss");
-        if (!fromStr || !toStr) {
-          if (!cancelled) setSlotModelAvailability(null);
-          return;
-        }
-
-        const resp = await api.get("v1/devices/booking", {
-          params: {
-            startDate: fromStr.slice(0, 10),
-            endDate: toStr.slice(0, 10),
-            branchId: catalogSlotPrefs.branchId,
-          },
-        });
-        if (cancelled) return;
-
-        const branchDevices = devicesForBookingBranch(
-          devices,
-          catalogSlotPrefs.branchId,
-        );
-        const branchModelKeys = new Set(
-          branchDevices
-            .filter((d) => String(d.type || "").toUpperCase() === "DEVICE")
-            .map((d) => modelKeyForAvailability(d)),
-        );
-
-        const filterRowBySlot = (row) => ({
-          ...row,
-          bookingDtos: filterBookingsOverlappingSlot(
-            Array.isArray(row?.bookingDtos) ? row.bookingDtos : [],
-            fromDateTime,
-            toDateTime,
-          ),
-        });
-
-        const data = (resp.data || []).map(filterRowBySlot);
-        const counts = new Map();
-        for (const row of data) {
-          const mk = modelKeyForAvailability(row);
-          if (!branchModelKeys.has(mk)) continue;
-          const busy =
-            Array.isArray(row.bookingDtos) && row.bookingDtos.length > 0;
-          const entry = counts.get(mk) || { free: 0, total: 0 };
-          entry.total += 1;
-          if (!busy) entry.free += 1;
-          counts.set(mk, entry);
-        }
-
-        const availMap = new Map();
-        for (const mk of branchModelKeys) {
-          const entry = counts.get(mk);
-          availMap.set(mk, entry ? entry.free > 0 : false);
-        }
-        setSlotModelAvailability(availMap);
-      } catch {
-        if (!cancelled) setSlotModelAvailability(null);
-      } finally {
-        if (!cancelled) setSlotAvailabilityLoading(false);
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [catalogSlotPrefs, devices]);
-
-  const isModelSlotBookable = useCallback(
-    (modelKey) => {
-      if (!catalogSlotPrefs) return true;
-      if (slotAvailabilityLoading) return false;
-      const key = modelKeyForAvailability(modelKey);
-      if (!key || !slotModelAvailability) return true;
-      return slotModelAvailability.get(key) !== false;
-    },
-    [catalogSlotPrefs, slotAvailabilityLoading, slotModelAvailability],
-  );
-
   const handleCategorySelect = useCallback((key) => {
     setSelectedCategory(key);
     setSelectedModel(DEFAULT_MODEL);
@@ -1126,22 +1152,83 @@ export default function FeedbackPage() {
     [modelRows],
   );
 
-  const handleOpenQuickBook = useCallback(
-    (item) => {
-      if (!item?.bookDevice) return;
-      const mk =
-        item.modelKey || modelKeyForAvailability(item.bookDevice);
-      if (!isModelSlotBookable(mk)) return;
-      setQuickBookDevice(item.bookDevice);
-      setShowQuickBookModal(true);
+  const handlePickModeToggle = useCallback(
+    (mode) => {
+      setCopyState(null);
+      if (pickMode === mode) {
+        setPickMode(null);
+        setPickedModels([]);
+        return;
+      }
+      setPickMode(mode);
+      setPickedModels(selectedModel !== DEFAULT_MODEL ? [selectedModel] : []);
     },
-    [isModelSlotBookable],
+    [pickMode, selectedModel],
   );
 
-  const handleCloseQuickBook = useCallback(() => {
-    setShowQuickBookModal(false);
-    setQuickBookDevice(null);
+  const handleModelChipClick = useCallback(
+    (value) => {
+      if (!pickMode) {
+        handleModelSelectChange(value);
+        return;
+      }
+      setPickedModels((prev) => {
+        if (prev.includes(value)) return prev.filter((v) => v !== value);
+        if (pickMode === "compare" && prev.length >= MAX_COMPARE_MODELS) {
+          return [...prev.slice(1), value];
+        }
+        return [...prev, value];
+      });
+    },
+    [pickMode, handleModelSelectChange],
+  );
+
+  const flashCopyState = useCallback((kind) => {
+    setCopyState(kind);
+    window.setTimeout(() => setCopyState(null), 2600);
   }, []);
+
+  const compareReady = pickMode === "compare" && pickedModels.length === MAX_COMPARE_MODELS;
+
+  const handleCopyShortLink = useCallback(async () => {
+    setCopyBusy(true);
+    try {
+      const longUrl = buildFeedbackViewUrl({
+        category:
+          selectedCategory !== DEFAULT_CATEGORY_KEY ? selectedCategory : "",
+        model: selectedModel !== DEFAULT_MODEL ? selectedModel : "",
+        compare: compareReady ? pickedModels : [],
+      });
+      const url = (await shortenUrl(longUrl)) || longUrl;
+      flashCopyState((await copyTextToClipboard(url)) ? "link" : "error");
+    } finally {
+      setCopyBusy(false);
+    }
+  }, [selectedCategory, selectedModel, compareReady, pickedModels, flashCopyState]);
+
+  const handleCopyMessage = useCallback(async () => {
+    if (pickedModels.length === 0) return;
+    setCopyBusy(true);
+    try {
+      const shorten = async (longUrl) => (await shortenUrl(longUrl)) || longUrl;
+      const items = await Promise.all(
+        pickedModels.map(async (name) => ({
+          label: formatFeedbackModelTitle(name),
+          url: await shorten(buildFeedbackViewUrl({ model: name })),
+        })),
+      );
+      const compareUrl =
+        pickedModels.length === MAX_COMPARE_MODELS
+          ? await shorten(buildFeedbackViewUrl({ compare: pickedModels }))
+          : "";
+      const ok = await copyTextToClipboard(
+        buildFeedbackShareMessage({ items, compareUrl }),
+      );
+      flashCopyState(ok ? "message" : "error");
+    } finally {
+      setCopyBusy(false);
+    }
+  }, [pickedModels, flashCopyState]);
 
   const skeletonItems = useMemo(
     () =>
@@ -1171,6 +1258,11 @@ export default function FeedbackPage() {
     next.delete("modelKey");
     if (fromCatalogPath) next.set("from", fromCatalogPath);
 
+    next.delete("compare");
+    if (pickMode === "compare") {
+      for (const name of pickedModels) next.append("compare", name);
+    }
+
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
@@ -1178,12 +1270,14 @@ export default function FeedbackPage() {
     selectedCategory,
     selectedModel,
     fromCatalogPath,
+    pickMode,
+    pickedModels,
     searchParams,
     setSearchParams,
   ]);
 
   return (
-    <div className="min-h-screen font-sans relative text-[#333] overflow-x-hidden pb-32 md:pb-36">
+    <div className="min-h-screen font-sans relative text-[#333] overflow-x-clip pb-32 md:pb-36">
       <div className="fixed inset-0 -z-20 feedback-yearbook-bg" aria-hidden />
       <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
         <div className="absolute top-[8%] right-[-12%] w-[420px] h-[420px] bg-[#f0c4d8] rounded-full blur-[130px] opacity-[0.22]" />
@@ -1207,13 +1301,6 @@ export default function FeedbackPage() {
           </Link>
         </div>
 
-        {catalogSlotPrefs && catalogSlotSummaryVi && (
-          <CatalogCuratedScheduleBanner
-            pickupReturnSummary={catalogSlotSummaryVi}
-            branchLabel={catalogSlotBranchLabel}
-          />
-        )}
-
         {selectedModel && selectedModel !== DEFAULT_MODEL && (
           <div className="mb-5 rounded-xl border border-[#e8c4d4] bg-[#fff5f9] px-4 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
             <div className="min-w-0">
@@ -1227,55 +1314,6 @@ export default function FeedbackPage() {
                 </p>
               )}
             </div>
-            {selectedModelBookDevice && (
-              <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleOpenQuickBook({
-                      bookDevice: selectedModelBookDevice,
-                      modelKey: selectedModelRow?.modelKey,
-                    })
-                  }
-                  disabled={
-                    !isModelSlotBookable(selectedModelRow?.modelKey) ||
-                    slotAvailabilityLoading
-                  }
-                  title={
-                    slotAvailabilityLoading
-                      ? catalogSlotSummaryVi
-                        ? `Kiểm tra trống theo lịch: ${catalogSlotSummaryVi}`
-                        : "Đang kiểm tra lịch trống..."
-                      : !isModelSlotBookable(selectedModelRow?.modelKey)
-                        ? catalogSlotSummaryVi
-                          ? `Máy đã kín trong khung ${catalogSlotSummaryVi}`
-                          : "Máy đã kín trong khung giờ bạn chọn ở danh mục"
-                        : undefined
-                  }
-                  className="inline-flex rounded-lg bg-[#1F1F1F] px-4 py-2.5 text-sm font-bold text-[#FF9FCA] hover:bg-[#333] transition-colors disabled:bg-[#ccc] disabled:text-[#999] disabled:cursor-not-allowed"
-                >
-                  {slotAvailabilityLoading
-                    ? catalogSlotSummaryVi
-                      ? "Kiểm tra lịch shop chọn..."
-                      : "Đang kiểm tra..."
-                    : !isModelSlotBookable(selectedModelRow?.modelKey)
-                      ? "Đã kín — đổi giờ"
-                      : `Đặt ${formatFeedbackModelTitle(selectedModel)}`}
-                </button>
-                {!slotAvailabilityLoading &&
-                  catalogSlotPrefs &&
-                  !isModelSlotBookable(selectedModelRow?.modelKey) && (
-                    <a
-                      href={MESSENGER_LINK}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-center text-xs font-bold text-[#0084FF] hover:underline"
-                    >
-                      Nhắn shop xác nhận lại
-                    </a>
-                  )}
-              </div>
-            )}
           </div>
         )}
 
@@ -1295,6 +1333,109 @@ export default function FeedbackPage() {
               ♥ {galleryTotal} khoảnh khắc
             </div>
           </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handlePickModeToggle("compare")}
+              aria-pressed={pickMode === "compare"}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${
+                pickMode === "compare"
+                  ? "bg-[#1F1F1F] text-[#FF9FCA]"
+                  : "border border-[#e5d5c8] bg-white text-[#6a5a52] hover:border-[#E85C9C]/50"
+              }`}
+            >
+              <Columns2 size={14} />
+              So sánh 2 máy
+            </button>
+            {isStaff && (
+              <button
+                type="button"
+                onClick={() => handlePickModeToggle("send")}
+                aria-pressed={pickMode === "send"}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${
+                  pickMode === "send"
+                    ? "bg-[#1F1F1F] text-[#FF9FCA]"
+                    : "border border-[#e5d5c8] bg-white text-[#6a5a52] hover:border-[#E85C9C]/50"
+                }`}
+              >
+                <MessageSquare size={14} />
+                Chọn nhiều máy gửi khách
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleCopyShortLink}
+              disabled={copyBusy}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[#e5d5c8] bg-white px-3 py-2 text-xs font-bold text-[#6a5a52] transition-colors hover:border-[#E85C9C]/50 disabled:opacity-60"
+            >
+              {copyState === "link" ? (
+                <Check size={14} className="text-emerald-600" />
+              ) : (
+                <Link2 size={14} className="text-[#E85C9C]" />
+              )}
+              {copyState === "link" ? "Đã copy link ngắn!" : "Copy link ngắn"}
+            </button>
+          </div>
+
+          {pickMode && (
+            <div className="mt-3 rounded-xl border border-[#e8c4d4] bg-[#fff5f9] p-3">
+              <p className="text-xs font-semibold text-[#9d3d5c]">
+                {pickMode === "compare"
+                  ? "Chọn 2 dòng máy bên dưới (có thể đổi hãng giữa chừng) để xem ảnh cạnh nhau."
+                  : "Chọn các dòng máy khách xin ảnh feedback, rồi copy tin nhắn gửi khách."}
+              </p>
+              {pickedModels.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {pickedModels.map((name) => (
+                    <span
+                      key={name}
+                      className="inline-flex items-center gap-1 rounded-full bg-[#1F1F1F] py-1 pl-3 pr-1.5 text-xs font-bold text-[#FF9FCA]"
+                    >
+                      {formatFeedbackModelTitle(name)}
+                      <button
+                        type="button"
+                        onClick={() => handleModelChipClick(name)}
+                        aria-label={`Bỏ ${formatFeedbackModelTitle(name)}`}
+                        className="rounded-full p-0.5 hover:bg-white/15"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {isStaff && (
+                <button
+                  type="button"
+                  onClick={handleCopyMessage}
+                  disabled={copyBusy || pickedModels.length === 0}
+                  className="mt-3 inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-[#222] px-4 py-2 text-xs font-bold text-[#FF9FCA] transition-colors hover:bg-[#333] disabled:opacity-50"
+                >
+                  {copyState === "message" ? (
+                    <Check size={14} />
+                  ) : (
+                    <MessageSquare size={14} />
+                  )}
+                  {copyState === "message"
+                    ? "Đã copy tin nhắn!"
+                    : pickedModels.length > 0
+                      ? `Copy tin nhắn ${pickedModels.length} máy`
+                      : "Copy tin nhắn"}
+                </button>
+              )}
+              {copyBusy && (
+                <p className="mt-2 text-[11px] font-semibold text-[#a89486]">
+                  Đang tạo link ngắn…
+                </p>
+              )}
+            </div>
+          )}
+          {copyState === "error" && (
+            <p className="mt-2 text-[11px] font-semibold text-rose-600">
+              Không copy được — chạm giữ để copy thủ công.
+            </p>
+          )}
 
           <div className="mt-6">
             <div
@@ -1346,6 +1487,7 @@ export default function FeedbackPage() {
                 aria-label="Dòng máy"
                 className="flex flex-wrap gap-2"
               >
+                {!pickMode && (
                 <button
                   type="button"
                   role="tab"
@@ -1359,15 +1501,18 @@ export default function FeedbackPage() {
                 >
                   Tất cả máy
                 </button>
+                )}
                 {visibleCameraChoices.map((choice) => {
-                  const active = selectedModel === choice.value;
+                  const active = pickMode
+                    ? pickedModels.includes(choice.value)
+                    : selectedModel === choice.value;
                   return (
                     <button
                       key={choice.value}
                       type="button"
                       role="tab"
                       aria-selected={active}
-                      onClick={() => handleModelSelectChange(choice.value)}
+                      onClick={() => handleModelChipClick(choice.value)}
                       className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
                         active
                           ? "bg-[#1F1F1F] text-[#FF9FCA]"
@@ -1391,14 +1536,16 @@ export default function FeedbackPage() {
                     className="mt-1.5 flex flex-wrap gap-2"
                   >
                     {visibleAccessoryChoices.map((choice) => {
-                      const active = selectedModel === choice.value;
+                      const active = pickMode
+                    ? pickedModels.includes(choice.value)
+                    : selectedModel === choice.value;
                       return (
                         <button
                           key={choice.value}
                           type="button"
                           role="tab"
                           aria-selected={active}
-                          onClick={() => handleModelSelectChange(choice.value)}
+                          onClick={() => handleModelChipClick(choice.value)}
                           className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
                             active
                               ? "bg-[#1F1F1F] text-[#FF9FCA]"
@@ -1449,6 +1596,25 @@ export default function FeedbackPage() {
           )}
         </div>
 
+        {pickMode === "compare" ? (
+          <div className="mt-6">
+            {pickedModels.length < MAX_COMPARE_MODELS ? (
+              <div className="rounded-xl border-2 border-dashed border-[#d4c4b0] bg-[#fffdf9] p-8 text-center font-feedback-ui text-[#6a5a52]">
+                {pickedModels.length === 0
+                  ? "Chọn máy thứ nhất để bắt đầu so sánh."
+                  : "Chọn thêm 1 máy nữa để xem ảnh hai máy cạnh nhau."}
+              </div>
+            ) : (
+              <ComparePanel
+                models={pickedModels.map((name) => ({
+                  name,
+                  modelKey: modelRows.find((row) => row.displayName === name)?.modelKey,
+                }))}
+                onRemove={handleModelChipClick}
+              />
+            )}
+          </div>
+        ) : (
         <div className="mt-6">
           {loading ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 items-start">
@@ -1552,38 +1718,6 @@ export default function FeedbackPage() {
                         <span className="rounded-full border border-[#e8c4c4]/90 bg-[#fffefb] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[#8b3d52] shadow-sm">
                           {item.line}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenQuickBook(item)}
-                          disabled={
-                            !item.bookDevice ||
-                            !isModelSlotBookable(item.modelKey) ||
-                            slotAvailabilityLoading
-                          }
-                          title={
-                            item.bookDevice &&
-                            catalogSlotPrefs &&
-                            !slotAvailabilityLoading &&
-                            !isModelSlotBookable(item.modelKey)
-                              ? "Máy đã kín trong khung giờ bạn chọn ở danh mục"
-                              : undefined
-                          }
-                          className={`rounded-full border px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-sm transition-all ${
-                            item.bookDevice &&
-                            isModelSlotBookable(item.modelKey) &&
-                            !slotAvailabilityLoading
-                              ? "border-[#e8c8d0] bg-gradient-to-r from-[#fdf2f5] to-[#f8e4eb] text-[#7a2d48] hover:from-[#fce8f0] hover:to-[#f5d0de] hover:text-[#5c1f36]"
-                              : "border-[#e5dcd6] bg-[#f5f0ec] text-[#a09088] cursor-not-allowed"
-                          }`}
-                        >
-                          {slotAvailabilityLoading
-                            ? "..."
-                            : item.bookDevice &&
-                                catalogSlotPrefs &&
-                                !isModelSlotBookable(item.modelKey)
-                              ? "Đã kín"
-                              : "Đặt ngay"}
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -1619,14 +1753,8 @@ export default function FeedbackPage() {
             </>
           )}
         </div>
+        )}
       </div>
-
-      <QuickBookModal
-        device={quickBookDevice}
-        isOpen={showQuickBookModal}
-        onClose={handleCloseQuickBook}
-        initialPrefs={quickBookInitialPrefs}
-      />
 
       <SlideNav />
       <FloatingContactButton />
