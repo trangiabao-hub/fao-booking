@@ -206,6 +206,21 @@ export default function DeviceCatalogPage() {
     ? searchParams.get("pickupSlot")
     : null;
   const initialAvailabilityConfirmed = searchParams.get("availability") === "1";
+  /**
+   * Link shop gửi có thể không kèm `date`. Nếu cứ xác nhận một khung giờ không có ngày thì không tính được
+   * khung nhận/trả, không request nào được gửi và danh sách kẹt ở "Đang kiểm tra máy trống". Coi như nhận hôm nay;
+   * giờ đã qua thì nhánh slot-quá-khứ bên dưới mở lại gate để khách chọn lại.
+   */
+  const linkMissingDate = initialAvailabilityConfirmed && !initialDate;
+  const todayForLink = normalizeDate(new Date());
+  const effectiveInitialDate = initialDate || (linkMissingDate ? todayForLink : null);
+  const effectiveInitialEndDate =
+    initialEndDate ||
+    (linkMissingDate
+      ? initialDurationType === "ONE_DAY"
+        ? addDays(todayForLink, 1)
+        : todayForLink
+      : null);
   const focusModelParam = searchParams.get("focusModel") || "";
   const autoBookParam = searchParams.get("book") === "1";
   const modelKeyFromUrl = (searchParams.get("modelKey") || "").trim();
@@ -217,8 +232,8 @@ export default function DeviceCatalogPage() {
   const initialSlotStale =
     initialAvailabilityConfirmed &&
     isAvailabilitySlotStale({
-      date: initialDate,
-      endDate: initialEndDate,
+      date: effectiveInitialDate,
+      endDate: effectiveInitialEndDate,
       timeFrom: initialTimeFrom,
       timeTo: initialTimeTo,
       durationType: initialDurationType || "SIX_HOURS",
@@ -272,8 +287,8 @@ export default function DeviceCatalogPage() {
     const durationType = initialDurationType || p?.durationType || "SIX_HOURS";
 
     // Slot quá khứ: đẩy ngày nhận về hôm nay, giữ nguyên giờ/chi nhánh để khách chỉ cần xác nhận lại.
-    let date = initialDate;
-    let endDate = initialEndDate;
+    let date = effectiveInitialDate;
+    let endDate = effectiveInitialEndDate;
     if (initialSlotStale) {
       const today = normalizeDate(new Date());
       date = today;
@@ -318,6 +333,14 @@ export default function DeviceCatalogPage() {
   // Đã xác nhận nhưng khung giờ quá khứ → mở lại gate, tránh fetch availability lặp.
   useEffect(() => {
     if (!availabilityConfirmed) return;
+    // Không dựng được khung nhận/trả (thiếu ngày/giờ) thì fetch availability sẽ dừng sớm và danh sách kẹt
+    // ở trạng thái "đang kiểm tra": mở lại gate để khách chọn.
+    const { fromDateTime, toDateTime } = computeAvailabilityRange(availabilityPrefs);
+    if (!fromDateTime || !toDateTime) {
+      setAvailabilityConfirmed(false);
+      setAvailabilityError("Vui lòng chọn giờ nhận / trả.");
+      return;
+    }
     if (!isAvailabilitySlotStale(availabilityPrefs)) return;
     setAvailabilityConfirmed(false);
     setAvailabilityError(STALE_AVAILABILITY_SLOT_MESSAGE);
@@ -1919,6 +1942,18 @@ export default function DeviceCatalogPage() {
     setAvailabilityPrefs((prev) => {
       const nextPrefs = { ...prev };
       let changed = false;
+
+      if (
+        searchParams.get("availability") === "1" &&
+        !nextDate &&
+        !prev.date
+      ) {
+        const today = normalizeDate(new Date());
+        const durationForLink = nextDurationType || prev.durationType;
+        nextPrefs.date = today;
+        nextPrefs.endDate = durationForLink === "ONE_DAY" ? addDays(today, 1) : today;
+        changed = true;
+      }
 
       if (nextDurationType && prev.durationType !== nextDurationType) {
         nextPrefs.durationType = nextDurationType;
