@@ -126,42 +126,16 @@ export function useAvailabilityCheck({
             (!pickupDay || isBranchBookable(b, pickupDay)),
         );
 
-        const otherBusyEntries = await Promise.all(
-          otherBranches.map(async (b) => {
-            try {
-              const resp = await api.get("v1/devices/booking", {
-                params: {
-                  startDate: from?.slice(0, 10),
-                  endDate: to?.slice(0, 10),
-                  branchId: b.id,
-                },
-                timeout: CATALOG_API_TIMEOUT_MS,
-              });
-              const rows = resp.data || [];
-              const ob = new Set();
-              rows.forEach((row) => {
-                const raw = Array.isArray(row.bookingDtos) ? row.bookingDtos : [];
-                const overlapping = filterBookingsOverlappingSlot(
-                  raw,
-                  fromDateTime,
-                  toDateTime,
-                );
-                if (overlapping.length > 0) ob.add(String(row.id));
-              });
-              return [b.id, Array.from(ob)];
-            } catch (e) {
-              console.warn("cross-branch booking fetch failed", b.id, e);
-              return [b.id, null];
-            }
-          }),
-        );
+        // Endpoint trả đủ máy của MỌI chi nhánh trong một lần (BE không lọc theo branchId), nên tập máy bận ở
+        // trên đã là câu trả lời cho từng chi nhánh khác. Trước đây mỗi chi nhánh còn gọi lại một request y hệt.
+        const sharedBusyIds = Array.from(busySet);
+        const obMap = {};
+        for (const b of otherBranches) {
+          obMap[b.id] = sharedBusyIds;
+        }
 
         if (gen !== fetchGeneration.current) return;
 
-        const obMap = {};
-        for (const [bid, arr] of otherBusyEntries) {
-          if (arr !== null) obMap[bid] = arr;
-        }
         setOtherBranchesBusyIds(obMap);
       } catch (err) {
         console.error("Failed to fetch availability:", err);
