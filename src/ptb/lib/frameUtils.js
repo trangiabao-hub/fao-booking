@@ -1,4 +1,4 @@
-import { FRAME_SIZE_TEMPLATES, LAYOUT_DEFS } from "./constants";
+import { FRAME_SIZE_TEMPLATES, LAYOUT_DEFS, isStripLayout } from "./constants";
 import { resolveUploadOrigin } from "../../config/apiBase";
 
 export function resolveMediaUrl(path) {
@@ -126,12 +126,17 @@ export function isSpotlightFrame(frame) {
   );
 }
 
-export const FRAME_SIZE_ORDER = ["1x4", "2x2", "1x1"];
+export const FRAME_SIZE_ORDER = ["1x4", "1x3", "1x2", "2x2", "2x3", "1x2l", "1x1", "l5"];
 
 export const FRAME_SIZE_LABELS = {
   "1x4": "Strip 1×4",
   "2x2": "Khung 2×2",
   "1x1": "Ảnh 1×1",
+  "1x3": "Strip 1×3",
+  "1x2": "Strip 1×2",
+  "2x3": "Khung 2×3",
+  "1x2l": "Khung 1×2 lớn",
+  l5: "1+4 ngang",
 };
 
 export function groupFramesBySize(frames = []) {
@@ -182,7 +187,7 @@ export function applyFrameToStrip(strip, frame) {
     footerPatternText: "",
     footerSubText: "",
     dualSame:
-      (frame.layoutType ?? frame.sizeType ?? "1x4") === "1x4"
+      isStripLayout(frame.layoutType ?? frame.sizeType ?? "1x4")
         ? strip.dualSame !== false
         : true,
   };

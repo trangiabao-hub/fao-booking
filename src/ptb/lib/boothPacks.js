@@ -13,7 +13,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 const MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
 
 /** Khổ của pack → khổ mà web đặt lịch biết vẽ. */
-export const PACK_KIND_TO_LAYOUT = { s4: "1x4", p4: "2x2", l1: "1x1" };
+export const PACK_KIND_TO_LAYOUT = { s2: "1x2", s3: "1x3", s4: "1x4", p2: "1x2l", p4: "2x2", p6: "2x3", l1: "1x1", l5: "l5" };
 
 /** Máy booth "Booth Web" (id 5, booth-mgmt). Đặt VITE_BOOTH_UNIT_ID để dùng máy khác; đặt "0" để tắt và về kho khung cũ. */
 const envUnit = String(import.meta.env.VITE_BOOTH_UNIT_ID ?? "5").trim();

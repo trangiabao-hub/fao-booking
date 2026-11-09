@@ -142,6 +142,12 @@ export const LAYOUT_DEFS = {
     rows: 1,
     slotAspect: { w: 3, h: 4 },
   },
+  // Các khổ còn lại của booth (khung pack). Chỉ dùng cho khung booth; Khung Trơn vẫn là 1x4 / 2x2 / 1x1 / 3x3.
+  "1x2": { id: "1x2", label: "1x2", slots: 2, cols: 1, rows: 2, slotAspect: { w: 4, h: 3 } },
+  "1x3": { id: "1x3", label: "1x3", slots: 3, cols: 1, rows: 3, slotAspect: { w: 4, h: 3 } },
+  "2x3": { id: "2x3", label: "2x3", slots: 6, cols: 2, rows: 3, slotAspect: { w: 1, h: 1 } },
+  "1x2l": { id: "1x2l", label: "1x2 lớn", slots: 2, cols: 1, rows: 2, slotAspect: { w: 4, h: 3 } },
+  l5: { id: "l5", label: "1+4 ngang", slots: 5, cols: 1, rows: 5, slotAspect: { w: 4, h: 3 } },
   "3x3": {
     id: "3x3",
     label: "9 ô trắng đen",
@@ -152,3 +158,10 @@ export const LAYOUT_DEFS = {
     hot: true,
   },
 };
+
+/** Strip 2×6": in hai dải trên một tấm 4×6. */
+export const STRIP_LAYOUTS = ["1x2", "1x3", "1x4"];
+export const isStripLayout = (type) => STRIP_LAYOUTS.includes(String(type || "1x4"));
+/** Khung ngang 6×4. */
+export const LANDSCAPE_LAYOUTS = ["l5"];
+export const isLandscapeLayout = (type) => LANDSCAPE_LAYOUTS.includes(String(type || ""));

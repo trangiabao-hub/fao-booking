@@ -2,7 +2,7 @@
 /**
  * Chép dữ liệu bộ khung của booth (frame-generation/clone|release/<slug>/pack.json) vào public/booth-packs/ cho những bộ
  * CHƯA được tải lên server (các bộ chỉ nằm trong app booth). Bộ đã có trên server thì web lấy thẳng từ server nên không chép.
- * Chỉ giữ các khổ web đặt lịch vẽ được (s4 = 1x4, p4 = 2x2, l1 = 1x1) cho file nhẹ.
+ * Chỉ giữ các khổ web đặt lịch vẽ được (strip s2/s3/s4, p2/p4/p6, l1, l5) cho file nhẹ.
  *
  * Chạy lại mỗi khi build.py sinh khung mới:  node scripts/sync-booth-packs.mjs [--all]
  */
@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const gen = join(root, "..", "frame-generation");
 const out = join(root, "public", "booth-packs");
-const KEEP = new Set(["s4", "p4", "l1"]);
+const KEEP = new Set(["s2", "s3", "s4", "p2", "p4", "p6", "l1", "l5"]);
 const API = process.env.VITE_API_URL || "https://api.faodigital.vn/api";
 const all = process.argv.includes("--all");
 

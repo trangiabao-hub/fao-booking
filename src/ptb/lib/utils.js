@@ -7,6 +7,8 @@ import {
   PLAIN_FRAME_DEFAULTS,
   PLAIN_GAP_RATIO,
   PLAIN_PAD_RATIO,
+  isLandscapeLayout,
+  isStripLayout,
 } from "./constants";
 import { resolveMediaUrl } from "./frameUtils";
 
@@ -41,7 +43,9 @@ export function stripWidthMmForLayout(layoutType) {
   const type = String(layoutType || "1x4")
     .toLowerCase()
     .replace(/×/g, "x");
-  return type === "1x4" ? DNP_STRIP.wMm : DNP_PAGE.wMm;
+  if (isStripLayout(type)) return DNP_STRIP.wMm;
+  if (isLandscapeLayout(type)) return DNP_PAGE.hMm;
+  return DNP_PAGE.wMm;
 }
 
 export function getPlainFrameMetrics(layoutType, frameWidthPx = 200, opts = {}) {

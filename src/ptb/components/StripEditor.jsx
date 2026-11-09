@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { PHOTO_THEMES } from "../lib/constants";
+import { PHOTO_THEMES, isStripLayout } from "../lib/constants";
 import {
   applyFrameToStrip,
   applyPlainToStrip,
@@ -76,7 +76,7 @@ export default function StripEditor({
   const minRequired = Math.min(2, slotCount);
   const missingCount = Math.max(0, minRequired - filledCount);
   const canSave = (plainMode || hasOverlay) && missingCount === 0 && !disabled;
-  const dualPreview = (strip.layoutType || "1x4") === "1x4";
+  const dualPreview = isStripLayout(strip.layoutType || "1x4");
 
   const selectedFrame = useMemo(
     () => displayFrames.find((f) => f.id === selectedFrameId) ?? null,
